@@ -1,22 +1,189 @@
-export const PRODUCTS = [
-  // Sarees
-  { id: 'p01', slug: 'banarasi-silk-saree', name: 'Banarasi Silk Saree', subtitle: 'Pure silk with zari border', priceInr: 14999, originalPriceInr: 18000, category: 'sarees', badge: 'Bestseller', emoji: '🥻' },
-  { id: 'p02', slug: 'kanjivaram-silk-saree', name: 'Kanjivaram Silk Saree', subtitle: 'Temple border weave', priceInr: 21999, category: 'sarees', emoji: '🥻' },
-  { id: 'p03', slug: 'chanderi-cotton-saree', name: 'Chanderi Cotton Saree', subtitle: 'Lightweight with gold motifs', priceInr: 5499, originalPriceInr: 6500, category: 'sarees', badge: 'Sale', emoji: '🥻' },
-  { id: 'p04', slug: 'georgette-printed-saree', name: 'Georgette Printed Saree', subtitle: 'Floral digital print', priceInr: 3999, category: 'sarees', emoji: '🥻' },
-  // Lehengas
-  { id: 'p05', slug: 'bridal-lehenga-red', name: 'Bridal Lehenga – Red', subtitle: 'Heavy embroidered silk lehenga', priceInr: 45999, category: 'lehengas', badge: 'Premium', emoji: '👘' },
-  { id: 'p06', slug: 'mirror-work-lehenga', name: 'Mirror Work Lehenga', subtitle: 'Rajasthani folk art style', priceInr: 18999, originalPriceInr: 22000, category: 'lehengas', badge: 'New', emoji: '👘' },
-  { id: 'p07', slug: 'pastel-floral-lehenga', name: 'Pastel Floral Lehenga', subtitle: 'Soft georgette, thread embroidery', priceInr: 12499, category: 'lehengas', emoji: '👘' },
-  { id: 'p08', slug: 'velvet-lehenga-navy', name: 'Velvet Lehenga – Navy', subtitle: 'Gold zardozi work', priceInr: 29999, category: 'lehengas', emoji: '👘' },
-  // Kurtas
-  { id: 'p09', slug: 'silk-anarkali-kurta', name: 'Silk Anarkali Kurta', subtitle: 'Floor-length with churidar', priceInr: 6999, originalPriceInr: 8500, category: 'kurtas', badge: 'Sale', emoji: '👚' },
-  { id: 'p10', slug: 'cotton-block-print-kurta', name: 'Block Print Kurta Set', subtitle: 'Jaipur hand-block printed', priceInr: 2999, category: 'kurtas', badge: 'New', emoji: '👚' },
-  { id: 'p11', slug: 'indo-western-coord', name: 'Indo-Western Co-ord Set', subtitle: 'Crop top + palazzo trousers', priceInr: 4499, category: 'kurtas', emoji: '👚' },
-  { id: 'p12', slug: 'lucknowi-chikankari-kurta', name: 'Lucknowi Chikankari Kurta', subtitle: 'Hand-embroidered white cotton', priceInr: 3799, originalPriceInr: 4500, category: 'kurtas', emoji: '👚' },
-  // Kids
-  { id: 'p13', slug: 'kids-lehenga-pink', name: 'Girls Lehenga – Pink', subtitle: 'Festive wear age 3–10', priceInr: 2999, category: 'kids', badge: 'Bestseller', emoji: '🎀' },
-  { id: 'p14', slug: 'kids-sherwani-gold', name: 'Boys Sherwani – Gold', subtitle: 'Wedding collection age 2–12', priceInr: 3499, category: 'kids', emoji: '👦' },
-  { id: 'p15', slug: 'kids-kurta-pyjama', name: 'Boys Kurta Pyjama Set', subtitle: 'Cotton, easy wear age 1–8', priceInr: 1299, originalPriceInr: 1699, category: 'kids', badge: 'Sale', emoji: '👕' },
-  { id: 'p16', slug: 'girls-saree-style-gown', name: 'Girls Saree-Style Gown', subtitle: 'Ready-to-wear, age 5–14', priceInr: 2499, category: 'kids', emoji: '🎀' },
+// ============================================================
+// PRODUCT CATALOGUE
+// ============================================================
+// HOW TO ADD YOUR OWN PRODUCT IMAGES:
+// Option A – Local: Place images in /public/images/products/
+//            then set image: '/images/products/my-saree.jpg'
+// Option B – Cloud: Upload to Cloudinary / Supabase Storage
+//            then paste the full CDN URL into the image field
+// ============================================================
+
+export type Product = {
+  id: string;
+  slug: string;
+  name: string;
+  subtitle?: string;
+  priceInr: number;
+  originalPriceInr?: number;
+  category: string;
+  badge?: string;
+  image?: string; // Replace with your own URL when ready
+};
+
+export const PRODUCTS: Product[] = [
+  // ── SAREES ──────────────────────────────────────────────
+  {
+    id: 'p01',
+    slug: 'banarasi-silk-saree',
+    name: 'Banarasi Silk Saree',
+    subtitle: 'Pure silk with gold zari border',
+    priceInr: 14999,
+    originalPriceInr: 18000,
+    category: 'sarees',
+    badge: 'Bestseller',
+    image: 'https://images.unsplash.com/photo-1583395235451-3e8c9d59641a?q=80&w=600&auto=format&fit=crop',
+  },
+  {
+    id: 'p02',
+    slug: 'kanjivaram-silk-saree',
+    name: 'Kanjivaram Silk Saree',
+    subtitle: 'Temple border weave, traditional motifs',
+    priceInr: 21999,
+    category: 'sarees',
+    image: 'https://images.unsplash.com/photo-1604999565976-8913ad2ddb7c?q=80&w=600&auto=format&fit=crop',
+  },
+  {
+    id: 'p03',
+    slug: 'chanderi-cotton-saree',
+    name: 'Chanderi Cotton Saree',
+    subtitle: 'Lightweight with delicate gold motifs',
+    priceInr: 5499,
+    originalPriceInr: 6500,
+    category: 'sarees',
+    badge: 'Sale',
+    image: 'https://images.unsplash.com/photo-1595777457983-954cb52e0279?q=80&w=600&auto=format&fit=crop',
+  },
+  {
+    id: 'p04',
+    slug: 'georgette-printed-saree',
+    name: 'Georgette Printed Saree',
+    subtitle: 'Vibrant floral digital print',
+    priceInr: 3999,
+    category: 'sarees',
+    image: 'https://images.unsplash.com/photo-1577909953988-960e646a8ae6?q=80&w=600&auto=format&fit=crop',
+  },
+
+  // ── LEHENGAS ────────────────────────────────────────────
+  {
+    id: 'p05',
+    slug: 'bridal-lehenga-red',
+    name: 'Bridal Lehenga – Red',
+    subtitle: 'Heavy embroidered silk, bridal collection',
+    priceInr: 45999,
+    category: 'lehengas',
+    badge: 'Premium',
+    image: 'https://images.unsplash.com/photo-1583395139800-4c85d6f9dd28?q=80&w=600&auto=format&fit=crop',
+  },
+  {
+    id: 'p06',
+    slug: 'mirror-work-lehenga',
+    name: 'Mirror Work Lehenga',
+    subtitle: 'Rajasthani folk art style',
+    priceInr: 18999,
+    originalPriceInr: 22000,
+    category: 'lehengas',
+    badge: 'New',
+    image: 'https://images.unsplash.com/photo-1604999391010-f7a9a9d5243f?q=80&w=600&auto=format&fit=crop',
+  },
+  {
+    id: 'p07',
+    slug: 'pastel-floral-lehenga',
+    name: 'Pastel Floral Lehenga',
+    subtitle: 'Soft georgette with thread embroidery',
+    priceInr: 12499,
+    category: 'lehengas',
+    image: 'https://images.unsplash.com/photo-1595777457983-954cb52e0279?q=80&w=600&auto=format&fit=crop',
+  },
+  {
+    id: 'p08',
+    slug: 'velvet-lehenga-navy',
+    name: 'Velvet Lehenga – Navy',
+    subtitle: 'Rich velvet with gold zardozi work',
+    priceInr: 29999,
+    category: 'lehengas',
+    image: 'https://images.unsplash.com/photo-1577909953399-884c4a8ef539?q=80&w=600&auto=format&fit=crop',
+  },
+
+  // ── KURTAS ──────────────────────────────────────────────
+  {
+    id: 'p09',
+    slug: 'silk-anarkali-kurta',
+    name: 'Silk Anarkali Kurta',
+    subtitle: 'Floor-length with churidar set',
+    priceInr: 6999,
+    originalPriceInr: 8500,
+    category: 'kurtas',
+    badge: 'Sale',
+    image: 'https://images.unsplash.com/photo-1583395235451-3e8c9d59641a?q=80&w=600&auto=format&fit=crop',
+  },
+  {
+    id: 'p10',
+    slug: 'cotton-block-print-kurta',
+    name: 'Block Print Kurta Set',
+    subtitle: 'Jaipur hand-block printed cotton',
+    priceInr: 2999,
+    category: 'kurtas',
+    badge: 'New',
+    image: 'https://images.unsplash.com/photo-1604999565976-8913ad2ddb7c?q=80&w=600&auto=format&fit=crop',
+  },
+  {
+    id: 'p11',
+    slug: 'indo-western-coord',
+    name: 'Indo-Western Co-ord Set',
+    subtitle: 'Crop top + wide-leg palazzo trousers',
+    priceInr: 4499,
+    category: 'kurtas',
+    image: 'https://images.unsplash.com/photo-1595777457983-954cb52e0279?q=80&w=600&auto=format&fit=crop',
+  },
+  {
+    id: 'p12',
+    slug: 'lucknowi-chikankari-kurta',
+    name: 'Lucknowi Chikankari Kurta',
+    subtitle: 'Hand-embroidered white cotton',
+    priceInr: 3799,
+    originalPriceInr: 4500,
+    category: 'kurtas',
+    image: 'https://images.unsplash.com/photo-1577909953399-884c4a8ef539?q=80&w=600&auto=format&fit=crop',
+  },
+
+  // ── KIDS ────────────────────────────────────────────────
+  {
+    id: 'p13',
+    slug: 'kids-lehenga-pink',
+    name: 'Girls Lehenga – Pink',
+    subtitle: 'Festive wear, ages 3–10',
+    priceInr: 2999,
+    category: 'kids',
+    badge: 'Bestseller',
+    image: 'https://images.unsplash.com/photo-1583395235451-3e8c9d59641a?q=80&w=600&auto=format&fit=crop',
+  },
+  {
+    id: 'p14',
+    slug: 'kids-sherwani-gold',
+    name: 'Boys Sherwani – Gold',
+    subtitle: 'Wedding collection, ages 2–12',
+    priceInr: 3499,
+    category: 'kids',
+    image: 'https://images.unsplash.com/photo-1604999565976-8913ad2ddb7c?q=80&w=600&auto=format&fit=crop',
+  },
+  {
+    id: 'p15',
+    slug: 'kids-kurta-pyjama',
+    name: 'Boys Kurta Pyjama Set',
+    subtitle: 'Soft cotton, easy-wear, ages 1–8',
+    priceInr: 1299,
+    originalPriceInr: 1699,
+    category: 'kids',
+    badge: 'Sale',
+    image: 'https://images.unsplash.com/photo-1595777457983-954cb52e0279?q=80&w=600&auto=format&fit=crop',
+  },
+  {
+    id: 'p16',
+    slug: 'girls-saree-style-gown',
+    name: 'Girls Saree-Style Gown',
+    subtitle: 'Ready-to-wear elegant gown, ages 5–14',
+    priceInr: 2499,
+    category: 'kids',
+    image: 'https://images.unsplash.com/photo-1577909953399-884c4a8ef539?q=80&w=600&auto=format&fit=crop',
+  },
 ];
