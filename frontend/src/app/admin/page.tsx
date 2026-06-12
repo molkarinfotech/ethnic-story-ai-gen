@@ -21,19 +21,30 @@ export default function AdminDashboard() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState('');
   const [seeding, setSeeding] = useState(false);
   const [seedMsg, setSeedMsg] = useState('');
 
   async function fetchProducts() {
     const res = await fetch('/api/admin/products');
     if (res.status === 401) { router.push('/admin/login'); return; }
-    setProducts(await res.json());
+    const data = await res.json();
+    if (!res.ok) {
+      setApiError(`Products API error: ${data.error ?? res.statusText}`);
+      return;
+    }
+    setProducts(Array.isArray(data) ? data : []);
   }
 
   async function fetchOrders() {
     const res = await fetch('/api/admin/orders');
     if (res.status === 401) { router.push('/admin/login'); return; }
-    setOrders(await res.json());
+    const data = await res.json();
+    if (!res.ok) {
+      setApiError(prev => prev + ` | Orders API error: ${data.error ?? res.statusText}`);
+      return;
+    }
+    setOrders(Array.isArray(data) ? data : []);
   }
 
   useEffect(() => {
@@ -51,7 +62,7 @@ export default function AdminDashboard() {
     setSeedMsg('');
     const res = await fetch('/api/admin/seed', { method: 'POST' });
     const data = await res.json();
-    setSeedMsg(data.error ? `Error: ${data.error}` : `✅ Seeded ${data.seeded} products!`);
+    setSeedMsg(data.error ? `❌ Error: ${data.error}` : `✅ Seeded ${data.seeded} products!`);
     setSeeding(false);
     fetchProducts();
   }
@@ -61,7 +72,9 @@ export default function AdminDashboard() {
     router.push('/admin/login');
   }
 
-  if (loading) return <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading dashboard…</div>;
+  if (loading) return (
+    <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading dashboard…</div>
+  );
 
   return (
     <main style={{ minHeight: '100vh', background: 'var(--color-surface-offset)' }}>
@@ -72,16 +85,33 @@ export default function AdminDashboard() {
           <span style={{ color: 'var(--color-border)' }}>|</span>
           <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>Admin Dashboard</span>
         </div>
-        <button onClick={handleLogout} style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Sign out</button>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <a href="/api/admin/debug" target="_blank"
+            style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textDecoration: 'none' }}>Debug env</a>
+          <button onClick={handleLogout}
+            style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Sign out</button>
+        </div>
       </div>
 
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
+
+        {/* API Error banner */}
+        {apiError && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.75rem', padding: '1rem 1.25rem', marginBottom: '1.5rem', color: '#dc2626', fontSize: '0.875rem' }}>
+            <strong>API Error:</strong> {apiError}
+            <br />
+            <span style={{ fontSize: '0.8rem' }}>
+              Visit <a href="/api/admin/debug" target="_blank" style={{ color: '#dc2626' }}>/api/admin/debug</a> to check which Supabase env vars are set.
+            </span>
+          </div>
+        )}
+
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
           {[
             { label: 'Total Products', value: products.length, icon: '👗' },
             { label: 'Total Orders', value: orders.length, icon: '📦' },
-            { label: 'Revenue', value: formatAUD(orders.reduce((s, o) => s + o.total, 0)), icon: '💰' },
+            { label: 'Revenue', value: formatAUD(orders.reduce((s, o) => s + (o.total ?? 0), 0)), icon: '💰' },
           ].map(s => (
             <div key={s.label} style={{ background: 'white', borderRadius: '.75rem', padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
               <div style={{ fontSize: '1.75rem' }}>{s.icon}</div>
@@ -160,7 +190,9 @@ export default function AdminDashboard() {
                     </tr>
                   ))}
                   {products.length === 0 && (
-                    <tr><td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>No products yet. Click "Seed default products" to get started.</td></tr>
+                    <tr><td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                      {apiError ? 'Could not load products — see error above.' : 'No products yet. Click “Seed default products” to get started.'}
+                    </td></tr>
                   )}
                 </tbody>
               </table>
@@ -191,7 +223,7 @@ export default function AdminDashboard() {
                         <div style={{ fontWeight: 600 }}>{o.customer_name}</div>
                         <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>{o.customer_email}</div>
                       </td>
-                      <td style={{ padding: '.75rem 1rem' }}>{Array.isArray(o.items) ? o.items.map((it: { name: string; quantity: number }) => `${it.name} ×${it.quantity}`).join(', ') : '—'}</td>
+                      <td style={{ padding: '.75rem 1rem' }}>{Array.isArray(o.items) ? o.items.map(it => `${it.name} ×${it.quantity}`).join(', ') : '—'}</td>
                       <td style={{ padding: '.75rem 1rem', fontWeight: 600 }}>{formatAUD(o.total)}</td>
                       <td style={{ padding: '.75rem 1rem' }}>
                         <span style={{ background: '#dcfce7', color: '#16a34a', borderRadius: '2rem', padding: '.2rem .7rem', fontSize: '0.75rem', fontWeight: 600, textTransform: 'capitalize' }}>{o.status}</span>
@@ -199,7 +231,9 @@ export default function AdminDashboard() {
                     </tr>
                   ))}
                   {orders.length === 0 && (
-                    <tr><td colSpan={5} style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>No orders yet.</td></tr>
+                    <tr><td colSpan={5} style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                      {apiError ? 'Could not load orders — see error above.' : 'No orders yet.'}
+                    </td></tr>
                   )}
                 </tbody>
               </table>
