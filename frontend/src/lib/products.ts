@@ -2,10 +2,12 @@
 // PRODUCT CATALOGUE
 // ============================================================
 // HOW TO ADD YOUR OWN PRODUCT IMAGES:
-// Option A – Local: Place images in /public/images/products/
-//            then set image: '/images/products/my-saree.jpg'
-// Option B – Cloud: Upload to Cloudinary / Supabase Storage
-//            then paste the full CDN URL into the image field
+// Option A – Local files:
+//   1. Place your image in /public/images/products/
+//   2. Set image: '/images/products/my-saree.jpg'
+// Option B – Cloud (Cloudinary / Supabase / S3):
+//   1. Upload image and copy the CDN URL
+//   2. Paste the full URL into the image field below
 // ============================================================
 
 export type Product = {
@@ -17,7 +19,7 @@ export type Product = {
   originalPriceInr?: number;
   category: string;
   badge?: string;
-  image?: string; // Replace with your own URL when ready
+  image?: string; // ← Replace with your own URL when ready
 };
 
 export const PRODUCTS: Product[] = [
@@ -31,7 +33,7 @@ export const PRODUCTS: Product[] = [
     originalPriceInr: 18000,
     category: 'sarees',
     badge: 'Bestseller',
-    image: 'https://images.unsplash.com/photo-1583395235451-3e8c9d59641a?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?q=80&w=600&auto=format&fit=crop',
   },
   {
     id: 'p02',
@@ -40,7 +42,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Temple border weave, traditional motifs',
     priceInr: 21999,
     category: 'sarees',
-    image: 'https://images.unsplash.com/photo-1604999565976-8913ad2ddb7c?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=80&w=600&auto=format&fit=crop',
   },
   {
     id: 'p03',
@@ -51,7 +53,7 @@ export const PRODUCTS: Product[] = [
     originalPriceInr: 6500,
     category: 'sarees',
     badge: 'Sale',
-    image: 'https://images.unsplash.com/photo-1595777457983-954cb52e0279?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1620912189875-f5a3c2c3f91e?q=80&w=600&auto=format&fit=crop',
   },
   {
     id: 'p04',
@@ -60,7 +62,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Vibrant floral digital print',
     priceInr: 3999,
     category: 'sarees',
-    image: 'https://images.unsplash.com/photo-1577909953988-960e646a8ae6?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1583017777700-a5a0e5d03f24?q=80&w=600&auto=format&fit=crop',
   },
 
   // ── LEHENGAS ────────────────────────────────────────────
@@ -72,7 +74,7 @@ export const PRODUCTS: Product[] = [
     priceInr: 45999,
     category: 'lehengas',
     badge: 'Premium',
-    image: 'https://images.unsplash.com/photo-1583395139800-4c85d6f9dd28?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?q=80&w=600&auto=format&fit=crop',
   },
   {
     id: 'p06',
@@ -83,7 +85,7 @@ export const PRODUCTS: Product[] = [
     originalPriceInr: 22000,
     category: 'lehengas',
     badge: 'New',
-    image: 'https://images.unsplash.com/photo-1604999391010-f7a9a9d5243f?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=80&w=600&auto=format&fit=crop',
   },
   {
     id: 'p07',
@@ -92,7 +94,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Soft georgette with thread embroidery',
     priceInr: 12499,
     category: 'lehengas',
-    image: 'https://images.unsplash.com/photo-1595777457983-954cb52e0279?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1620912189875-f5a3c2c3f91e?q=80&w=600&auto=format&fit=crop',
   },
   {
     id: 'p08',
@@ -101,7 +103,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Rich velvet with gold zardozi work',
     priceInr: 29999,
     category: 'lehengas',
-    image: 'https://images.unsplash.com/photo-1577909953399-884c4a8ef539?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1583017777700-a5a0e5d03f24?q=80&w=600&auto=format&fit=crop',
   },
 
   // ── KURTAS ──────────────────────────────────────────────
@@ -114,7 +116,7 @@ export const PRODUCTS: Product[] = [
     originalPriceInr: 8500,
     category: 'kurtas',
     badge: 'Sale',
-    image: 'https://images.unsplash.com/photo-1583395235451-3e8c9d59641a?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?q=80&w=600&auto=format&fit=crop',
   },
   {
     id: 'p10',
@@ -124,7 +126,7 @@ export const PRODUCTS: Product[] = [
     priceInr: 2999,
     category: 'kurtas',
     badge: 'New',
-    image: 'https://images.unsplash.com/photo-1604999565976-8913ad2ddb7c?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=80&w=600&auto=format&fit=crop',
   },
   {
     id: 'p11',
@@ -133,7 +135,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Crop top + wide-leg palazzo trousers',
     priceInr: 4499,
     category: 'kurtas',
-    image: 'https://images.unsplash.com/photo-1595777457983-954cb52e0279?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1620912189875-f5a3c2c3f91e?q=80&w=600&auto=format&fit=crop',
   },
   {
     id: 'p12',
@@ -143,7 +145,7 @@ export const PRODUCTS: Product[] = [
     priceInr: 3799,
     originalPriceInr: 4500,
     category: 'kurtas',
-    image: 'https://images.unsplash.com/photo-1577909953399-884c4a8ef539?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1583017777700-a5a0e5d03f24?q=80&w=600&auto=format&fit=crop',
   },
 
   // ── KIDS ────────────────────────────────────────────────
@@ -155,7 +157,7 @@ export const PRODUCTS: Product[] = [
     priceInr: 2999,
     category: 'kids',
     badge: 'Bestseller',
-    image: 'https://images.unsplash.com/photo-1583395235451-3e8c9d59641a?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?q=80&w=600&auto=format&fit=crop',
   },
   {
     id: 'p14',
@@ -164,7 +166,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Wedding collection, ages 2–12',
     priceInr: 3499,
     category: 'kids',
-    image: 'https://images.unsplash.com/photo-1604999565976-8913ad2ddb7c?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=80&w=600&auto=format&fit=crop',
   },
   {
     id: 'p15',
@@ -175,7 +177,7 @@ export const PRODUCTS: Product[] = [
     originalPriceInr: 1699,
     category: 'kids',
     badge: 'Sale',
-    image: 'https://images.unsplash.com/photo-1595777457983-954cb52e0279?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1620912189875-f5a3c2c3f91e?q=80&w=600&auto=format&fit=crop',
   },
   {
     id: 'p16',
@@ -184,6 +186,6 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Ready-to-wear elegant gown, ages 5–14',
     priceInr: 2499,
     category: 'kids',
-    image: 'https://images.unsplash.com/photo-1577909953399-884c4a8ef539?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1583017777700-a5a0e5d03f24?q=80&w=600&auto=format&fit=crop',
   },
 ];
