@@ -1,6 +1,9 @@
+import { ClearCart } from './clear-cart';
+
 export default function CheckoutSuccessPage() {
   return (
     <main>
+      <ClearCart />
       <div className="order-success" style={{ minHeight: '60vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-16) var(--space-4)' }}>
         <div className="order-success__icon">🎊</div>
         <h2>Order placed successfully!</h2>
