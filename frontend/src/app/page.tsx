@@ -1,9 +1,14 @@
 import { ProductCard } from '../components/shop/ProductCard';
-import { PRODUCTS } from '../lib/products';
+import { getProducts } from '../lib/fetchProducts';
 
-const featured = PRODUCTS.filter(p => p.badge === 'Bestseller' || p.badge === 'New' || p.badge === 'Premium').slice(0, 4);
+export const revalidate = 60; // re-fetch from Supabase every 60 seconds
 
-export default function HomePage() {
+export default async function HomePage() {
+  const products = await getProducts();
+  const featured = products
+    .filter(p => p.badge === 'Bestseller' || p.badge === 'New' || p.badge === 'Premium')
+    .slice(0, 4);
+
   return (
     <main>
       {/* Hero */}
@@ -110,7 +115,7 @@ export default function HomePage() {
             <p>Bestsellers and new arrivals loved by our community.</p>
           </div>
           <div className="grid-4">
-            {featured.map(p => <ProductCard key={p.id} {...p} />)}
+            {featured.map(p => <ProductCard key={p.id} {...p} originalPrice={p.original_price ?? p.originalPrice} />)}
           </div>
           <div style={{ textAlign: 'center', marginTop: 'var(--space-8)' }}>
             <a href="/collections" className="btn btn--outline">View all products</a>
