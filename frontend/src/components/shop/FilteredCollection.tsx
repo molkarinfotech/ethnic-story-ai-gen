@@ -11,7 +11,7 @@ const SORT_OPTIONS = [
 ];
 
 export function FilteredCollection({ products, category }: { products: Product[]; category: string }) {
-  const [sort, setSort]   = useState('default');
+  const [sort, setSort]     = useState('default');
   const [filter, setFilter] = useState<string | null>(null);
 
   const badges = Array.from(new Set(products.map(p => p.badge).filter(Boolean))) as string[];
@@ -19,8 +19,8 @@ export function FilteredCollection({ products, category }: { products: Product[]
   const sorted = [...products]
     .filter(p => !filter || p.badge === filter)
     .sort((a, b) => {
-      if (sort === 'price-asc')  return a.priceInr - b.priceInr;
-      if (sort === 'price-desc') return b.priceInr - a.priceInr;
+      if (sort === 'price-asc')  return a.price - b.price;
+      if (sort === 'price-desc') return b.price - a.price;
       if (sort === 'name')       return a.name.localeCompare(b.name);
       return 0;
     });
@@ -53,10 +53,8 @@ export function FilteredCollection({ products, category }: { products: Product[]
           <div className="collection-sort">
             <label htmlFor="sort" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Sort by</label>
             <select
-              id="sort"
-              className="sort-select"
-              value={sort}
-              onChange={e => setSort(e.target.value)}
+              id="sort" className="sort-select"
+              value={sort} onChange={e => setSort(e.target.value)}
             >
               {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
