@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String?
+  role      String   @default("customer")
+  orders    Order[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id          String           @id @default(cuid())
+  slug        String           @unique
+  name        String
+  description String?
+  category    String
+  priceInr    Int
+  currency    String           @default("INR")
+  inStock     Boolean          @default(true)
+  images      ProductImage[]
+  variants    ProductVariant[]
+  orderItems  OrderItem[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  url       String
+  altText   String?
+  product   Product @relation(fields: [productId], references: [id])
+  productId String
+}
+
+model ProductVariant {
+  id        String  @id @default(cuid())
+  size      String?
+  color     String?
+  sku       String  @unique
+  stock     Int     @default(0)
+  product   Product @relation(fields: [productId], references: [id])
+  productId String
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  user          User?       @relation(fields: [userId], references: [id])
+  userId        String?
+  status        String      @default("pending")
+  paymentStatus String      @default("unpaid")
+  totalInr      Int
+  currency      String      @default("INR")
+  items         OrderItem[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  order     Order   @relation(fields: [orderId], references: [id])
+  orderId   String
+  product   Product @relation(fields: [productId], references: [id])
+  productId String
+  quantity  Int
+  priceInr  Int
+}

@@ -1,0 +1,10 @@
+{
+  "name": "ethnic-story-ai-gen",
+  "private": true,
+  "workspaces": ["frontend", "backend", "shared"],
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "dev": "npm run dev:backend & npm run dev:frontend"
+  }
+}

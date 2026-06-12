@@ -1,0 +1,9 @@
+{
+  "name": "backend",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "node src/server.js",
+    "start": "node src/server.js"
+  }
+}
