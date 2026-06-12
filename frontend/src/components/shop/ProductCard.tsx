@@ -1,20 +1,26 @@
 'use client';
 import { Product } from '../../lib/products';
+import { useCart } from '../../context/CartContext';
+import { useState } from 'react';
 
-const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1583395235451-3e8c9d59641a?q=80&w=600&auto=format&fit=crop';
+export function ProductCard({ id, slug, name, subtitle, priceInr, originalPriceInr, badge, image, category }: Product) {
+  const { addItem } = useCart();
+  const [added, setAdded] = useState(false);
 
-export function ProductCard({ slug, name, subtitle, priceInr, originalPriceInr, badge, image }: Product) {
-  const imgSrc = image || FALLBACK_IMAGE;
+  function handleAdd(e: React.MouseEvent) {
+    e.preventDefault();
+    addItem({ id, slug, name, subtitle, priceInr, originalPriceInr, badge, image, category });
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1600);
+  }
 
   return (
     <a href={`/products/${slug}`} className="product-card">
       <div className="product-card__image">
-        <img
-          src={imgSrc}
-          alt={name}
-          loading="lazy"
-          onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }}
-        />
+        {image
+          ? <img src={image} alt={name} loading="lazy" />
+          : <span style={{ fontSize: '4rem' }}>🥻</span>
+        }
         {badge && <span className="product-card__badge">{badge}</span>}
       </div>
       <div className="product-card__body">
@@ -23,9 +29,16 @@ export function ProductCard({ slug, name, subtitle, priceInr, originalPriceInr, 
         <div className="product-card__price">
           ₹{priceInr.toLocaleString('en-IN')}
           {originalPriceInr && (
-            <s style={{ marginLeft: '0.5rem' }}>₹{originalPriceInr.toLocaleString('en-IN')}</s>
+            <s>₹{originalPriceInr.toLocaleString('en-IN')}</s>
           )}
         </div>
+        <button
+          className={`add-to-cart-btn${added ? ' add-to-cart-btn--added' : ''}`}
+          onClick={handleAdd}
+          aria-label={`Add ${name} to cart`}
+        >
+          {added ? '✓ Added' : 'Add to Bag'}
+        </button>
       </div>
     </a>
   );
