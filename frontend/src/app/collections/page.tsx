@@ -1,14 +1,18 @@
-import { PRODUCTS } from '../../lib/products';
+import { getProducts } from '../../lib/fetchProducts';
+
+export const revalidate = 60;
 
 const CATEGORIES = [
   { slug: 'sarees',   label: 'Sarees',    desc: 'Timeless drapes for every occasion', bg: 'one',   emoji: '🥻' },
   { slug: 'lehengas', label: 'Lehengas',  desc: 'Bridal and festive splendour',        bg: 'two',   emoji: '👗' },
   { slug: 'kurtas',   label: 'Kurtas',    desc: 'Everyday ethnic elegance',             bg: 'three', emoji: '👚' },
-  { slug: 'kids',     label: 'Kids Wear', desc: 'Ethnic joy for little ones',           bg: 'four',  emoji: '🎀' },
+  { slug: 'kids',     label: 'Kids Wear', desc: 'Ethnic joy for little ones',           bg: 'four',  emoji: '🎠' },
 ];
 
-export default function CollectionsPage() {
-  const total = PRODUCTS.length;
+export default async function CollectionsPage() {
+  const products = await getProducts();
+  const total = products.length;
+
   return (
     <main>
       <div className="page-header">
@@ -25,7 +29,7 @@ export default function CollectionsPage() {
                 <div className={`bg ${c.bg}`}></div>
                 <div className="ornament"></div>
                 <div className="collection-content">
-                  <span>{PRODUCTS.filter(p => p.category === c.slug).length} styles</span>
+                  <span>{products.filter(p => p.category === c.slug).length} styles</span>
                   <h3>{c.label}</h3>
                   <p style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,248,243,.7)', marginTop: '.25rem' }}>{c.desc}</p>
                 </div>
@@ -37,7 +41,7 @@ export default function CollectionsPage() {
               <div className={`bg ${CATEGORIES[3].bg}`}></div>
               <div className="ornament"></div>
               <div className="collection-content">
-                <span>{PRODUCTS.filter(p => p.category === CATEGORIES[3].slug).length} styles</span>
+                <span>{products.filter(p => p.category === CATEGORIES[3].slug).length} styles</span>
                 <h3>{CATEGORIES[3].label}</h3>
                 <p style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,248,243,.7)', marginTop: '.25rem' }}>{CATEGORIES[3].desc}</p>
               </div>
