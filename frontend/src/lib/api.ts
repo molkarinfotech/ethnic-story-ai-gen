@@ -1,7 +1,8 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
-export async function fetchProducts() {
-  const res = await fetch(`${API_BASE}/api/products`, { cache: 'no-store' });
+export async function fetchProducts(category?: string) {
+  const url = category ? `${API_BASE}/api/products?category=${category}` : `${API_BASE}/api/products`;
+  const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error('Failed to load products');
   return res.json();
 }

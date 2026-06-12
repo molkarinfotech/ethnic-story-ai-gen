@@ -4,8 +4,10 @@
   --color-text: #241915;
   --color-primary: #8a1538;
   --color-accent: #c69214;
+  --color-accent-light: #fdf4e0;
   --color-muted: #9c7b6e;
+  --color-border: #e8d8cc;
   --space-4: 1rem;
   --space-8: 2rem;
-  --radius: 8px;
+  --radius: 10px;
 }

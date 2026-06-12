@@ -1,21 +1,26 @@
+import { ProductCard } from '../../components/shop/ProductCard';
+import { PRODUCTS } from '../../lib/products';
+
 export default function CollectionsPage() {
-  const collections = [
-    { name: 'Sarees', slug: 'sarees', description: 'Timeless drapes for every occasion' },
-    { name: 'Lehengas', slug: 'lehengas', description: 'Festive and bridal collections' },
-    { name: 'Kurtas', slug: 'kurtas', description: 'Everyday ethnic comfort' },
-    { name: 'Kids', slug: 'kids', description: 'Ethnic wear for little ones' },
-  ];
   return (
     <main>
-      <h1>Collections</h1>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1.5rem', marginTop: '2rem' }}>
-        {collections.map(c => (
-          <a key={c.slug} href={`/collections/${c.slug}`} style={{ padding: '1.5rem', background: 'var(--color-surface)', borderRadius: '8px', display: 'block' }}>
-            <h2 style={{ margin: '0 0 0.5rem' }}>{c.name}</h2>
-            <p style={{ margin: 0, opacity: 0.7 }}>{c.description}</p>
-          </a>
-        ))}
+      <div className="page-header">
+        <p className="page-header__eyebrow">Browse All</p>
+        <h1>Our Collections</h1>
+        <p>Handpicked ethnic wear from across India</p>
       </div>
+      <section className="section">
+        <div className="container">
+          <div className="filter-bar">
+            {[['All', '/collections'],['Sarees','/collections/sarees'],['Lehengas','/collections/lehengas'],['Kurtas','/collections/kurtas'],['Kids','/collections/kids']].map(([l,h]) => (
+              <a key={l} href={h} className="filter-chip">{l}</a>
+            ))}
+          </div>
+          <div className="grid-4">
+            {PRODUCTS.map(p => <ProductCard key={p.id} {...p} />)}
+          </div>
+        </div>
+      </section>
     </main>
   );
 }

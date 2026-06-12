@@ -1,19 +1,29 @@
-export type ProductCardProps = {
-  name: string;
-  price: number;
-  image?: string;
+export type Product = {
+  id: string;
   slug: string;
+  name: string;
+  subtitle?: string;
+  priceInr: number;
+  originalPriceInr?: number;
+  category: string;
+  badge?: string;
+  emoji?: string;
 };
 
-export function ProductCard({ name, price, image, slug }: ProductCardProps) {
+export function ProductCard({ id, slug, name, subtitle, priceInr, originalPriceInr, badge, emoji }: Product) {
   return (
-    <a href={`/products/${slug}`} style={{ display: 'block', background: 'var(--color-surface)', borderRadius: '8px', overflow: 'hidden', textDecoration: 'none' }}>
-      <div style={{ height: '200px', background: '#e8ddd5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
-        {image ? <img src={image} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '📷 Product Image'}
+    <a href={`/products/${slug}`} className="product-card">
+      <div className="product-card__image">
+        <span style={{ fontSize: '5rem' }}>{emoji || '👗'}</span>
+        {badge && <span className="product-card__badge">{badge}</span>}
       </div>
-      <div style={{ padding: '1rem' }}>
-        <h3 style={{ margin: '0 0 0.4rem', fontSize: '1rem' }}>{name}</h3>
-        <p style={{ margin: 0, color: 'var(--color-primary)', fontWeight: 600 }}>₹{price.toLocaleString('en-IN')}</p>
+      <div className="product-card__body">
+        <div className="product-card__name">{name}</div>
+        {subtitle && <div className="product-card__sub">{subtitle}</div>}
+        <div className="product-card__price">
+          ₹{priceInr.toLocaleString('en-IN')}
+          {originalPriceInr && <s>₹{originalPriceInr.toLocaleString('en-IN')}</s>}
+        </div>
       </div>
     </a>
   );
