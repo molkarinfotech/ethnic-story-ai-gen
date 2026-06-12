@@ -1,22 +1,14 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useCart } from '../../context/CartContext';
 import { formatAUD } from '../../lib/products';
 
 const AU_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'];
 
 export function CheckoutForm() {
-  const { items, totalPrice, totalItems, clearCart } = useCart();
+  const { items, totalPrice, totalItems, clearCart, hydrated } = useCart();
   const [submitted, setSubmitted] = useState(false);
   const [stateVal, setStateVal] = useState('');
-  // Wait for localStorage hydration before deciding if cart is empty
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    // CartContext hydrates in its own useEffect — we just need one tick after mount
-    const timer = setTimeout(() => setHydrated(true), 80);
-    return () => clearTimeout(timer);
-  }, []);
 
   const shipping = totalPrice >= 150 ? 0 : 12.95;
   const grandTotal = totalPrice + shipping;
@@ -27,7 +19,7 @@ export function CheckoutForm() {
     clearCart();
   }
 
-  // ── Success screen ──
+  // ── Order success ──
   if (submitted) {
     return (
       <div className="order-success">
@@ -39,7 +31,7 @@ export function CheckoutForm() {
     );
   }
 
-  // ── Loading skeleton while hydrating ──
+  // ── Wait for localStorage to load ──
   if (!hydrated) {
     return (
       <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>
@@ -48,7 +40,7 @@ export function CheckoutForm() {
     );
   }
 
-  // ── Empty bag (only shown AFTER hydration) ──
+  // ── Empty bag (only after hydration is confirmed) ──
   if (totalItems === 0) {
     return (
       <div className="order-success">
@@ -63,7 +55,6 @@ export function CheckoutForm() {
   // ── Checkout form ──
   return (
     <div className="checkout-grid">
-      {/* ── Form ── */}
       <form className="checkout-form" onSubmit={handleSubmit}>
 
         <h2 className="checkout-section-title">Contact information</h2>
@@ -98,17 +89,16 @@ export function CheckoutForm() {
           </div>
           <div className="checkout-field checkout-field--half">
             <label htmlFor="co-state" className="checkout-label">State / Territory</label>
-            <select
-              id="co-state" className="checkout-input" required
-              value={stateVal} onChange={e => setStateVal(e.target.value)}
-            >
+            <select id="co-state" className="checkout-input" required
+              value={stateVal} onChange={e => setStateVal(e.target.value)}>
               <option value="">Select state…</option>
               {AU_STATES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div className="checkout-field checkout-field--half">
             <label htmlFor="co-postcode" className="checkout-label">Postcode</label>
-            <input id="co-postcode" type="text" placeholder="3000" maxLength={4} pattern="[0-9]{4}" className="checkout-input" required />
+            <input id="co-postcode" type="text" placeholder="3000" maxLength={4}
+              pattern="[0-9]{4}" className="checkout-input" required />
           </div>
           <div className="checkout-field checkout-field--half">
             <label htmlFor="co-country" className="checkout-label">Country</label>
@@ -123,15 +113,12 @@ export function CheckoutForm() {
           <p>Payment integration (Stripe / Afterpay) will be connected in the next step. For now, place a test order.</p>
         </div>
 
-        <button
-          type="submit" className="btn btn-primary"
-          style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-6)', minHeight: '52px', fontSize: 'var(--text-base)' }}
-        >
+        <button type="submit" className="btn btn-primary"
+          style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-6)', minHeight: '52px', fontSize: 'var(--text-base)' }}>
           Place Order — {formatAUD(grandTotal)}
         </button>
       </form>
 
-      {/* ── Order Summary ── */}
       <aside className="order-summary">
         <h2 className="checkout-section-title">Order summary</h2>
         <ul className="order-items">
@@ -150,16 +137,12 @@ export function CheckoutForm() {
           ))}
         </ul>
         <div className="order-totals">
-          <div className="order-total-row">
-            <span>Subtotal</span><span>{formatAUD(totalPrice)}</span>
-          </div>
+          <div className="order-total-row"><span>Subtotal</span><span>{formatAUD(totalPrice)}</span></div>
           <div className="order-total-row">
             <span>Shipping</span>
-            <span>
-              {shipping === 0
-                ? <span style={{ color: '#16a34a', fontWeight: 700 }}>Free</span>
-                : formatAUD(shipping)
-              }
+            <span>{shipping === 0
+              ? <span style={{ color: '#16a34a', fontWeight: 700 }}>Free</span>
+              : formatAUD(shipping)}
             </span>
           </div>
           {shipping > 0 && (
@@ -168,8 +151,7 @@ export function CheckoutForm() {
             </p>
           )}
           <div className="order-total-row order-total-row--grand">
-            <strong>Total (AUD)</strong>
-            <strong>{formatAUD(grandTotal)}</strong>
+            <strong>Total (AUD)</strong><strong>{formatAUD(grandTotal)}</strong>
           </div>
         </div>
         <div className="order-trust">
