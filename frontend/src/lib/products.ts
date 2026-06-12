@@ -1,21 +1,13 @@
 // ============================================================
 // PRODUCT CATALOGUE — Ethnic Story
 // ============================================================
-// HOW TO ADD YOUR OWN PRODUCT IMAGES:
-// Option A – Local files:
-//   1. Place your image in /public/images/products/
-//   2. Set image: '/images/products/my-saree.jpg'
-// Option B – Cloud (Cloudinary / Supabase / S3):
-//   1. Upload image and copy the CDN URL
-//   2. Paste the full URL into the image field below
-// ============================================================
 
 export type Product = {
   id: string;
   slug: string;
   name: string;
   subtitle?: string;
-  price: number;        // AUD
+  price: number;          // AUD
   originalPrice?: number; // AUD
   category: string;
   badge?: string;
@@ -23,7 +15,17 @@ export type Product = {
 };
 
 export const PRODUCTS: Product[] = [
-  // ── SAREES ──────────────────────────────────────────────────────
+  // ── TEST ──────────────────────────────────────────────────────
+  {
+    id: 'p00', slug: 'test-payment-item',
+    name: '🧪 Test Payment Item',
+    subtitle: 'Use this to verify Stripe integration — remove before going live',
+    price: 1,
+    category: 'sarees', badge: 'Test',
+    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?q=80&w=600&auto=format&fit=crop',
+  },
+
+  // ── SAREES ──────────────────────────────────────────────────
   {
     id: 'p01', slug: 'banarasi-silk-saree',
     name: 'Banarasi Silk Saree',
@@ -57,7 +59,7 @@ export const PRODUCTS: Product[] = [
     image: 'https://images.unsplash.com/photo-1583017777700-a5a0e5d03f24?q=80&w=600&auto=format&fit=crop',
   },
 
-  // ── LEHENGAS ───────────────────────────────────────────────
+  // ── LEHENGAS ──────────────────────────────────────────────
   {
     id: 'p05', slug: 'bridal-lehenga-red',
     name: 'Bridal Lehenga – Red',
@@ -91,7 +93,7 @@ export const PRODUCTS: Product[] = [
     image: 'https://images.unsplash.com/photo-1583017777700-a5a0e5d03f24?q=80&w=600&auto=format&fit=crop',
   },
 
-  // ── KURTAS ────────────────────────────────────────────────
+  // ── KURTAS ───────────────────────────────────────────────
   {
     id: 'p09', slug: 'silk-anarkali-kurta',
     name: 'Silk Anarkali Kurta',
@@ -125,7 +127,7 @@ export const PRODUCTS: Product[] = [
     image: 'https://images.unsplash.com/photo-1583017777700-a5a0e5d03f24?q=80&w=600&auto=format&fit=crop',
   },
 
-  // ── KIDS ──────────────────────────────────────────────────
+  // ── KIDS ─────────────────────────────────────────────────
   {
     id: 'p13', slug: 'kids-lehenga-pink',
     name: 'Girls Lehenga – Pink',
