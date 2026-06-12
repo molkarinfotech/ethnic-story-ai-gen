@@ -1,7 +1,9 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ProductFields } from '../../new/page';
+import { ProductFields } from '../../../../../components/admin/ProductFields';
+
+type ProductRow = Record<string, string | number | null>;
 
 export default function EditProductPage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -13,14 +15,21 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
   });
 
   useEffect(() => {
-    fetch('/api/admin/products').then(r => r.json()).then((products: Record<string, string>[]) => {
-      const p = products.find((x: Record<string, string>) => x.id === params.id);
-      if (p) setForm({
-        slug: p.slug ?? '', name: p.name ?? '', subtitle: p.subtitle ?? '',
-        price: p.price?.toString() ?? '', original_price: p.original_price?.toString() ?? '',
-        category: p.category ?? 'sarees', badge: p.badge ?? '', image: p.image ?? '',
+    fetch('/api/admin/products')
+      .then(r => r.json())
+      .then((products: ProductRow[]) => {
+        const p = products.find(x => x.id === params.id);
+        if (p) setForm({
+          slug:           String(p.slug          ?? ''),
+          name:           String(p.name          ?? ''),
+          subtitle:       String(p.subtitle      ?? ''),
+          price:          String(p.price         ?? ''),
+          original_price: String(p.original_price ?? ''),
+          category:       String(p.category      ?? 'sarees'),
+          badge:          String(p.badge         ?? ''),
+          image:          String(p.image         ?? ''),
+        });
       });
-    });
   }, [params.id]);
 
   function set(field: string, value: string) {
@@ -65,10 +74,12 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
             <ProductFields form={form} set={set} />
             {error && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '1rem' }}>{error}</p>}
             <div style={{ display: 'flex', gap: '.75rem', marginTop: '1.5rem' }}>
-              <button type="submit" disabled={saving} className="btn btn-primary" style={{ flex: 1, justifyContent: 'center', minHeight: '44px' }}>
+              <button type="submit" disabled={saving} className="btn btn-primary"
+                style={{ flex: 1, justifyContent: 'center', minHeight: '44px' }}>
                 {saving ? 'Saving…' : 'Update product'}
               </button>
-              <a href="/admin" className="btn btn--outline" style={{ flex: 1, justifyContent: 'center', minHeight: '44px', textDecoration: 'none', display: 'flex', alignItems: 'center' }}>Cancel</a>
+              <a href="/admin" className="btn btn--outline"
+                style={{ flex: 1, justifyContent: 'center', minHeight: '44px', textDecoration: 'none', display: 'flex', alignItems: 'center' }}>Cancel</a>
             </div>
           </form>
         </div>
