@@ -1,27 +1,17 @@
 'use client';
 import { useState } from 'react';
 import { useCart } from '../../context/CartContext';
+import { formatAUD } from '../../lib/products';
 
-type Field = { label: string; id: string; type?: string; placeholder?: string; half?: boolean };
-
-const CONTACT_FIELDS: Field[] = [
-  { label: 'Full name', id: 'name', placeholder: 'Jane Doe' },
-  { label: 'Email', id: 'email', type: 'email', placeholder: 'jane@example.com' },
-  { label: 'Phone', id: 'phone', type: 'tel', placeholder: '+91 98765 43210' },
-];
-const ADDRESS_FIELDS: Field[] = [
-  { label: 'Address line 1', id: 'addr1', placeholder: '12 MG Road' },
-  { label: 'Address line 2', id: 'addr2', placeholder: 'Apartment, suite, etc. (optional)' },
-  { label: 'City', id: 'city', placeholder: 'Mumbai', half: true },
-  { label: 'Postcode', id: 'pin', placeholder: '400001', half: true },
-  { label: 'State', id: 'state', placeholder: 'Maharashtra', half: true },
-  { label: 'Country', id: 'country', placeholder: 'India', half: true },
+const AU_STATES = [
+  'ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA',
 ];
 
 export function CheckoutForm() {
   const { items, totalPrice, totalItems, clearCart } = useCart();
   const [submitted, setSubmitted] = useState(false);
-  const shipping = totalPrice >= 2500 ? 0 : 199;
+  const [state, setState] = useState('');
+  const shipping = totalPrice >= 150 ? 0 : 12.95;
   const grandTotal = totalPrice + shipping;
 
   function handleSubmit(e: React.FormEvent) {
@@ -35,7 +25,7 @@ export function CheckoutForm() {
       <div className="order-success">
         <div className="order-success__icon">🎊</div>
         <h2>Order placed successfully!</h2>
-        <p>Thank you for shopping with Vastra House. You’ll receive a confirmation email shortly.</p>
+        <p>Thank you for shopping with Ethnic Story. You’ll receive a confirmation email shortly.</p>
         <a href="/" className="btn btn-primary" style={{ marginTop: 'var(--space-6)' }}>Continue shopping</a>
       </div>
     );
@@ -54,40 +44,81 @@ export function CheckoutForm() {
 
   return (
     <div className="checkout-grid">
-      {/* Form */}
+      {/* ── Form ── */}
       <form className="checkout-form" onSubmit={handleSubmit}>
+
+        {/* Contact */}
         <h2 className="checkout-section-title">Contact information</h2>
         <div className="checkout-fields">
-          {CONTACT_FIELDS.map(f => (
-            <div key={f.id} className="checkout-field">
-              <label htmlFor={f.id} className="checkout-label">{f.label}</label>
-              <input id={f.id} type={f.type || 'text'} placeholder={f.placeholder} className="checkout-input" required />
-            </div>
-          ))}
+          <div className="checkout-field">
+            <label htmlFor="name" className="checkout-label">Full name</label>
+            <input id="name" type="text" placeholder="Jane Smith" className="checkout-input" required />
+          </div>
+          <div className="checkout-field">
+            <label htmlFor="email" className="checkout-label">Email address</label>
+            <input id="email" type="email" placeholder="jane@example.com.au" className="checkout-input" required />
+          </div>
+          <div className="checkout-field">
+            <label htmlFor="phone" className="checkout-label">Mobile number</label>
+            <input id="phone" type="tel" placeholder="04XX XXX XXX" className="checkout-input" required />
+          </div>
         </div>
 
+        {/* Shipping Address — Australian format */}
         <h2 className="checkout-section-title" style={{ marginTop: 'var(--space-8)' }}>Shipping address</h2>
         <div className="checkout-fields checkout-fields--halves">
-          {ADDRESS_FIELDS.map(f => (
-            <div key={f.id} className={`checkout-field${f.half ? ' checkout-field--half' : ''}`}>
-              <label htmlFor={f.id} className="checkout-label">{f.label}</label>
-              <input id={f.id} type="text" placeholder={f.placeholder} className="checkout-input" required={f.id !== 'addr2'} />
-            </div>
-          ))}
+          <div className="checkout-field">
+            <label htmlFor="addr1" className="checkout-label">Street address</label>
+            <input id="addr1" type="text" placeholder="12 Collins Street" className="checkout-input" required />
+          </div>
+          <div className="checkout-field">
+            <label htmlFor="addr2" className="checkout-label">Apartment / unit (optional)</label>
+            <input id="addr2" type="text" placeholder="Unit 4" className="checkout-input" />
+          </div>
+          <div className="checkout-field checkout-field--half">
+            <label htmlFor="suburb" className="checkout-label">Suburb</label>
+            <input id="suburb" type="text" placeholder="Melbourne" className="checkout-input" required />
+          </div>
+          <div className="checkout-field checkout-field--half">
+            <label htmlFor="state" className="checkout-label">State / Territory</label>
+            <select
+              id="state"
+              className="checkout-input"
+              required
+              value={state}
+              onChange={e => setState(e.target.value)}
+            >
+              <option value="">Select state…</option>
+              {AU_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="checkout-field checkout-field--half">
+            <label htmlFor="postcode" className="checkout-label">Postcode</label>
+            <input id="postcode" type="text" placeholder="3000" maxLength={4} pattern="[0-9]{4}" className="checkout-input" required />
+          </div>
+          <div className="checkout-field checkout-field--half">
+            <label htmlFor="country" className="checkout-label">Country</label>
+            <input id="country" type="text" value="Australia" readOnly className="checkout-input" style={{ background: 'var(--color-surface-offset)', color: 'var(--color-text-muted)' }} />
+          </div>
         </div>
 
+        {/* Payment */}
         <h2 className="checkout-section-title" style={{ marginTop: 'var(--space-8)' }}>Payment</h2>
         <div className="checkout-payment-note">
           <span>🔒</span>
-          <p>Payment integration (Razorpay / Stripe) will be connected in the next step. For now, place a test order.</p>
+          <p>Payment integration (Stripe / Afterpay) will be connected in the next step. For now, place a test order.</p>
         </div>
 
-        <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-6)', minHeight: '52px', fontSize: 'var(--text-base)' }}>
-          Place Order &mdash; ₹{grandTotal.toLocaleString('en-IN')}
+        <button
+          type="submit"
+          className="btn btn-primary"
+          style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-6)', minHeight: '52px', fontSize: 'var(--text-base)' }}
+        >
+          Place Order — {formatAUD(grandTotal)}
         </button>
       </form>
 
-      {/* Order Summary */}
+      {/* ── Order Summary ── */}
       <aside className="order-summary">
         <h2 className="checkout-section-title">Order summary</h2>
         <ul className="order-items">
@@ -101,26 +132,36 @@ export function CheckoutForm() {
                 <div className="order-item__name">{item.name}</div>
                 {item.subtitle && <div className="order-item__sub">{item.subtitle}</div>}
               </div>
-              <div className="order-item__price">₹{(item.priceInr * item.quantity).toLocaleString('en-IN')}</div>
+              <div className="order-item__price">{formatAUD(item.price * item.quantity)}</div>
             </li>
           ))}
         </ul>
         <div className="order-totals">
           <div className="order-total-row">
             <span>Subtotal</span>
-            <span>₹{totalPrice.toLocaleString('en-IN')}</span>
+            <span>{formatAUD(totalPrice)}</span>
           </div>
           <div className="order-total-row">
             <span>Shipping</span>
-            <span>{shipping === 0 ? <span style={{ color: 'green' }}>Free</span> : `₹${shipping}`}</span>
+            <span>
+              {shipping === 0
+                ? <span style={{ color: '#16a34a', fontWeight: 700 }}>Free</span>
+                : formatAUD(shipping)
+              }
+            </span>
           </div>
+          {shipping > 0 && (
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '-.5rem' }}>
+              Add {formatAUD(150 - totalPrice)} more for free shipping
+            </p>
+          )}
           <div className="order-total-row order-total-row--grand">
-            <strong>Total</strong>
-            <strong>₹{grandTotal.toLocaleString('en-IN')}</strong>
+            <strong>Total (AUD)</strong>
+            <strong>{formatAUD(grandTotal)}</strong>
           </div>
         </div>
         <div className="order-trust">
-          {['🔒 Secure checkout', '↩️ 15-day returns', '✅ Authentic products'].map(t => (
+          {['🔒 Secure checkout', '↩️ 15-day returns', '🚚 Australia-wide delivery', '✅ Authentic products'].map(t => (
             <span key={t} className="order-trust-item">{t}</span>
           ))}
         </div>

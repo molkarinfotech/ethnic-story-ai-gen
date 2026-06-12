@@ -5,8 +5,8 @@ import { CartDrawer } from '../components/cart/CartDrawer';
 import { CartIcon } from '../components/cart/CartIcon';
 
 export const metadata: Metadata = {
-  title: 'Vastra House — Indian Ethnic Wear',
-  description: 'A curated collection of sarees, lehengas, kurtas, and festive sets — rooted in Indian craft, designed for modern celebrations.',
+  title: 'Ethnic Story — Indian Ethnic Wear in Australia',
+  description: 'A curated collection of sarees, lehengas, kurtas, and festive sets — rooted in Indian craft, designed for modern celebrations. Shipping Australia-wide.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -20,7 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <CartProvider>
           {/* Announcement Bar */}
           <div style={{ background: 'var(--color-primary)', color: 'var(--color-text-inverse)', textAlign: 'center', padding: '.5rem 1rem', fontSize: 'var(--text-xs)', letterSpacing: '.05em' }}>
-            Free shipping on orders above ₹2,500  ·  Handcrafted in India
+            Free shipping on orders over A$150  ·  Handcrafted in India  ·  Delivered Australia-wide
           </div>
 
           {/* Header */}
@@ -33,7 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     <path d="M12 20C13.5 18.5 14.7 16.8 16 14C17.3 16.8 18.5 18.5 20 20" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
                   </svg>
                 </span>
-                Vastra House
+                Ethnic Story
               </a>
               <nav className="site-header__nav" aria-label="Primary navigation">
                 <a href="/collections">Collections</a>
@@ -58,8 +58,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <footer className="site-footer">
             <div className="container">
               <div className="site-footer__inner">
-                <p>© 2026 Vastra House. All rights reserved.</p>
-                <p>Indian ethnic wear — handcrafted with intention.</p>
+                <p>© 2026 Ethnic Story. All rights reserved.</p>
+                <p>Indian ethnic wear — handcrafted with intention, delivered across Australia.</p>
               </div>
             </div>
           </footer>

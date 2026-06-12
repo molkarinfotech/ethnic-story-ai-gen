@@ -1,15 +1,15 @@
 'use client';
-import { Product } from '../../lib/products';
+import { Product, formatAUD } from '../../lib/products';
 import { useCart } from '../../context/CartContext';
 import { useState } from 'react';
 
-export function ProductCard({ id, slug, name, subtitle, priceInr, originalPriceInr, badge, image, category }: Product) {
+export function ProductCard({ id, slug, name, subtitle, price, originalPrice, badge, image, category }: Product) {
   const { addItem } = useCart();
   const [added, setAdded] = useState(false);
 
   function handleAdd(e: React.MouseEvent) {
     e.preventDefault();
-    addItem({ id, slug, name, subtitle, priceInr, originalPriceInr, badge, image, category });
+    addItem({ id, slug, name, subtitle, price, originalPrice, badge, image, category });
     setAdded(true);
     setTimeout(() => setAdded(false), 1600);
   }
@@ -27,10 +27,8 @@ export function ProductCard({ id, slug, name, subtitle, priceInr, originalPriceI
         <div className="product-card__name">{name}</div>
         {subtitle && <div className="product-card__sub">{subtitle}</div>}
         <div className="product-card__price">
-          ₹{priceInr.toLocaleString('en-IN')}
-          {originalPriceInr && (
-            <s>₹{originalPriceInr.toLocaleString('en-IN')}</s>
-          )}
+          {formatAUD(price)}
+          {originalPrice && <s>{formatAUD(originalPrice)}</s>}
         </div>
         <button
           className={`add-to-cart-btn${added ? ' add-to-cart-btn--added' : ''}`}

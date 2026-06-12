@@ -22,7 +22,6 @@ export function AddToCartSection({ product }: { product: Product }) {
 
   return (
     <div className="pdp-atc">
-      {/* Size */}
       <div className="pdp-size-label">
         <span>Size</span>
         {error && !size && <span className="pdp-size-error">Please select a size</span>}
@@ -37,8 +36,6 @@ export function AddToCartSection({ product }: { product: Product }) {
           >{s}</button>
         ))}
       </div>
-
-      {/* Qty */}
       <div className="pdp-qty-row">
         <span className="pdp-qty-label">Quantity</span>
         <div className="qty-control">
@@ -47,8 +44,6 @@ export function AddToCartSection({ product }: { product: Product }) {
           <button className="qty-btn" onClick={() => setQty(q => q + 1)} aria-label="Increase">+</button>
         </div>
       </div>
-
-      {/* Add to Bag */}
       <button
         className={`btn btn-primary pdp-atc-btn${added ? ' pdp-atc-btn--added' : ''}`}
         onClick={handleAdd}
@@ -60,7 +55,6 @@ export function AddToCartSection({ product }: { product: Product }) {
         href="/checkout"
         className="btn btn--outline"
         style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-3)' }}
-        onClick={() => { if (!size) { setError(true); } }}
       >
         Buy Now
       </a>

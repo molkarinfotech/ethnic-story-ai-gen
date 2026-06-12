@@ -1,4 +1,4 @@
-import { PRODUCTS } from '../../../lib/products';
+import { PRODUCTS, formatAUD } from '../../../lib/products';
 import { notFound } from 'next/navigation';
 import { AddToCartSection } from '../../../components/shop/AddToCartSection';
 
@@ -11,8 +11,8 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
   if (!product) notFound();
 
   const related = PRODUCTS.filter(p => p.category === product.category && p.id !== product.id).slice(0, 4);
-  const discount = product.originalPriceInr
-    ? Math.round((1 - product.priceInr / product.originalPriceInr) * 100)
+  const discount = product.originalPrice
+    ? Math.round((1 - product.price / product.originalPrice) * 100)
     : null;
 
   const categoryLabel: Record<string, string> = {
@@ -21,7 +21,6 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
 
   return (
     <main>
-      {/* Breadcrumb */}
       <div style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-divider)' }}>
         <div className="container">
           <nav className="breadcrumb">
@@ -33,11 +32,9 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
         </div>
       </div>
 
-      {/* Product Detail */}
       <section className="section">
         <div className="container">
           <div className="pdp-grid">
-            {/* Image */}
             <div className="pdp-gallery">
               <div className="pdp-image">
                 {product.image
@@ -49,7 +46,6 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
               </div>
             </div>
 
-            {/* Info + Add to Cart */}
             <div className="pdp-info">
               <span className="pill" style={{ marginBottom: 'var(--space-4)', display: 'inline-flex' }}>
                 {categoryLabel[product.category]}
@@ -58,23 +54,21 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
               {product.subtitle && <p className="pdp-subtitle">{product.subtitle}</p>}
 
               <div className="pdp-price-row">
-                <span className="pdp-price">₹{product.priceInr.toLocaleString('en-IN')}</span>
-                {product.originalPriceInr && (
-                  <s className="pdp-original">₹{product.originalPriceInr.toLocaleString('en-IN')}</s>
+                <span className="pdp-price">{formatAUD(product.price)}</span>
+                {product.originalPrice && (
+                  <s className="pdp-original">{formatAUD(product.originalPrice)}</s>
                 )}
                 {discount && <span className="pdp-save">{discount}% off</span>}
               </div>
 
               <AddToCartSection product={product} />
 
-              {/* Trust Badges */}
               <div className="pdp-trust">
-                {['🚚 Free shipping above ₹2,500', '↩️ 15-day easy returns', '✅ 100% authentic, direct from artisans', '🔒 Secure checkout'].map(t => (
+                {['🚚 Free shipping on orders over A$150', '↩️ 15-day easy returns', '✅ 100% authentic, direct from artisans', '🔒 Secure checkout'].map(t => (
                   <div key={t} className="pdp-trust-item">{t}</div>
                 ))}
               </div>
 
-              {/* Details */}
               <details className="pdp-accordion">
                 <summary>Product details</summary>
                 <div className="pdp-accordion__body">
@@ -90,7 +84,7 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
               <details className="pdp-accordion">
                 <summary>Shipping &amp; returns</summary>
                 <div className="pdp-accordion__body">
-                  <p>Free standard shipping on orders above ₹2,500. Express delivery available at checkout. Returns accepted within 15 days of delivery in original condition.</p>
+                  <p>Free standard shipping on orders over A$150. Express delivery available at checkout. Delivered Australia-wide. Returns accepted within 15 days of delivery in original condition.</p>
                 </div>
               </details>
             </div>
@@ -98,7 +92,6 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
         </div>
       </section>
 
-      {/* Related Products */}
       {related.length > 0 && (
         <section className="section" style={{ background: 'var(--color-surface)', paddingTop: 'var(--space-12)' }}>
           <div className="container">
@@ -118,7 +111,7 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
                   <div className="product-card__body">
                     <div className="product-card__name">{p.name}</div>
                     {p.subtitle && <div className="product-card__sub">{p.subtitle}</div>}
-                    <div className="product-card__price">₹{p.priceInr.toLocaleString('en-IN')}</div>
+                    <div className="product-card__price">{formatAUD(p.price)}</div>
                   </div>
                 </a>
               ))}

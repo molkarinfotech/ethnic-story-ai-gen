@@ -2,7 +2,6 @@
 import { createContext, useContext, useEffect, useReducer, useCallback } from 'react';
 import { Product } from '../lib/products';
 
-// ── Types ──
 export type CartItem = Product & { quantity: number };
 
 type CartState = { items: CartItem[]; isOpen: boolean };
@@ -16,7 +15,6 @@ type CartAction =
   | { type: 'CLOSE' }
   | { type: 'HYDRATE'; items: CartItem[] };
 
-// ── Reducer ──
 function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
     case 'HYDRATE':
@@ -41,7 +39,6 @@ function cartReducer(state: CartState, action: CartAction): CartState {
   }
 }
 
-// ── Context ──
 type CartContextType = {
   items: CartItem[];
   isOpen: boolean;
@@ -57,12 +54,11 @@ type CartContextType = {
 
 const CartContext = createContext<CartContextType | null>(null);
 
-const STORAGE_KEY = 'vastra-cart';
+const STORAGE_KEY = 'ethnic-story-cart';
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, { items: [], isOpen: false });
 
-  // Hydrate from localStorage on mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -70,20 +66,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
-  // Persist to localStorage whenever items change
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.items)); } catch {}
   }, [state.items]);
 
-  const addItem     = useCallback((product: Product) => dispatch({ type: 'ADD', product }), []);
-  const removeItem  = useCallback((id: string) => dispatch({ type: 'REMOVE', id }), []);
+  const addItem      = useCallback((product: Product) => dispatch({ type: 'ADD', product }), []);
+  const removeItem   = useCallback((id: string) => dispatch({ type: 'REMOVE', id }), []);
   const updateQuantity = useCallback((id: string, quantity: number) => dispatch({ type: 'UPDATE', id, quantity }), []);
-  const clearCart   = useCallback(() => dispatch({ type: 'CLEAR' }), []);
-  const openCart    = useCallback(() => dispatch({ type: 'OPEN' }), []);
-  const closeCart   = useCallback(() => dispatch({ type: 'CLOSE' }), []);
+  const clearCart    = useCallback(() => dispatch({ type: 'CLEAR' }), []);
+  const openCart     = useCallback(() => dispatch({ type: 'OPEN' }), []);
+  const closeCart    = useCallback(() => dispatch({ type: 'CLOSE' }), []);
 
   const totalItems = state.items.reduce((s, i) => s + i.quantity, 0);
-  const totalPrice = state.items.reduce((s, i) => s + i.priceInr * i.quantity, 0);
+  const totalPrice = state.items.reduce((s, i) => s + i.price * i.quantity, 0);
 
   return (
     <CartContext.Provider value={{ items: state.items, isOpen: state.isOpen, totalItems, totalPrice, addItem, removeItem, updateQuantity, clearCart, openCart, closeCart }}>

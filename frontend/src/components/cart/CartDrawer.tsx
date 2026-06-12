@@ -1,17 +1,16 @@
 'use client';
 import { useCart } from '../../context/CartContext';
 import { useEffect } from 'react';
+import { formatAUD } from '../../lib/products';
 
 export function CartDrawer() {
   const { items, isOpen, closeCart, removeItem, updateQuantity, totalItems, totalPrice } = useCart();
 
-  // Lock body scroll when drawer is open
   useEffect(() => {
     document.body.style.overflow = isOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [isOpen]);
 
-  // Close on Escape
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeCart(); };
     window.addEventListener('keydown', onKey);
@@ -20,21 +19,17 @@ export function CartDrawer() {
 
   return (
     <>
-      {/* Backdrop */}
       <div
         className={`cart-backdrop${isOpen ? ' cart-backdrop--visible' : ''}`}
         onClick={closeCart}
         aria-hidden="true"
       />
-
-      {/* Drawer */}
       <aside
         className={`cart-drawer${isOpen ? ' cart-drawer--open' : ''}`}
         aria-label="Shopping cart"
         role="dialog"
         aria-modal="true"
       >
-        {/* Header */}
         <div className="cart-drawer__header">
           <div>
             <h2 className="cart-drawer__title">Your Bag</h2>
@@ -49,7 +44,6 @@ export function CartDrawer() {
           </button>
         </div>
 
-        {/* Body */}
         <div className="cart-drawer__body">
           {items.length === 0 ? (
             <div className="cart-empty">
@@ -62,42 +56,23 @@ export function CartDrawer() {
             <ul className="cart-items">
               {items.map(item => (
                 <li key={item.id} className="cart-item">
-                  {/* Image / placeholder */}
                   <div className="cart-item__image">
                     {item.image
                       ? <img src={item.image} alt={item.name} />
                       : <span style={{ fontSize: '1.8rem' }}>🥻</span>
                     }
                   </div>
-
-                  {/* Details */}
                   <div className="cart-item__details">
                     <div className="cart-item__name">{item.name}</div>
                     {item.subtitle && <div className="cart-item__sub">{item.subtitle}</div>}
-                    <div className="cart-item__price">₹{(item.priceInr * item.quantity).toLocaleString('en-IN')}</div>
-
-                    {/* Qty + Remove */}
+                    <div className="cart-item__price">{formatAUD(item.price * item.quantity)}</div>
                     <div className="cart-item__actions">
                       <div className="qty-control">
-                        <button
-                          className="qty-btn"
-                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                          aria-label="Decrease quantity"
-                        >−</button>
+                        <button className="qty-btn" onClick={() => updateQuantity(item.id, item.quantity - 1)} aria-label="Decrease">−</button>
                         <span className="qty-value">{item.quantity}</span>
-                        <button
-                          className="qty-btn"
-                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                          aria-label="Increase quantity"
-                        >+</button>
+                        <button className="qty-btn" onClick={() => updateQuantity(item.id, item.quantity + 1)} aria-label="Increase">+</button>
                       </div>
-                      <button
-                        className="cart-item__remove"
-                        onClick={() => removeItem(item.id)}
-                        aria-label={`Remove ${item.name}`}
-                      >
-                        Remove
-                      </button>
+                      <button className="cart-item__remove" onClick={() => removeItem(item.id)}>Remove</button>
                     </div>
                   </div>
                 </li>
@@ -106,23 +81,22 @@ export function CartDrawer() {
           )}
         </div>
 
-        {/* Footer */}
         {items.length > 0 && (
           <div className="cart-drawer__footer">
             <div className="cart-total">
               <span>Subtotal</span>
-              <strong>₹{totalPrice.toLocaleString('en-IN')}</strong>
+              <strong>{formatAUD(totalPrice)}</strong>
             </div>
-            <p className="cart-shipping-note">Shipping calculated at checkout</p>
+            <p className="cart-shipping-note">
+              {totalPrice >= 150
+                ? '✅ Free shipping included!'
+                : `Add ${formatAUD(150 - totalPrice)} more for free shipping`
+              }
+            </p>
             <a href="/checkout" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-4)' }}>
               Proceed to Checkout
             </a>
-            <button
-              className="cart-continue"
-              onClick={closeCart}
-            >
-              Continue shopping
-            </button>
+            <button className="cart-continue" onClick={closeCart}>Continue shopping</button>
           </div>
         )}
       </aside>
