@@ -1,16 +1,23 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCart } from '../../context/CartContext';
 import { formatAUD } from '../../lib/products';
 
-const AU_STATES = [
-  'ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA',
-];
+const AU_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'];
 
 export function CheckoutForm() {
   const { items, totalPrice, totalItems, clearCart } = useCart();
   const [submitted, setSubmitted] = useState(false);
-  const [state, setState] = useState('');
+  const [stateVal, setStateVal] = useState('');
+  // Wait for localStorage hydration before deciding if cart is empty
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    // CartContext hydrates in its own useEffect — we just need one tick after mount
+    const timer = setTimeout(() => setHydrated(true), 80);
+    return () => clearTimeout(timer);
+  }, []);
+
   const shipping = totalPrice >= 150 ? 0 : 12.95;
   const grandTotal = totalPrice + shipping;
 
@@ -20,6 +27,7 @@ export function CheckoutForm() {
     clearCart();
   }
 
+  // ── Success screen ──
   if (submitted) {
     return (
       <div className="order-success">
@@ -31,6 +39,16 @@ export function CheckoutForm() {
     );
   }
 
+  // ── Loading skeleton while hydrating ──
+  if (!hydrated) {
+    return (
+      <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>
+        Loading your bag…
+      </div>
+    );
+  }
+
+  // ── Empty bag (only shown AFTER hydration) ──
   if (totalItems === 0) {
     return (
       <div className="order-success">
@@ -42,67 +60,63 @@ export function CheckoutForm() {
     );
   }
 
+  // ── Checkout form ──
   return (
     <div className="checkout-grid">
       {/* ── Form ── */}
       <form className="checkout-form" onSubmit={handleSubmit}>
 
-        {/* Contact */}
         <h2 className="checkout-section-title">Contact information</h2>
         <div className="checkout-fields">
           <div className="checkout-field">
-            <label htmlFor="name" className="checkout-label">Full name</label>
-            <input id="name" type="text" placeholder="Jane Smith" className="checkout-input" required />
+            <label htmlFor="co-name" className="checkout-label">Full name</label>
+            <input id="co-name" type="text" placeholder="Jane Smith" className="checkout-input" required />
           </div>
           <div className="checkout-field">
-            <label htmlFor="email" className="checkout-label">Email address</label>
-            <input id="email" type="email" placeholder="jane@example.com.au" className="checkout-input" required />
+            <label htmlFor="co-email" className="checkout-label">Email address</label>
+            <input id="co-email" type="email" placeholder="jane@example.com.au" className="checkout-input" required />
           </div>
           <div className="checkout-field">
-            <label htmlFor="phone" className="checkout-label">Mobile number</label>
-            <input id="phone" type="tel" placeholder="04XX XXX XXX" className="checkout-input" required />
+            <label htmlFor="co-phone" className="checkout-label">Mobile number</label>
+            <input id="co-phone" type="tel" placeholder="04XX XXX XXX" className="checkout-input" required />
           </div>
         </div>
 
-        {/* Shipping Address — Australian format */}
         <h2 className="checkout-section-title" style={{ marginTop: 'var(--space-8)' }}>Shipping address</h2>
         <div className="checkout-fields checkout-fields--halves">
           <div className="checkout-field">
-            <label htmlFor="addr1" className="checkout-label">Street address</label>
-            <input id="addr1" type="text" placeholder="12 Collins Street" className="checkout-input" required />
+            <label htmlFor="co-addr1" className="checkout-label">Street address</label>
+            <input id="co-addr1" type="text" placeholder="12 Collins Street" className="checkout-input" required />
           </div>
           <div className="checkout-field">
-            <label htmlFor="addr2" className="checkout-label">Apartment / unit (optional)</label>
-            <input id="addr2" type="text" placeholder="Unit 4" className="checkout-input" />
+            <label htmlFor="co-addr2" className="checkout-label">Apartment / unit (optional)</label>
+            <input id="co-addr2" type="text" placeholder="Unit 4" className="checkout-input" />
           </div>
           <div className="checkout-field checkout-field--half">
-            <label htmlFor="suburb" className="checkout-label">Suburb</label>
-            <input id="suburb" type="text" placeholder="Melbourne" className="checkout-input" required />
+            <label htmlFor="co-suburb" className="checkout-label">Suburb</label>
+            <input id="co-suburb" type="text" placeholder="Melbourne" className="checkout-input" required />
           </div>
           <div className="checkout-field checkout-field--half">
-            <label htmlFor="state" className="checkout-label">State / Territory</label>
+            <label htmlFor="co-state" className="checkout-label">State / Territory</label>
             <select
-              id="state"
-              className="checkout-input"
-              required
-              value={state}
-              onChange={e => setState(e.target.value)}
+              id="co-state" className="checkout-input" required
+              value={stateVal} onChange={e => setStateVal(e.target.value)}
             >
               <option value="">Select state…</option>
               {AU_STATES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div className="checkout-field checkout-field--half">
-            <label htmlFor="postcode" className="checkout-label">Postcode</label>
-            <input id="postcode" type="text" placeholder="3000" maxLength={4} pattern="[0-9]{4}" className="checkout-input" required />
+            <label htmlFor="co-postcode" className="checkout-label">Postcode</label>
+            <input id="co-postcode" type="text" placeholder="3000" maxLength={4} pattern="[0-9]{4}" className="checkout-input" required />
           </div>
           <div className="checkout-field checkout-field--half">
-            <label htmlFor="country" className="checkout-label">Country</label>
-            <input id="country" type="text" value="Australia" readOnly className="checkout-input" style={{ background: 'var(--color-surface-offset)', color: 'var(--color-text-muted)' }} />
+            <label htmlFor="co-country" className="checkout-label">Country</label>
+            <input id="co-country" type="text" value="Australia" readOnly className="checkout-input"
+              style={{ background: 'var(--color-surface-offset)', color: 'var(--color-text-muted)' }} />
           </div>
         </div>
 
-        {/* Payment */}
         <h2 className="checkout-section-title" style={{ marginTop: 'var(--space-8)' }}>Payment</h2>
         <div className="checkout-payment-note">
           <span>🔒</span>
@@ -110,8 +124,7 @@ export function CheckoutForm() {
         </div>
 
         <button
-          type="submit"
-          className="btn btn-primary"
+          type="submit" className="btn btn-primary"
           style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-6)', minHeight: '52px', fontSize: 'var(--text-base)' }}
         >
           Place Order — {formatAUD(grandTotal)}
@@ -138,8 +151,7 @@ export function CheckoutForm() {
         </ul>
         <div className="order-totals">
           <div className="order-total-row">
-            <span>Subtotal</span>
-            <span>{formatAUD(totalPrice)}</span>
+            <span>Subtotal</span><span>{formatAUD(totalPrice)}</span>
           </div>
           <div className="order-total-row">
             <span>Shipping</span>
