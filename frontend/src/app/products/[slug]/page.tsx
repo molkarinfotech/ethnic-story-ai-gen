@@ -1,23 +1,32 @@
-import { PRODUCTS, formatAUD } from '../../../lib/products';
+import { getProducts, getProductBySlug, Product } from '../../../lib/fetchProducts';
+import { formatAUD } from '../../../lib/products';
 import { notFound } from 'next/navigation';
 import { AddToCartSection } from '../../../components/shop/AddToCartSection';
 
-export function generateStaticParams() {
-  return PRODUCTS.map(p => ({ slug: p.slug }));
+export const revalidate = 60;
+
+// Pre-generate pages for all current products at build time;
+// new products added via admin will be generated on first visit (dynamic fallback)
+export async function generateStaticParams() {
+  const products = await getProducts();
+  return products.map(p => ({ slug: p.slug }));
 }
 
-export default function ProductPage({ params }: { params: { slug: string } }) {
-  const product = PRODUCTS.find(p => p.slug === params.slug);
+const categoryLabel: Record<string, string> = {
+  sarees: 'Sarees', lehengas: 'Lehengas', kurtas: 'Kurtas', kids: 'Kids Wear',
+};
+
+export default async function ProductPage({ params }: { params: { slug: string } }) {
+  const product = await getProductBySlug(params.slug);
   if (!product) notFound();
 
-  const related = PRODUCTS.filter(p => p.category === product.category && p.id !== product.id).slice(0, 4);
-  const discount = product.originalPrice
-    ? Math.round((1 - product.price / product.originalPrice) * 100)
-    : null;
+  const allProducts = await getProducts();
+  const related = allProducts
+    .filter(p => p.category === product.category && p.id !== product.id)
+    .slice(0, 4);
 
-  const categoryLabel: Record<string, string> = {
-    sarees: 'Sarees', lehengas: 'Lehengas', kurtas: 'Kurtas', kids: 'Kids Wear',
-  };
+  const origPrice = product.original_price ?? product.originalPrice;
+  const discount = origPrice ? Math.round((1 - product.price / origPrice) * 100) : null;
 
   return (
     <main>
@@ -48,20 +57,18 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
 
             <div className="pdp-info">
               <span className="pill" style={{ marginBottom: 'var(--space-4)', display: 'inline-flex' }}>
-                {categoryLabel[product.category]}
+                {categoryLabel[product.category] ?? product.category}
               </span>
               <h1 className="pdp-title">{product.name}</h1>
               {product.subtitle && <p className="pdp-subtitle">{product.subtitle}</p>}
 
               <div className="pdp-price-row">
                 <span className="pdp-price">{formatAUD(product.price)}</span>
-                {product.originalPrice && (
-                  <s className="pdp-original">{formatAUD(product.originalPrice)}</s>
-                )}
+                {origPrice && <s className="pdp-original">{formatAUD(origPrice)}</s>}
                 {discount && <span className="pdp-save">{discount}% off</span>}
               </div>
 
-              <AddToCartSection product={product} />
+              <AddToCartSection product={{ ...product, originalPrice: origPrice }} />
 
               <div className="pdp-trust">
                 {['🚚 Free shipping on orders over A$150', '↩️ 15-day easy returns', '✅ 100% authentic, direct from artisans', '🔒 Secure checkout'].map(t => (
@@ -72,7 +79,7 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
               <details className="pdp-accordion">
                 <summary>Product details</summary>
                 <div className="pdp-accordion__body">
-                  <p>Handcrafted by skilled artisans using traditional techniques. Each piece is unique and may have slight variations that are part of its handmade character.</p>
+                  <p>{(product as Product & { description?: string }).description ?? 'Handcrafted by skilled artisans using traditional techniques. Each piece is unique and may have slight variations that are part of its handmade character.'}</p>
                   <ul style={{ marginTop: 'var(--space-3)', paddingLeft: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', color: 'var(--color-text-muted)' }}>
                     <li>Fabric: As described in product name</li>
                     <li>Care: Dry clean recommended</li>
