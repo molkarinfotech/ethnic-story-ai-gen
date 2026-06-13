@@ -5,12 +5,14 @@ export async function POST(req: NextRequest) {
   if (password !== process.env.ADMIN_PASSWORD) {
     return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
   }
+  // Store ADMIN_SECRET as the token so all admin API routes can validate with a single env var
+  const token = process.env.ADMIN_SECRET ?? process.env.ADMIN_PASSWORD ?? password;
   const res = NextResponse.json({ ok: true });
-  res.cookies.set('admin_token', password, {
+  res.cookies.set('admin_token', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 7,
     path: '/',
   });
   return res;
