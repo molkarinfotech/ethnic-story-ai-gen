@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Hobby plan = 10s max. This route ONLY submits to Replicate and returns
-// the predictionId immediately. The frontend polls /api/enhance-image/poll.
 export const maxDuration = 10;
+
+// Community model — must use versioned endpoint with explicit version ID
+const CLARITY_VERSION = 'dfad41707589d68ecdccd1dfa600d55a208f9310748e44bfe35b4a6291453d5e';
 
 export async function GET() {
   return NextResponse.json({
@@ -23,30 +24,27 @@ export async function POST(req: NextRequest) {
     const { imageUrl, productId } = await req.json();
     if (!imageUrl) return NextResponse.json({ error: 'imageUrl is required' }, { status: 400 });
 
-    // Just submit — do NOT wait for completion
-    const res = await fetch(
-      'https://api.replicate.com/v1/models/philz1337x/clarity-upscaler/predictions',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+    const res = await fetch('https://api.replicate.com/v1/predictions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        version: CLARITY_VERSION,
+        input: {
+          image: imageUrl,
+          scale_factor: 2,
+          sharpen: 1.5,
+          resemblance: 0.85,
+          creativity: 0.35,
+          prompt: 'indian ethnic fashion garment, high detail, studio lighting, clean background',
+          negative_prompt: 'blur, noise, watermark, text, logo',
+          num_inference_steps: 18,
+          guidance_scale: 7,
         },
-        body: JSON.stringify({
-          input: {
-            image: imageUrl,
-            scale_factor: 2,
-            sharpen: 1.5,
-            resemblance: 0.85,
-            creativity: 0.35,
-            prompt: 'indian ethnic fashion garment, high detail, studio lighting, clean background',
-            negative_prompt: 'blur, noise, watermark, text, logo',
-            num_inference_steps: 18,
-            guidance_scale: 7,
-          },
-        }),
-      }
-    );
+      }),
+    });
 
     const prediction = await res.json();
     if (!res.ok) {
@@ -56,7 +54,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Return predictionId — frontend will poll /api/enhance-image/poll
     return NextResponse.json({ predictionId: prediction.id, status: prediction.status });
 
   } catch (e: any) {
