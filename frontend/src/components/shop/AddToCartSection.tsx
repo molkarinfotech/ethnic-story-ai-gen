@@ -2,41 +2,42 @@
 import { useState } from 'react';
 import { useCart } from '../../context/CartContext';
 import { Product } from '../../lib/products';
+import { SizeSelector } from './SizeSelector';
 
-const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
-
-export function AddToCartSection({ product }: { product: Product }) {
+export function AddToCartSection({ product }: { product: Product & { id: string } }) {
   const { addItem, openCart } = useCart();
   const [size, setSize] = useState<string | null>(null);
-  const [qty, setQty]   = useState(1);
+  const [sizeInStock, setSizeInStock] = useState(true);
+  const [qty, setQty] = useState(1);
   const [error, setError] = useState(false);
   const [added, setAdded] = useState(false);
 
+  function handleSizeChange(selected: string | null, inStock: boolean) {
+    setSize(selected);
+    setSizeInStock(inStock);
+    setError(false);
+  }
+
   function handleAdd() {
     if (!size) { setError(true); return; }
-    for (let i = 0; i < qty; i++) addItem(product);
+    if (!sizeInStock) return;
+    for (let i = 0; i < qty; i++) addItem({ ...product, selectedSize: size });
     setAdded(true);
     openCart();
     setTimeout(() => setAdded(false), 2000);
   }
 
+  const outOfStock = size !== null && !sizeInStock;
+
   return (
     <div className="pdp-atc">
-      <div className="pdp-size-label">
-        <span>Size</span>
-        {error && !size && <span className="pdp-size-error">Please select a size</span>}
-      </div>
-      <div className="pdp-sizes">
-        {SIZES.map(s => (
-          <button
-            key={s}
-            className={`size-btn${size === s ? ' size-btn--active' : ''}`}
-            onClick={() => { setSize(s); setError(false); }}
-            aria-pressed={size === s}
-          >{s}</button>
-        ))}
-      </div>
-      <div className="pdp-qty-row">
+      {/* Live size selector driven by admin inventory */}
+      <SizeSelector productId={product.id} onSizeChange={handleSizeChange} />
+      {error && !size && (
+        <p style={{ color: '#dc2626', fontSize: 'var(--text-xs)', marginTop: 'var(--space-2)' }}>Please select a size</p>
+      )}
+
+      <div className="pdp-qty-row" style={{ marginTop: 'var(--space-5)' }}>
         <span className="pdp-qty-label">Quantity</span>
         <div className="qty-control">
           <button className="qty-btn" onClick={() => setQty(q => Math.max(1, q - 1))} aria-label="Decrease">−</button>
@@ -44,12 +45,14 @@ export function AddToCartSection({ product }: { product: Product }) {
           <button className="qty-btn" onClick={() => setQty(q => q + 1)} aria-label="Increase">+</button>
         </div>
       </div>
+
       <button
         className={`btn btn-primary pdp-atc-btn${added ? ' pdp-atc-btn--added' : ''}`}
         onClick={handleAdd}
-        style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-4)' }}
+        disabled={outOfStock}
+        style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-4)', opacity: outOfStock ? 0.5 : 1 }}
       >
-        {added ? '✓ Added to Bag' : 'Add to Bag'}
+        {added ? '✓ Added to Bag' : outOfStock ? 'Out of Stock' : 'Add to Bag'}
       </button>
       <a
         href="/checkout"

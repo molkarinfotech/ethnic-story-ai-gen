@@ -2,7 +2,6 @@ import { getProducts, getProductBySlug, Product } from '../../../lib/fetchProduc
 import { formatAUD } from '../../../lib/products';
 import { notFound } from 'next/navigation';
 import { AddToCartSection } from '../../../components/shop/AddToCartSection';
-import { SizeSelector } from '../../../components/shop/SizeSelector';
 
 export const revalidate = 60;
 
@@ -164,10 +163,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
                 )}
               </div>
 
-              {/* Size selector */}
-              <SizeSelector productId={product.id} />
-
-              {/* Add to cart */}
+              {/* AddToCartSection owns the size selector */}
               <AddToCartSection product={{ ...product, originalPrice: origPrice }} />
 
               {/* Trust row */}
