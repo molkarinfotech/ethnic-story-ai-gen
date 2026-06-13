@@ -13,6 +13,7 @@ export type Product = {
   category: string;
   badge?: string;
   image?: string;
+  images?: string[];      // additional gallery images
   selectedSize?: string;  // set when added to cart
 };
 
@@ -24,7 +25,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Use this to verify Stripe integration — remove before going live',
     price: 1,
     category: 'sarees', badge: 'Test',
-    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?q=80&w=800&auto=format&fit=crop',
   },
 
   // ── SAREES ──────────────────────────────────────────────────
@@ -34,7 +35,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Pure silk with gold zari border',
     price: 189, originalPrice: 229,
     category: 'sarees', badge: 'Bestseller',
-    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?q=80&w=800&auto=format&fit=crop',
   },
   {
     id: 'p02', slug: 'kanjivaram-silk-saree',
@@ -42,7 +43,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Temple border weave, traditional motifs',
     price: 275,
     category: 'sarees',
-    image: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=80&w=800&auto=format&fit=crop',
   },
   {
     id: 'p03', slug: 'chanderi-cotton-saree',
@@ -50,7 +51,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Lightweight with delicate gold motifs',
     price: 69, originalPrice: 89,
     category: 'sarees', badge: 'Sale',
-    image: 'https://images.unsplash.com/photo-1620912189875-f5a3c2c3f91e?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1583404398469-1f9f327a8574?q=80&w=800&auto=format&fit=crop',
   },
   {
     id: 'p04', slug: 'georgette-printed-saree',
@@ -58,7 +59,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Vibrant floral digital print',
     price: 49,
     category: 'sarees',
-    image: 'https://images.unsplash.com/photo-1583017777700-a5a0e5d03f24?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1583017777700-a5a0e5d03f24?q=80&w=800&auto=format&fit=crop',
   },
 
   // ── LEHENGAS ──────────────────────────────────────────────
@@ -68,7 +69,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Heavy embroidered silk, bridal collection',
     price: 579,
     category: 'lehengas', badge: 'Premium',
-    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1594938298603-c8148c4b9f8e?q=80&w=800&auto=format&fit=crop',
   },
   {
     id: 'p06', slug: 'mirror-work-lehenga',
@@ -76,7 +77,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Rajasthani folk art style',
     price: 239, originalPrice: 279,
     category: 'lehengas', badge: 'New',
-    image: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1591164867150-f9d20a7a3031?q=80&w=800&auto=format&fit=crop',
   },
   {
     id: 'p07', slug: 'pastel-floral-lehenga',
@@ -84,7 +85,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Soft georgette with thread embroidery',
     price: 159,
     category: 'lehengas',
-    image: 'https://images.unsplash.com/photo-1620912189875-f5a3c2c3f91e?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1620912189875-f5a3c2c3f91e?q=80&w=800&auto=format&fit=crop',
   },
   {
     id: 'p08', slug: 'velvet-lehenga-navy',
@@ -92,7 +93,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Rich velvet with gold zardozi work',
     price: 379,
     category: 'lehengas',
-    image: 'https://images.unsplash.com/photo-1583017777700-a5a0e5d03f24?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1606503153255-59d8b8b82176?q=80&w=800&auto=format&fit=crop',
   },
 
   // ── KURTAS ───────────────────────────────────────────────
@@ -102,7 +103,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Floor-length with churidar set',
     price: 89, originalPrice: 109,
     category: 'kurtas', badge: 'Sale',
-    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1512436991641-6745cdb1723f?q=80&w=800&auto=format&fit=crop',
   },
   {
     id: 'p10', slug: 'cotton-block-print-kurta',
@@ -110,7 +111,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Jaipur hand-block printed cotton',
     price: 39,
     category: 'kurtas', badge: 'New',
-    image: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?q=80&w=800&auto=format&fit=crop',
   },
   {
     id: 'p11', slug: 'indo-western-coord',
@@ -118,7 +119,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Crop top + wide-leg palazzo trousers',
     price: 59,
     category: 'kurtas',
-    image: 'https://images.unsplash.com/photo-1620912189875-f5a3c2c3f91e?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1567401893414-76b7b1e5a7a5?q=80&w=800&auto=format&fit=crop',
   },
   {
     id: 'p12', slug: 'lucknowi-chikankari-kurta',
@@ -126,7 +127,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Hand-embroidered white cotton',
     price: 49, originalPrice: 59,
     category: 'kurtas',
-    image: 'https://images.unsplash.com/photo-1583017777700-a5a0e5d03f24?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1583404398469-1f9f327a8574?q=80&w=800&auto=format&fit=crop',
   },
 
   // ── KIDS ─────────────────────────────────────────────────
@@ -136,7 +137,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Festive wear, ages 3–10',
     price: 39,
     category: 'kids', badge: 'Bestseller',
-    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1518831959646-742c3a14ebf7?q=80&w=800&auto=format&fit=crop',
   },
   {
     id: 'p14', slug: 'kids-sherwani-gold',
@@ -144,7 +145,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Wedding collection, ages 2–12',
     price: 45,
     category: 'kids',
-    image: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?q=80&w=800&auto=format&fit=crop',
   },
   {
     id: 'p15', slug: 'kids-kurta-pyjama',
@@ -152,7 +153,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Soft cotton, easy-wear, ages 1–8',
     price: 19, originalPrice: 25,
     category: 'kids', badge: 'Sale',
-    image: 'https://images.unsplash.com/photo-1620912189875-f5a3c2c3f91e?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1519238263530-99bdd11df2ea?q=80&w=800&auto=format&fit=crop',
   },
   {
     id: 'p16', slug: 'girls-saree-style-gown',
@@ -160,7 +161,7 @@ export const PRODUCTS: Product[] = [
     subtitle: 'Ready-to-wear elegant gown, ages 5–14',
     price: 35,
     category: 'kids',
-    image: 'https://images.unsplash.com/photo-1583017777700-a5a0e5d03f24?q=80&w=600&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1518831959646-742c3a14ebf7?q=80&w=800&auto=format&fit=crop',
   },
 ];
 
