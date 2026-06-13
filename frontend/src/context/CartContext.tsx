@@ -14,17 +14,16 @@ type CartState = { items: CartItem[]; isOpen: boolean };
 
 type CartAction =
   | { type: 'ADD';     product: Product }
-  | { type: 'REMOVE';  id: string; size?: string }
-  | { type: 'UPDATE';  id: string; size?: string; quantity: number }
+  | { type: 'REMOVE';  id: string; size: string | undefined }
+  | { type: 'UPDATE';  id: string; size: string | undefined; quantity: number }
   | { type: 'CLEAR' }
   | { type: 'OPEN' }
   | { type: 'CLOSE' }
   | { type: 'HYDRATE'; items: CartItem[] };
 
-// key = id + size so same product in different sizes are separate line items
-function itemKey(id: string, size?: string) { return size ? `${id}__${size}` : id; }
-function matchItem(i: CartItem, id: string, size?: string) {
-  return i.id === id && (i as any).selectedSize === (size ?? undefined);
+function itemKey(id: string, size: string | undefined) { return size ? `${id}__${size}` : id; }
+function matchItem(i: CartItem, id: string, size: string | undefined) {
+  return i.id === id && i.selectedSize === size;
 }
 
 function cartReducer(state: CartState, action: CartAction): CartState {
@@ -58,10 +57,11 @@ type CartContextType = {
   totalItems: number;
   totalPrice: number;
   addItem: (product: Product) => void;
-  removeItem: (id: string, size?: string) => void;
-  updateQuantity: (id: string, size?: string, quantity: number) => void;
+  // size is explicit string | undefined — no optional (?) so quantity can stay required
+  removeItem:     (id: string, size: string | undefined) => void;
+  updateQuantity: (id: string, size: string | undefined, quantity: number) => void;
   clearCart: () => void;
-  openCart: () => void;
+  openCart:  () => void;
   closeCart: () => void;
 };
 
@@ -74,7 +74,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── helpers ──────────────────────────────────────────────────────────────
+  // ── helpers ───────────────────────────────────────────────────────────────
   function readLocal(): CartItem[] {
     try { return JSON.parse(localStorage.getItem(LOCAL_KEY) ?? '[]'); } catch { return []; }
   }
@@ -85,7 +85,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.removeItem(LOCAL_KEY); } catch {}
   }
 
-  // Merge two carts: prefer higher quantity for same item
   function mergeItems(a: CartItem[], b: CartItem[]): CartItem[] {
     const map = new Map<string, CartItem>();
     [...a, ...b].forEach(item => {
@@ -106,7 +105,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     await sb.from('carts').upsert({ user_id: uid, items, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
   }
 
-  // ── auth listener: merge local + remote on login, save + clear on logout ─
+  // ── auth listener ─────────────────────────────────────────────────────────
   useEffect(() => {
     sb.auth.getSession().then(async ({ data }) => {
       const uid = data.session?.user?.id ?? null;
@@ -119,8 +118,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         await saveToSupabase(uid, merged);
         clearLocal();
       } else {
-        const local = readLocal();
-        dispatch({ type: 'HYDRATE', items: local });
+        dispatch({ type: 'HYDRATE', items: readLocal() });
       }
       setHydrated(true);
     });
@@ -145,23 +143,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // ── sync cart changes to Supabase (debounced 600ms) or localStorage ──────
+  // ── debounced sync ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!hydrated) return;
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => {
-      if (userId) {
-        saveToSupabase(userId, state.items);
-      } else {
-        writeLocal(state.items);
-      }
+      if (userId) saveToSupabase(userId, state.items);
+      else writeLocal(state.items);
     }, 600);
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
   }, [state.items, hydrated, userId]);
 
   const addItem        = useCallback((product: Product) => dispatch({ type: 'ADD', product }), []);
-  const removeItem     = useCallback((id: string, size?: string) => dispatch({ type: 'REMOVE', id, size }), []);
-  const updateQuantity = useCallback((id: string, size?: string, quantity: number = 1) => dispatch({ type: 'UPDATE', id, size, quantity }), []);
+  const removeItem     = useCallback((id: string, size: string | undefined) => dispatch({ type: 'REMOVE', id, size }), []);
+  const updateQuantity = useCallback((id: string, size: string | undefined, quantity: number) => dispatch({ type: 'UPDATE', id, size, quantity }), []);
   const clearCart      = useCallback(() => dispatch({ type: 'CLEAR' }), []);
   const openCart       = useCallback(() => dispatch({ type: 'OPEN' }), []);
   const closeCart      = useCallback(() => dispatch({ type: 'CLOSE' }), []);
