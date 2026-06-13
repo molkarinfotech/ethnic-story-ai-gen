@@ -14,27 +14,43 @@ const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
 
 const AU_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'];
 
-// ────────────────────────────────────────────────────────────────────────────────
-// Inner form — must be inside <Elements> provider
-// ────────────────────────────────────────────────────────────────────────────────
+export type ShippingAddress = {
+  name: string;
+  email: string;
+  phone: string;
+  line1: string;
+  line2: string;
+  suburb: string;
+  state: string;
+  postcode: string;
+};
+
 function PaymentForm({
-  grandTotal, items, totalPrice, shipping, clearCart,
+  grandTotal, items, totalPrice, shipping, clearCart, shipping_address,
 }: {
   grandTotal: number;
   items: ReturnType<typeof useCart>['items'];
   totalPrice: number;
   shipping: number;
   clearCart: () => void;
+  shipping_address: ShippingAddress;
 }) {
   const stripe = useStripe();
   const elements = useElements();
-  const [stateVal, setStateVal] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!stripe || !elements) return;
+
+    // Basic validation
+    const { name, email, phone, line1, suburb, state, postcode } = shipping_address;
+    if (!name || !email || !phone || !line1 || !suburb || !state || !postcode) {
+      setErrorMsg('Please fill in all required fields before paying.');
+      return;
+    }
+
     setLoading(true);
     setErrorMsg('');
 
@@ -42,6 +58,21 @@ function PaymentForm({
       elements,
       confirmParams: {
         return_url: `${window.location.origin}/checkout/success`,
+        payment_method_data: {
+          billing_details: {
+            name,
+            email,
+            phone,
+            address: {
+              line1,
+              line2: shipping_address.line2 || undefined,
+              city: suburb,
+              state,
+              postal_code: postcode,
+              country: 'AU',
+            },
+          },
+        },
       },
     });
 
@@ -49,8 +80,6 @@ function PaymentForm({
       setErrorMsg(error.message ?? 'Payment failed. Please try again.');
       setLoading(false);
     }
-    // On success, Stripe redirects to /checkout/success automatically
-    // CartContext clears on that page via a separate useEffect
   }
 
   return (
@@ -58,44 +87,51 @@ function PaymentForm({
       <h2 className="checkout-section-title">Contact information</h2>
       <div className="checkout-fields">
         <div className="checkout-field">
-          <label htmlFor="co-name" className="checkout-label">Full name</label>
-          <input id="co-name" type="text" placeholder="Jane Smith" className="checkout-input" required />
+          <label htmlFor="co-name" className="checkout-label">Full name *</label>
+          <input id="co-name" type="text" placeholder="Jane Smith" className="checkout-input" required
+            value={shipping_address.name} onChange={e => shipping_address.name = e.target.value} />
         </div>
         <div className="checkout-field">
-          <label htmlFor="co-email" className="checkout-label">Email address</label>
-          <input id="co-email" type="email" placeholder="jane@example.com.au" className="checkout-input" required />
+          <label htmlFor="co-email" className="checkout-label">Email address *</label>
+          <input id="co-email" type="email" placeholder="jane@example.com.au" className="checkout-input" required
+            value={shipping_address.email} onChange={e => shipping_address.email = e.target.value} />
         </div>
         <div className="checkout-field">
-          <label htmlFor="co-phone" className="checkout-label">Mobile number</label>
-          <input id="co-phone" type="tel" placeholder="04XX XXX XXX" className="checkout-input" required />
+          <label htmlFor="co-phone" className="checkout-label">Mobile number *</label>
+          <input id="co-phone" type="tel" placeholder="04XX XXX XXX" className="checkout-input" required
+            value={shipping_address.phone} onChange={e => shipping_address.phone = e.target.value} />
         </div>
       </div>
 
       <h2 className="checkout-section-title" style={{ marginTop: 'var(--space-8)' }}>Shipping address</h2>
       <div className="checkout-fields checkout-fields--halves">
         <div className="checkout-field">
-          <label htmlFor="co-addr1" className="checkout-label">Street address</label>
-          <input id="co-addr1" type="text" placeholder="12 Collins Street" className="checkout-input" required />
+          <label htmlFor="co-addr1" className="checkout-label">Street address *</label>
+          <input id="co-addr1" type="text" placeholder="12 Collins Street" className="checkout-input" required
+            value={shipping_address.line1} onChange={e => shipping_address.line1 = e.target.value} />
         </div>
         <div className="checkout-field">
           <label htmlFor="co-addr2" className="checkout-label">Apartment / unit (optional)</label>
-          <input id="co-addr2" type="text" placeholder="Unit 4" className="checkout-input" />
+          <input id="co-addr2" type="text" placeholder="Unit 4" className="checkout-input"
+            value={shipping_address.line2} onChange={e => shipping_address.line2 = e.target.value} />
         </div>
         <div className="checkout-field checkout-field--half">
-          <label htmlFor="co-suburb" className="checkout-label">Suburb</label>
-          <input id="co-suburb" type="text" placeholder="Melbourne" className="checkout-input" required />
+          <label htmlFor="co-suburb" className="checkout-label">Suburb *</label>
+          <input id="co-suburb" type="text" placeholder="Melbourne" className="checkout-input" required
+            value={shipping_address.suburb} onChange={e => shipping_address.suburb = e.target.value} />
         </div>
         <div className="checkout-field checkout-field--half">
-          <label htmlFor="co-state" className="checkout-label">State / Territory</label>
+          <label htmlFor="co-state" className="checkout-label">State / Territory *</label>
           <select id="co-state" className="checkout-input" required
-            value={stateVal} onChange={e => setStateVal(e.target.value)}>
+            value={shipping_address.state} onChange={e => shipping_address.state = e.target.value}>
             <option value="">Select state…</option>
             {AU_STATES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div className="checkout-field checkout-field--half">
-          <label htmlFor="co-postcode" className="checkout-label">Postcode</label>
-          <input id="co-postcode" type="text" placeholder="3000" maxLength={4} pattern="[0-9]{4}" className="checkout-input" required />
+          <label htmlFor="co-postcode" className="checkout-label">Postcode *</label>
+          <input id="co-postcode" type="text" placeholder="3000" maxLength={4} pattern="[0-9]{4}" className="checkout-input" required
+            value={shipping_address.postcode} onChange={e => shipping_address.postcode = e.target.value} />
         </div>
         <div className="checkout-field checkout-field--half">
           <label htmlFor="co-country" className="checkout-label">Country</label>
@@ -109,7 +145,6 @@ function PaymentForm({
         Card, Afterpay, Apple Pay and Google Pay accepted.
       </p>
 
-      {/* Stripe Payment Element — renders card + Afterpay tabs automatically */}
       <div className="stripe-element-wrap">
         <PaymentElement options={{ layout: 'tabs' }} />
       </div>
@@ -134,24 +169,42 @@ function PaymentForm({
   );
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// Outer wrapper — fetches PaymentIntent, provides <Elements>
-// ────────────────────────────────────────────────────────────────────────────────
 export function CheckoutForm() {
   const { items, totalPrice, totalItems, clearCart, hydrated } = useCart();
   const [clientSecret, setClientSecret] = useState('');
   const [intentError, setIntentError] = useState('');
 
+  // ── Shipping address state ──────────────────────────────────────────
+  const [addr, setAddr] = useState<ShippingAddress>({
+    name: '', email: '', phone: '',
+    line1: '', line2: '', suburb: '', state: '', postcode: '',
+  });
+  const setField = (field: keyof ShippingAddress) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setAddr(prev => ({ ...prev, [field]: e.target.value }));
+
   const shipping = totalPrice >= 150 ? 0 : 12.95;
   const grandTotal = totalPrice + shipping;
 
-  // Create PaymentIntent as soon as we know the cart total
   useEffect(() => {
     if (!hydrated || totalItems === 0) return;
     fetch('/api/create-payment-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: grandTotal }),
+      body: JSON.stringify({
+        amount: grandTotal,
+        metadata: {
+          customer_name:  addr.name,
+          customer_email: addr.email,
+          customer_phone: addr.phone,
+          shipping_line1: addr.line1,
+          shipping_line2: addr.line2,
+          shipping_suburb: addr.suburb,
+          shipping_state:  addr.state,
+          shipping_postcode: addr.postcode,
+          items: JSON.stringify(items.map(i => ({ id: i.id, name: i.name, qty: i.quantity, price: i.price, size: i.selectedSize }))),
+        },
+      }),
     })
       .then(r => r.json())
       .then(data => {
@@ -161,16 +214,9 @@ export function CheckoutForm() {
       .catch(() => setIntentError('Network error — please refresh and try again.'));
   }, [hydrated, totalItems, grandTotal]);
 
-  // ── Loading ──
   if (!hydrated) {
-    return (
-      <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>
-        Loading your bag…
-      </div>
-    );
+    return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Loading your bag…</div>;
   }
-
-  // ── Empty bag ──
   if (totalItems === 0) {
     return (
       <div className="order-success">
@@ -181,8 +227,6 @@ export function CheckoutForm() {
       </div>
     );
   }
-
-  // ── Stripe init error ──
   if (intentError) {
     return (
       <div className="order-success">
@@ -193,14 +237,8 @@ export function CheckoutForm() {
       </div>
     );
   }
-
-  // ── Waiting for clientSecret ──
   if (!clientSecret) {
-    return (
-      <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>
-        Preparing payment…
-      </div>
-    );
+    return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Preparing payment…</div>;
   }
 
   const stripeAppearance = {
@@ -214,6 +252,15 @@ export function CheckoutForm() {
     },
   };
 
+  // Build a proxy object so PaymentForm can mutate fields via setField
+  const addrProxy = new Proxy(addr, {
+    get: (target, prop) => target[prop as keyof ShippingAddress],
+    set: (target, prop, value) => {
+      setAddr(prev => ({ ...prev, [prop as keyof ShippingAddress]: value }));
+      return true;
+    },
+  });
+
   return (
     <Elements stripe={stripePromise} options={{ clientSecret, appearance: stripeAppearance }}>
       <div className="checkout-grid">
@@ -223,21 +270,22 @@ export function CheckoutForm() {
           totalPrice={totalPrice}
           shipping={shipping}
           clearCart={clearCart}
+          shipping_address={addrProxy}
         />
 
-        {/* ── Order Summary ── */}
         <aside className="order-summary">
           <h2 className="checkout-section-title">Order summary</h2>
           <ul className="order-items">
             {items.map(item => (
               <li key={item.id} className="order-item">
                 <div className="order-item__image">
-                  {item.image ? <img src={item.image} alt={item.name} /> : <span>🥻</span>}
+                  {item.image ? <img src={item.image} alt={item.name} /> : <span>🧵</span>}
                   <span className="order-item__qty">{item.quantity}</span>
                 </div>
                 <div className="order-item__details">
                   <div className="order-item__name">{item.name}</div>
                   {item.subtitle && <div className="order-item__sub">{item.subtitle}</div>}
+                  {item.selectedSize && <div className="order-item__sub">Size: {item.selectedSize}</div>}
                 </div>
                 <div className="order-item__price">{formatAUD(item.price * item.quantity)}</div>
               </li>

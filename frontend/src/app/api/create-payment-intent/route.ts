@@ -7,18 +7,17 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 export async function POST(req: NextRequest) {
   try {
-    const { amount, currency = 'aud' } = await req.json();
+    const { amount, currency = 'aud', metadata = {} } = await req.json();
 
     if (!amount || amount < 1) {
       return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
     }
 
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount * 100), // convert AUD dollars → cents
+      amount: Math.round(amount * 100),
       currency,
-      automatic_payment_methods: {
-        enabled: true, // enables card, Afterpay, Apple Pay, Google Pay automatically
-      },
+      automatic_payment_methods: { enabled: true },
+      metadata, // ← shipping address + order items now stored here
     });
 
     return NextResponse.json({ clientSecret: paymentIntent.client_secret });

@@ -1,12 +1,7 @@
 'use client';
 import { createContext, useContext, useEffect, useReducer, useCallback, useState, useRef } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase as sb } from '../lib/supabase'; // ← singleton fixes GoTrueClient warning
 import { Product } from '../lib/products';
-
-const sb = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export type CartItem = Product & { quantity: number; selectedSize?: string };
 
@@ -57,7 +52,6 @@ type CartContextType = {
   totalItems: number;
   totalPrice: number;
   addItem: (product: Product) => void;
-  // size is explicit string | undefined — no optional (?) so quantity can stay required
   removeItem:     (id: string, size: string | undefined) => void;
   updateQuantity: (id: string, size: string | undefined, quantity: number) => void;
   clearCart: () => void;
@@ -74,7 +68,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── helpers ───────────────────────────────────────────────────────────────
   function readLocal(): CartItem[] {
     try { return JSON.parse(localStorage.getItem(LOCAL_KEY) ?? '[]'); } catch { return []; }
   }
@@ -105,7 +98,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     await sb.from('carts').upsert({ user_id: uid, items, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
   }
 
-  // ── auth listener ─────────────────────────────────────────────────────────
   useEffect(() => {
     sb.auth.getSession().then(async ({ data }) => {
       const uid = data.session?.user?.id ?? null;
@@ -143,7 +135,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // ── debounced sync ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!hydrated) return;
     if (syncTimer.current) clearTimeout(syncTimer.current);
