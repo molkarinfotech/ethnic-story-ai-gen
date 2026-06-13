@@ -1,28 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Tell Vercel this route can run up to 60 seconds (Pro plan: 300s)
 export const maxDuration = 60;
 
 const BUCKET = 'product-images';
 const POLL_INTERVAL_MS = 4000;
-const MAX_POLLS = 14; // ~56s of polling
+const MAX_POLLS = 14;
 
 function getSb() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('SUPABASE env vars missing (NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)');
-  return createClient(url, key);
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 }
 
-// ── GET: health check — visit /api/enhance-image in browser to diagnose ──────
 export async function GET() {
   return NextResponse.json({
     ok: true,
     env: {
-      REPLICATE_API_TOKEN:     !!process.env.REPLICATE_API_TOKEN     ? '✅ set' : '❌ MISSING',
-      NEXT_PUBLIC_SUPABASE_URL:!!process.env.NEXT_PUBLIC_SUPABASE_URL? '✅ set' : '❌ MISSING',
-      SUPABASE_SERVICE_ROLE_KEY:!!process.env.SUPABASE_SERVICE_ROLE_KEY?'✅ set':'❌ MISSING',
+      REPLICATE_API_TOKEN:      !!process.env.REPLICATE_API_TOKEN      ? '✅ set' : '❌ MISSING',
+      NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL  ? '✅ set' : '❌ MISSING',
+      SUPABASE_SERVICE_ROLE_KEY:!!process.env.SUPABASE_SERVICE_ROLE_KEY ? '✅ set' : '❌ MISSING',
     },
   });
 }
@@ -46,23 +44,15 @@ async function pollUntilDone(predictionId: string, token: string): Promise<strin
 }
 
 export async function POST(req: NextRequest) {
+  let step = 'parse';
   try {
-    // ── 1. Validate env vars ────────────────────────────────────────────────
-    const token = process.env.REPLICATE_API_TOKEN;
-    if (!token) {
-      return NextResponse.json(
-        { error: 'Server misconfiguration: REPLICATE_API_TOKEN is not set. Add it in Vercel → Settings → Environment Variables.' },
-        { status: 500 }
-      );
-    }
-
-    // ── 2. Parse request ────────────────────────────────────────────────
+    // 1. Parse
     const { imageUrl, productId } = await req.json();
-    if (!imageUrl) {
-      return NextResponse.json({ error: 'imageUrl is required' }, { status: 400 });
-    }
+    if (!imageUrl) return NextResponse.json({ error: 'imageUrl is required' }, { status: 400 });
+    const token = process.env.REPLICATE_API_TOKEN!;
 
-    // ── 3. Submit to Replicate clarity-upscaler ───────────────────────────
+    // 2. Submit to Replicate
+    step = 'replicate-submit';
     const startRes = await fetch(
       'https://api.replicate.com/v1/models/philz1337x/clarity-upscaler/predictions',
       {
@@ -70,7 +60,6 @@ export async function POST(req: NextRequest) {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-          // Prefer: wait removed — causes gateway timeouts on Vercel; we poll instead
         },
         body: JSON.stringify({
           input: {
@@ -80,7 +69,7 @@ export async function POST(req: NextRequest) {
             resemblance: 0.85,
             creativity: 0.35,
             prompt: 'indian ethnic fashion garment, high detail, studio lighting, clean background',
-            negative_prompt: 'blur, noise, watermark, text, logo, ugly',
+            negative_prompt: 'blur, noise, watermark, text, logo',
             num_inference_steps: 18,
             guidance_scale: 7,
           },
@@ -90,10 +79,15 @@ export async function POST(req: NextRequest) {
 
     const prediction = await startRes.json();
     if (!startRes.ok) {
-      throw new Error(`Replicate rejected request: ${prediction.detail ?? JSON.stringify(prediction)}`);
+      // Return raw Replicate error so we can see exactly what it says
+      return NextResponse.json({
+        error: `Replicate rejected the request (HTTP ${startRes.status})`,
+        detail: prediction,
+      }, { status: 500 });
     }
 
-    // ── 4. Poll until done ────────────────────────────────────────────────
+    // 3. Poll
+    step = 'replicate-poll';
     let enhancedUrl: string;
     if (prediction.status === 'succeeded') {
       const output = prediction.output;
@@ -102,14 +96,17 @@ export async function POST(req: NextRequest) {
       enhancedUrl = await pollUntilDone(prediction.id, token);
     }
 
-    // ── 5. Download result & re-upload to Supabase Storage ────────────────
+    // 4. Download result
+    step = 'download';
     const imgRes = await fetch(enhancedUrl);
-    if (!imgRes.ok) throw new Error(`Could not download enhanced image from Replicate (${imgRes.status})`);
+    if (!imgRes.ok) throw new Error(`Could not download from Replicate: HTTP ${imgRes.status} — ${enhancedUrl}`);
     const buffer = await imgRes.arrayBuffer();
     const contentType = imgRes.headers.get('content-type') ?? 'image/webp';
     const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
     const storagePath = `${(productId ?? 'product').replace(/[^a-z0-9-]/gi, '-')}-enhanced-${Date.now()}.${ext}`;
 
+    // 5. Upload to Supabase
+    step = 'supabase-upload';
     const sb = getSb();
     const { error: uploadErr } = await sb.storage
       .from(BUCKET)
@@ -120,9 +117,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ url: data.publicUrl });
 
   } catch (e: any) {
-    console.error('[enhance-image] ERROR:', e?.message ?? e);
+    console.error(`[enhance-image] FAILED at step=${step}:`, e?.message ?? e);
     return NextResponse.json(
-      { error: e?.message ?? 'Unknown server error' },
+      { error: e?.message ?? 'Unknown error', step },
       { status: 500 }
     );
   }
