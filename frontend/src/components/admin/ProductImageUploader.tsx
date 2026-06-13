@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const sb = createClient(
@@ -8,6 +8,8 @@ const sb = createClient(
 );
 
 const BUCKET = 'product-images';
+const POLL_INTERVAL = 4000;
+const MAX_POLLS = 20; // 80s max
 
 type Props = {
   value: string;
@@ -19,11 +21,16 @@ type EnhanceStatus = 'idle' | 'loading' | 'done' | 'error';
 
 export function ProductImageUploader({ value, onChange, productId }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [dragging, setDragging] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging]       = useState(false);
+  const [uploading, setUploading]     = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [enhanceStatus, setEnhanceStatus] = useState<EnhanceStatus>('idle');
-  const [enhanceError, setEnhanceError] = useState('');
+  const [enhanceError, setEnhanceError]   = useState('');
+  const [elapsed, setElapsed]         = useState(0);
+  const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Clean up timer on unmount
+  useEffect(() => () => { if (elapsedRef.current) clearInterval(elapsedRef.current); }, []);
 
   // ── Upload helper ──────────────────────────────────────────────
   async function uploadFile(file: File) {
@@ -59,25 +66,61 @@ export function ProductImageUploader({ value, onChange, productId }: Props) {
     if (file) uploadFile(file);
   }, [productId]);
 
-  // ── AI enhance ────────────────────────────────────────────────
+  // ── AI enhance (submit → poll) ─────────────────────────────────
   async function handleEnhance() {
     if (!value) return;
     setEnhanceStatus('loading');
     setEnhanceError('');
+    setElapsed(0);
+
+    // Start elapsed counter
+    elapsedRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
+
     try {
-      const res = await fetch('/api/enhance-image', {
+      // 1. Submit job
+      const submitRes = await fetch('/api/enhance-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageUrl: value, productId: productId ?? 'new' }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Enhancement failed');
-      onChange(json.url);
-      setEnhanceStatus('done');
-      setTimeout(() => setEnhanceStatus('idle'), 3000);
+      const submitJson = await submitRes.json();
+      if (!submitRes.ok) throw new Error(submitJson.error ?? 'Failed to submit enhancement');
+
+      const { predictionId } = submitJson;
+
+      // 2. Poll until done
+      let polls = 0;
+      while (polls < MAX_POLLS) {
+        await new Promise(r => setTimeout(r, POLL_INTERVAL));
+        polls++;
+
+        const pollRes = await fetch(
+          `/api/enhance-image/poll?id=${predictionId}&productId=${encodeURIComponent(productId ?? 'new')}`
+        );
+        const pollJson = await pollRes.json();
+
+        if (!pollRes.ok) throw new Error(pollJson.error ?? 'Polling failed');
+
+        if (pollJson.status === 'succeeded') {
+          onChange(pollJson.url);
+          setEnhanceStatus('done');
+          setTimeout(() => setEnhanceStatus('idle'), 3000);
+          return;
+        }
+
+        if (pollJson.status === 'failed' || pollJson.status === 'canceled') {
+          throw new Error(pollJson.error ?? `Replicate ${pollJson.status}`);
+        }
+        // else still processing — keep polling
+      }
+
+      throw new Error('Timed out waiting for enhancement. Please try again.');
+
     } catch (e: any) {
       setEnhanceError(e.message);
       setEnhanceStatus('error');
+    } finally {
+      if (elapsedRef.current) { clearInterval(elapsedRef.current); elapsedRef.current = null; }
     }
   }
 
@@ -164,7 +207,9 @@ export function ProductImageUploader({ value, onChange, productId }: Props) {
           }}>
             <div style={{ color: '#fff', fontSize: '.78rem', lineHeight: 1.3 }}>
               <strong style={{ display: 'block', fontSize: '.82rem' }}>✨ AI Image Enhance</strong>
-              Upscale & sharpen with AI
+              {enhanceStatus === 'loading'
+                ? `Upscaling… ${elapsed}s`
+                : 'Upscale & sharpen with AI'}
             </div>
             <button
               type="button"
@@ -184,7 +229,7 @@ export function ProductImageUploader({ value, onChange, productId }: Props) {
               {enhanceStatus === 'idle'    && '✨ Enhance'}
               {enhanceStatus === 'loading' && 'Enhancing…'}
               {enhanceStatus === 'done'    && '✅ Enhanced!'}
-              {enhanceStatus === 'error'   && '✕ Failed'}
+              {enhanceStatus === 'error'   && '✕ Retry'}
             </button>
           </div>
 
