@@ -19,29 +19,28 @@ export function CartDrawer() {
 
   return (
     <>
+      {/* Backdrop */}
       <div
-        className={`cart-backdrop${isOpen ? ' cart-backdrop--visible' : ''}`}
+        className={`cart-overlay${isOpen ? ' open' : ''}`}
         onClick={closeCart}
         aria-hidden="true"
       />
+
+      {/* Drawer */}
       <aside
-        className={`cart-drawer${isOpen ? ' cart-drawer--open' : ''}`}
+        className={`cart-drawer${isOpen ? ' open' : ''}`}
         aria-label="Shopping cart"
         role="dialog"
         aria-modal="true"
       >
         <div className="cart-drawer__header">
-          <div>
-            <h2 className="cart-drawer__title">Your Bag</h2>
+          <div className="cart-drawer__title">
+            🛍️ Your Bag
             {totalItems > 0 && (
-              <span className="cart-drawer__count">{totalItems} {totalItems === 1 ? 'item' : 'items'}</span>
+              <span className="cart-drawer__count">{totalItems}</span>
             )}
           </div>
-          <button className="cart-drawer__close" onClick={closeCart} aria-label="Close cart">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6 6 18M6 6l12 12"/>
-            </svg>
-          </button>
+          <button className="cart-drawer__close" onClick={closeCart} aria-label="Close cart">✕</button>
         </div>
 
         <div className="cart-drawer__body">
@@ -49,54 +48,74 @@ export function CartDrawer() {
             <div className="cart-empty">
               <div className="cart-empty__icon">🛍️</div>
               <p className="cart-empty__text">Your bag is empty</p>
-              <p className="cart-empty__sub">Add something beautiful from our collections</p>
-              <a href="/collections" className="btn btn-primary" onClick={closeCart} style={{ marginTop: 'var(--space-4)' }}>Shop collections</a>
+              <p style={{ fontSize: '.8rem' }}>Add something beautiful from our collections</p>
+              <a href="/collections" className="btn btn-primary" onClick={closeCart} style={{ marginTop: 'var(--space-4)' }}>
+                Shop collections
+              </a>
             </div>
           ) : (
-            <ul className="cart-items">
-              {items.map(item => (
-                <li key={item.id} className="cart-item">
-                  <div className="cart-item__image">
-                    {item.image
-                      ? <img src={item.image} alt={item.name} />
-                      : <span style={{ fontSize: '1.8rem' }}>🥻</span>
-                    }
+            items.map(item => (
+              <div key={`${item.id}__${(item as any).selectedSize ?? ''}`} className="cart-item">
+                <div className="cart-item__img" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem' }}>
+                  {item.image
+                    ? <img src={item.image} alt={item.name} className="cart-item__img" />
+                    : '🥻'
+                  }
+                </div>
+                <div className="cart-item__body">
+                  <div className="cart-item__name">{item.name}</div>
+                  <div className="cart-item__meta">
+                    {(item as any).selectedSize && `Size: ${(item as any).selectedSize}`}
+                    {item.subtitle && ` · ${item.subtitle}`}
                   </div>
-                  <div className="cart-item__details">
-                    <div className="cart-item__name">{item.name}</div>
-                    {item.subtitle && <div className="cart-item__sub">{item.subtitle}</div>}
-                    <div className="cart-item__price">{formatAUD(item.price * item.quantity)}</div>
-                    <div className="cart-item__actions">
-                      <div className="qty-control">
-                        <button className="qty-btn" onClick={() => updateQuantity(item.id, item.quantity - 1)} aria-label="Decrease">−</button>
-                        <span className="qty-value">{item.quantity}</span>
-                        <button className="qty-btn" onClick={() => updateQuantity(item.id, item.quantity + 1)} aria-label="Increase">+</button>
-                      </div>
-                      <button className="cart-item__remove" onClick={() => removeItem(item.id)}>Remove</button>
-                    </div>
+                  <div className="cart-item__price">{formatAUD(item.price * item.quantity)}</div>
+                  <div className="cart-item__actions">
+                    <button
+                      className="cart-qty-btn"
+                      onClick={() => updateQuantity(item.id, (item as any).selectedSize, item.quantity - 1)}
+                      aria-label="Decrease"
+                    >−</button>
+                    <span className="cart-qty-val">{item.quantity}</span>
+                    <button
+                      className="cart-qty-btn"
+                      onClick={() => updateQuantity(item.id, (item as any).selectedSize, item.quantity + 1)}
+                      aria-label="Increase"
+                    >+</button>
+                    <button
+                      className="cart-remove-btn"
+                      onClick={() => removeItem(item.id, (item as any).selectedSize)}
+                    >Remove</button>
                   </div>
-                </li>
-              ))}
-            </ul>
+                </div>
+              </div>
+            ))
           )}
         </div>
 
         {items.length > 0 && (
           <div className="cart-drawer__footer">
-            <div className="cart-total">
+            <div className="cart-summary-row">
               <span>Subtotal</span>
-              <strong>{formatAUD(totalPrice)}</strong>
+              <span>{formatAUD(totalPrice)}</span>
             </div>
-            <p className="cart-shipping-note">
-              {totalPrice >= 150
-                ? '✅ Free shipping included!'
-                : `Add ${formatAUD(150 - totalPrice)} more for free shipping`
-              }
-            </p>
-            <a href="/checkout" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-4)' }}>
-              Proceed to Checkout
+            <div className="cart-summary-row">
+              <span>Shipping</span>
+              <span>{totalPrice >= 150 ? '✅ Free' : `Add ${formatAUD(150 - totalPrice)} more`}</span>
+            </div>
+            <div className="cart-summary-row total">
+              <span>Total</span>
+              <span>{formatAUD(totalPrice)}</span>
+            </div>
+            <a
+              href="/checkout"
+              className="cart-checkout-btn"
+              style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}
+            >
+              Proceed to Checkout →
             </a>
-            <button className="cart-continue" onClick={closeCart}>Continue shopping</button>
+            <button className="cart-continue-btn" onClick={closeCart}>
+              Continue shopping
+            </button>
           </div>
         )}
       </aside>
