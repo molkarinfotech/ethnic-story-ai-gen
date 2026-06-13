@@ -15,7 +15,6 @@ export type Product = {
   in_stock?: boolean;
 };
 
-// Normalise DB snake_case to camelCase so existing components work unchanged
 function normalise(p: Record<string, unknown>): Product {
   return {
     ...p,
@@ -23,13 +22,13 @@ function normalise(p: Record<string, unknown>): Product {
   } as Product;
 }
 
-// Fetch live products from Supabase; fall back to hardcoded list on error
+// Fetch ALL products from Supabase regardless of in_stock
+// Stock availability is handled per-size via product_variants
 export async function getProducts(): Promise<Product[]> {
   try {
     const { data, error } = await supabase
       .from('products')
       .select('*')
-      .eq('in_stock', true)
       .order('created_at', { ascending: false });
 
     if (error || !data || data.length === 0) {
@@ -51,9 +50,14 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
       .eq('slug', slug)
       .single();
 
-    if (error || !data) return null;
+    if (error || !data) {
+      // Fall back to static list so hardcoded products still work
+      const fallback = PRODUCTS.find(p => p.slug === slug);
+      return fallback ? (fallback as unknown as Product) : null;
+    }
     return normalise(data);
   } catch {
-    return null;
+    const fallback = PRODUCTS.find(p => p.slug === slug);
+    return fallback ? (fallback as unknown as Product) : null;
   }
 }
