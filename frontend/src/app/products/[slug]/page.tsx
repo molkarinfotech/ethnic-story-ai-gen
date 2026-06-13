@@ -2,6 +2,7 @@ import { getProducts, getProductBySlug, Product } from '../../../lib/fetchProduc
 import { formatAUD } from '../../../lib/products';
 import { notFound } from 'next/navigation';
 import { AddToCartSection } from '../../../components/shop/AddToCartSection';
+import { SizeSelector } from '../../../components/shop/SizeSelector';
 
 export const revalidate = 60;
 
@@ -70,7 +71,6 @@ export default async function ProductPage({ params }: { params: { slug: string }
                       style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '6rem' }}>🥻</div>
                 }
-                {/* Ornamental corner overlay */}
                 <div style={{
                   position: 'absolute', inset: 0, pointerEvents: 'none',
                   background: 'linear-gradient(160deg, rgba(108,35,64,.08) 0%, transparent 45%, rgba(184,131,50,.06) 100%)'
@@ -94,7 +94,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
                 )}
               </div>
 
-              {/* Craft badge below image */}
+              {/* Craft badge */}
               <div style={{
                 marginTop: 'var(--space-6)',
                 background: 'var(--color-gold-soft)',
@@ -114,7 +114,6 @@ export default async function ProductPage({ params }: { params: { slug: string }
             {/* RIGHT — Info */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
 
-              {/* Category pill + name */}
               <div>
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: '.4rem',
@@ -164,6 +163,9 @@ export default async function ProductPage({ params }: { params: { slug: string }
                   }}>Save {discount}%</span>
                 )}
               </div>
+
+              {/* Size selector */}
+              <SizeSelector productId={product.id} />
 
               {/* Add to cart */}
               <AddToCartSection product={{ ...product, originalPrice: origPrice }} />
@@ -237,7 +239,6 @@ export default async function ProductPage({ params }: { params: { slug: string }
                   </details>
                 ))}
               </div>
-
             </div>
           </div>
         </div>
@@ -249,7 +250,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
         padding: 'var(--space-12) 0', textAlign: 'center',
       }}>
         <div style={{ color: 'var(--color-gold)', fontSize: '.8rem', letterSpacing: '.2em', textTransform: 'uppercase', fontWeight: 700 }}>
-          ✷ &nbsp; Rooted in Indian Craft &nbsp; ✷ &nbsp; Designed for Modern Celebrations &nbsp; ✷
+          ✷   Rooted in Indian Craft   ✷   Designed for Modern Celebrations   ✷
         </div>
       </div>
 
