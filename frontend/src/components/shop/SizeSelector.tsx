@@ -26,9 +26,13 @@ export function SizeSelector({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`/api/variants/${productId}`, { cache: 'no-store' })
+    // Cache-bust with timestamp so no browser/CDN ever serves stale variants
+    const url = `/api/variants/${productId}?t=${Date.now()}`;
+    console.debug('[SizeSelector] fetching variants for productId:', productId);
+    fetch(url, { cache: 'no-store' })
       .then(r => r.json())
       .then(data => {
+        console.debug('[SizeSelector] received variants:', data);
         if (Array.isArray(data) && data.length > 0) {
           const normalised = data.map((v: Variant) => ({ ...v, stock_count: Number(v.stock_count) }));
           setVariants(sortSizes(normalised));
@@ -37,7 +41,10 @@ export function SizeSelector({
         }
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((err) => {
+        console.error('[SizeSelector] fetch error:', err);
+        setLoading(false);
+      });
   }, [productId]);
 
   function select(v: Variant) {
