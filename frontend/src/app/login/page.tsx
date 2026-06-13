@@ -1,11 +1,9 @@
 'use client';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { supabase } from '../../context/AuthContext';
 import { Spinner } from '../../components/ui/Spinner';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -17,7 +15,8 @@ export default function LoginPage() {
     setLoading(true); setError('');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) { setError(error.message); setLoading(false); return; }
-    router.push('/account');
+    // Full page reload ensures session is hydrated before account page checks auth
+    window.location.href = '/account';
   }
 
   async function handleGoogle() {
@@ -31,7 +30,6 @@ export default function LoginPage() {
     <main style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)', padding: '2rem' }}>
       <div style={{ width: '100%', maxWidth: '420px' }}>
 
-        {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <div style={{ fontSize: '1.5rem', color: 'var(--color-gold)', marginBottom: '.5rem' }}>✷</div>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.5rem,1.2rem+1vw,2rem)', color: 'var(--color-text)', margin: 0 }}>Welcome back</h1>
@@ -39,8 +37,6 @@ export default function LoginPage() {
         </div>
 
         <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-divider)', borderRadius: 'var(--radius-xl)', padding: '2rem', boxShadow: 'var(--shadow-sm)' }}>
-
-          {/* Google */}
           <button onClick={handleGoogle} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.75rem', padding: '.75rem', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'white', cursor: 'pointer', fontWeight: 600, fontSize: 'var(--text-sm)', marginBottom: '1.5rem' }}>
             <GoogleIcon />
             Continue with Google
@@ -82,14 +78,14 @@ export default function LoginPage() {
         </div>
 
         <p style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
-          Don’t have an account? <a href="/signup" style={{ color: 'var(--color-primary)', fontWeight: 600 }}>Sign up</a>
+          Don’t have an account?{' '}
+          <a href="/signup" style={{ color: 'var(--color-primary)', fontWeight: 600 }}>Sign up</a>
         </p>
       </div>
     </main>
   );
 }
 
-// ── Shared styles ────────────────────────────────────────────
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '.75rem 1rem',
   border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
