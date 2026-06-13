@@ -22,11 +22,12 @@ type Order = {
 };
 
 function StockBadge({ count, threshold }: { count: number; threshold: number }) {
-  const out = count === 0;
-  const low = count > 0 && count <= threshold;
+  const c = Number(count);
+  const out = c === 0;
+  const low = c > 0 && c <= threshold;
   const bg = out ? '#fef2f2' : low ? '#fefce8' : '#dcfce7';
   const color = out ? '#dc2626' : low ? '#ca8a04' : '#16a34a';
-  const label = out ? 'Out of stock' : low ? `Low (${count})` : `In stock (${count})`;
+  const label = out ? 'Out of stock' : low ? `Low (${c})` : `In stock (${c})`;
   return <span style={{ background: bg, color, borderRadius: '2rem', padding: '.2rem .7rem', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>;
 }
 
@@ -42,6 +43,8 @@ export default function AdminDashboard() {
   const [apiError, setApiError] = useState('');
   const [seeding, setSeeding] = useState(false);
   const [seedMsg, setSeedMsg] = useState('');
+  const [seedingSizes, setSeedingSizes] = useState(false);
+  const [seedSizesMsg, setSeedSizesMsg] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   async function fetchProducts() {
@@ -49,7 +52,13 @@ export default function AdminDashboard() {
     if (res.status === 401) { router.push('/admin/login'); return; }
     const data = await res.json();
     if (!res.ok) { setApiError(`Stock API error: ${data.error ?? res.statusText}`); return; }
-    setProducts(Array.isArray(data) ? data : []);
+    // Normalise stock_count to number
+    const normalised = (Array.isArray(data) ? data : []).map((p: Product) => ({
+      ...p,
+      stock_count: Number(p.stock_count),
+      variants: (p.variants ?? []).map((v: Variant) => ({ ...v, stock_count: Number(v.stock_count) })),
+    }));
+    setProducts(normalised);
   }
 
   async function fetchOrders() {
@@ -61,14 +70,6 @@ export default function AdminDashboard() {
   }
 
   useEffect(() => {
-    // Also fetch full products list for products tab
-    fetch('/api/admin/products')
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setProducts(prev => {
-        // Merge: use stock data if available, fallback to products data
-        if (prev.length > 0) return prev;
-        return data.map((p: Product) => ({ ...p, variants: [] }));
-      }); });
     Promise.all([fetchProducts(), fetchOrders()]).finally(() => setLoading(false));
   }, []);
 
@@ -84,6 +85,15 @@ export default function AdminDashboard() {
     const data = await res.json();
     setSeedMsg(data.error ? `❌ ${data.error}` : `✅ Seeded ${data.seeded} products!`);
     setSeeding(false);
+    fetchProducts();
+  }
+
+  async function handleSeedSizes() {
+    setSeedingSizes(true); setSeedSizesMsg('');
+    const res = await fetch('/api/admin/seed-sizes', { method: 'POST' });
+    const data = await res.json();
+    setSeedSizesMsg(data.error ? `❌ ${data.error}` : `✅ ${data.message}`);
+    setSeedingSizes(false);
     fetchProducts();
   }
 
@@ -103,7 +113,6 @@ export default function AdminDashboard() {
         : { product_id: productId, size, stock_count: count }
       ),
     });
-    // Refresh stock data
     await fetchProducts();
     setStockEdits(e => { const n = { ...e }; delete n[key]; return n; });
     setStockSaving(s => ({ ...s, [key]: false }));
@@ -122,8 +131,8 @@ export default function AdminDashboard() {
   }
 
   const allVariants = products.flatMap(p => p.variants ?? []);
-  const outOfStockCount = allVariants.filter(v => v.stock_count === 0).length;
-  const lowStockCount = allVariants.filter(v => v.stock_count > 0 && v.stock_count <= 5).length;
+  const outOfStockCount = allVariants.filter(v => Number(v.stock_count) === 0).length;
+  const lowStockCount = allVariants.filter(v => Number(v.stock_count) > 0 && Number(v.stock_count) <= 5).length;
 
   if (loading) return (
     <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading dashboard…</div>
@@ -279,17 +288,21 @@ export default function AdminDashboard() {
         {/* Inventory tab */}
         {tab === 'inventory' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '.75rem' }}>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>Inventory — Size &amp; Stock</h2>
-              <div style={{ display: 'flex', gap: '.75rem', fontSize: '0.8rem' }}>
-                <span style={{ background: '#fef2f2', color: '#dc2626', borderRadius: '2rem', padding: '.2rem .8rem', fontWeight: 600 }}>{outOfStockCount} out of stock</span>
-                <span style={{ background: '#fefce8', color: '#ca8a04', borderRadius: '2rem', padding: '.2rem .8rem', fontWeight: 600 }}>{lowStockCount} low stock</span>
+              <div style={{ display: 'flex', gap: '.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                {seedSizesMsg && <span style={{ fontSize: '0.8rem', color: seedSizesMsg.startsWith('✅') ? '#16a34a' : '#dc2626' }}>{seedSizesMsg}</span>}
+                <button onClick={handleSeedSizes} disabled={seedingSizes}
+                  style={{ padding: '.4rem .9rem', borderRadius: '.5rem', border: '1px solid var(--color-border)', background: 'white', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
+                  {seedingSizes ? 'Seeding sizes…' : '👚 Seed default sizes (XS–XXL × 10)'}
+                </button>
+                <span style={{ background: '#fef2f2', color: '#dc2626', borderRadius: '2rem', padding: '.2rem .8rem', fontSize: '0.8rem', fontWeight: 600 }}>{outOfStockCount} out of stock</span>
+                <span style={{ background: '#fefce8', color: '#ca8a04', borderRadius: '2rem', padding: '.2rem .8rem', fontSize: '0.8rem', fontWeight: 600 }}>{lowStockCount} low stock</span>
               </div>
             </div>
 
             {products.map(p => (
               <div key={p.id} style={{ background: 'white', borderRadius: '.75rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', overflow: 'hidden' }}>
-                {/* Product header row */}
                 <button
                   onClick={() => setExpanded(e => ({ ...e, [p.id]: !e[p.id] }))}
                   style={{ width: '100%', padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
@@ -297,18 +310,17 @@ export default function AdminDashboard() {
                     {p.image && <img src={p.image} alt={p.name} style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '.375rem' }} />}
                     <div>
                       <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{p.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>{p.category} &middot; {(p.variants ?? []).length} sizes configured</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>{p.category} &middot; {(p.variants ?? []).length} sizes</div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem' }}>
-                    {(p.variants ?? []).some(v => v.stock_count === 0) && (
+                    {(p.variants ?? []).some(v => Number(v.stock_count) === 0) && (
                       <span style={{ background: '#fef2f2', color: '#dc2626', borderRadius: '2rem', padding: '.15rem .6rem', fontSize: '0.7rem', fontWeight: 600 }}>Has OOS sizes</span>
                     )}
-                    <span style={{ color: 'var(--color-text-muted)', fontSize: '1rem' }}>{expanded[p.id] ? '▲' : '▼'}</span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>{expanded[p.id] ? '▲' : '▼'}</span>
                   </div>
                 </button>
 
-                {/* Expanded variant editor */}
                 {expanded[p.id] && (
                   <div style={{ borderTop: '1px solid var(--color-border)', padding: '1rem 1.5rem' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', marginBottom: '1rem' }}>
@@ -321,19 +333,17 @@ export default function AdminDashboard() {
                       </thead>
                       <tbody>
                         {(p.variants ?? []).length === 0 && (
-                          <tr><td colSpan={4} style={{ padding: '.75rem', color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>No sizes configured yet. Add one below.</td></tr>
+                          <tr><td colSpan={4} style={{ padding: '.75rem', color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>No sizes yet — click "👚 Seed default sizes" above or add one below.</td></tr>
                         )}
                         {(p.variants ?? [])
                           .sort((a, b) => SIZE_ORDER.indexOf(a.size) - SIZE_ORDER.indexOf(b.size))
                           .map(v => {
                             const key = v.id;
-                            const editVal = stockEdits[key] ?? v.stock_count;
+                            const editVal = stockEdits[key] ?? Number(v.stock_count);
                             return (
                               <tr key={v.id} style={{ borderTop: '1px solid var(--color-border)' }}>
                                 <td style={{ padding: '.6rem .75rem', fontWeight: 700 }}>{v.size}</td>
-                                <td style={{ padding: '.6rem .75rem' }}>
-                                  <StockBadge count={editVal} threshold={5} />
-                                </td>
+                                <td style={{ padding: '.6rem .75rem' }}><StockBadge count={editVal} threshold={5} /></td>
                                 <td style={{ padding: '.6rem .75rem' }}>
                                   <input type="number" min={0} value={editVal}
                                     onChange={e => setStockEdits(ed => ({ ...ed, [key]: parseInt(e.target.value) || 0 }))}
@@ -353,20 +363,17 @@ export default function AdminDashboard() {
                       </tbody>
                     </table>
 
-                    {/* Add new size */}
                     <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Add size:</span>
                       {['XS','S','M','L','XL','XXL','Free Size'].filter(s => !(p.variants ?? []).find(v => v.size === s)).map(s => (
                         <button key={s} onClick={() => saveVariantStock(p.id, null, s, 0)}
                           style={{ padding: '.25rem .6rem', borderRadius: '.375rem', border: '1px dashed var(--color-border)', background: 'white', fontSize: '0.75rem', cursor: 'pointer', color: 'var(--color-text-muted)' }}>+ {s}</button>
                       ))}
-                      <input
-                        value={newSizes[p.id] ?? ''}
+                      <input value={newSizes[p.id] ?? ''}
                         onChange={e => setNewSizes(n => ({ ...n, [p.id]: e.target.value }))}
                         placeholder="Custom size…"
                         style={{ padding: '.3rem .6rem', border: '1px solid var(--color-border)', borderRadius: '.375rem', fontSize: '0.8rem', width: '120px' }}
-                        onKeyDown={e => e.key === 'Enter' && addSize(p.id)}
-                      />
+                        onKeyDown={e => e.key === 'Enter' && addSize(p.id)} />
                       <button onClick={() => addSize(p.id)}
                         style={{ padding: '.3rem .7rem', borderRadius: '.375rem', background: 'var(--color-primary)', color: 'white', border: 'none', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>Add</button>
                     </div>

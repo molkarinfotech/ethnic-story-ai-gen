@@ -21,7 +21,9 @@ export function SizeSelector({
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
-          const sorted = [...data].sort((a, b) =>
+          // Coerce stock_count to number — Supabase REST can return strings
+          const normalised = data.map((v: Variant) => ({ ...v, stock_count: Number(v.stock_count) }));
+          const sorted = normalised.sort((a: Variant, b: Variant) =>
             SIZE_ORDER.indexOf(a.size) - SIZE_ORDER.indexOf(b.size)
           );
           setVariants(sorted);
@@ -37,7 +39,6 @@ export function SizeSelector({
     onSizeChange?.(v.size, v.stock_count > 0);
   }
 
-  // No variants configured yet — don't render anything
   if (!loading && variants.length === 0) return null;
 
   if (loading) return (
@@ -107,14 +108,13 @@ export function SizeSelector({
         })}
       </div>
 
-      {/* Stock message */}
       {selectedVariant && (
         <p style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)', color: selectedVariant.stock_count <= 5 ? '#ca8a04' : 'var(--color-text-muted)' }}>
           {selectedVariant.stock_count === 0
             ? '❌ Out of stock'
             : selectedVariant.stock_count <= 5
             ? `⚠️ Only ${selectedVariant.stock_count} left in this size`
-            : `✅ In stock`}
+            : '✅ In stock'}
         </p>
       )}
     </div>
