@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(_req: NextRequest, { params }: { params: { productId: string } }) {
   const sb = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,9 +12,14 @@ export async function GET(_req: NextRequest, { params }: { params: { productId: 
     .from('product_variants')
     .select('id, size, stock_count')
     .eq('product_id', params.productId);
-  // No .order() — frontend sorts intelligently (letter sizes first, then numeric)
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  // Coerce stock_count to integer at source
+
   const normalised = (data ?? []).map(v => ({ ...v, stock_count: Number(v.stock_count) }));
-  return NextResponse.json(normalised);
+
+  return NextResponse.json(normalised, {
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+    },
+  });
 }

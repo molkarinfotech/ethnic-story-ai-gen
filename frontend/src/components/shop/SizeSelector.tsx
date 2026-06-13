@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 
 const LETTER_SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
 
+type Variant = { id: string; size: string; stock_count: number };
+
 function sortSizes(variants: Variant[]): Variant[] {
   const letter = variants.filter(v => LETTER_SIZE_ORDER.includes(v.size))
     .sort((a, b) => LETTER_SIZE_ORDER.indexOf(a.size) - LETTER_SIZE_ORDER.indexOf(b.size));
@@ -11,8 +13,6 @@ function sortSizes(variants: Variant[]): Variant[] {
   const other = variants.filter(v => !LETTER_SIZE_ORDER.includes(v.size) && !/^\d/.test(v.size));
   return [...letter, ...numeric, ...other];
 }
-
-type Variant = { id: string; size: string; stock_count: number };
 
 export function SizeSelector({
   productId,
@@ -26,12 +26,14 @@ export function SizeSelector({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`/api/variants/${productId}`)
+    fetch(`/api/variants/${productId}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
           const normalised = data.map((v: Variant) => ({ ...v, stock_count: Number(v.stock_count) }));
           setVariants(sortSizes(normalised));
+        } else {
+          setVariants([]);
         }
         setLoading(false);
       })
