@@ -9,9 +9,11 @@ export type Product = {
   subtitle?: string;
   price: number;          // AUD
   originalPrice?: number; // AUD
+  original_price?: number;
   category: string;
   badge?: string;
   image?: string;
+  selectedSize?: string;  // set when added to cart
 };
 
 export const PRODUCTS: Product[] = [
