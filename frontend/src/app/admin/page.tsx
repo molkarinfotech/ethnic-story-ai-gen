@@ -3,7 +3,16 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatAUD } from '../../lib/products';
 
-const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
+const LETTER_SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
+
+function sortVariants(variants: Variant[]) {
+  const letter = variants.filter(v => LETTER_SIZE_ORDER.includes(v.size))
+    .sort((a, b) => LETTER_SIZE_ORDER.indexOf(a.size) - LETTER_SIZE_ORDER.indexOf(b.size));
+  const numeric = variants.filter(v => /^\d/.test(v.size))
+    .sort((a, b) => parseFloat(a.size) - parseFloat(b.size));
+  const other = variants.filter(v => !LETTER_SIZE_ORDER.includes(v.size) && !/^\d/.test(v.size));
+  return [...letter, ...numeric, ...other];
+}
 
 type Variant = { id: string; size: string; stock_count: number };
 
@@ -38,6 +47,7 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [stockEdits, setStockEdits] = useState<Record<string, number>>({});
   const [stockSaving, setStockSaving] = useState<Record<string, boolean>>({});
+  const [deleting, setDeleting] = useState<Record<string, boolean>>({});
   const [newSizes, setNewSizes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState('');
@@ -52,13 +62,7 @@ export default function AdminDashboard() {
     if (res.status === 401) { router.push('/admin/login'); return; }
     const data = await res.json();
     if (!res.ok) { setApiError(`Stock API error: ${data.error ?? res.statusText}`); return; }
-    // Normalise stock_count to number
-    const normalised = (Array.isArray(data) ? data : []).map((p: Product) => ({
-      ...p,
-      stock_count: Number(p.stock_count),
-      variants: (p.variants ?? []).map((v: Variant) => ({ ...v, stock_count: Number(v.stock_count) })),
-    }));
-    setProducts(normalised);
+    setProducts(Array.isArray(data) ? data : []);
   }
 
   async function fetchOrders() {
@@ -118,8 +122,20 @@ export default function AdminDashboard() {
     setStockSaving(s => ({ ...s, [key]: false }));
   }
 
+  async function deleteVariant(variantId: string, size: string) {
+    if (!confirm(`Remove size "${size}"? This cannot be undone.`)) return;
+    setDeleting(d => ({ ...d, [variantId]: true }));
+    await fetch('/api/admin/stock', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variant_id: variantId }),
+    });
+    await fetchProducts();
+    setDeleting(d => ({ ...d, [variantId]: false }));
+  }
+
   async function addSize(productId: string) {
-    const size = (newSizes[productId] ?? '').trim().toUpperCase();
+    const size = (newSizes[productId] ?? '').trim();
     if (!size) return;
     await fetch('/api/admin/stock', {
       method: 'PATCH',
@@ -326,40 +342,46 @@ export default function AdminDashboard() {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', marginBottom: '1rem' }}>
                       <thead>
                         <tr style={{ background: 'var(--color-surface-offset)' }}>
-                          {['Size', 'Status', 'Stock count', 'Save'].map(h => (
+                          {['Size', 'Status', 'Stock count', 'Save', 'Delete'].map(h => (
                             <th key={h} style={{ padding: '.5rem .75rem', textAlign: 'left', fontWeight: 600, color: 'var(--color-text-muted)' }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {(p.variants ?? []).length === 0 && (
-                          <tr><td colSpan={4} style={{ padding: '.75rem', color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>No sizes yet — click "👚 Seed default sizes" above or add one below.</td></tr>
+                          <tr><td colSpan={5} style={{ padding: '.75rem', color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>No sizes yet — click "👚 Seed default sizes" above or add one below.</td></tr>
                         )}
-                        {(p.variants ?? [])
-                          .sort((a, b) => SIZE_ORDER.indexOf(a.size) - SIZE_ORDER.indexOf(b.size))
-                          .map(v => {
-                            const key = v.id;
-                            const editVal = stockEdits[key] ?? Number(v.stock_count);
-                            return (
-                              <tr key={v.id} style={{ borderTop: '1px solid var(--color-border)' }}>
-                                <td style={{ padding: '.6rem .75rem', fontWeight: 700 }}>{v.size}</td>
-                                <td style={{ padding: '.6rem .75rem' }}><StockBadge count={editVal} threshold={5} /></td>
-                                <td style={{ padding: '.6rem .75rem' }}>
-                                  <input type="number" min={0} value={editVal}
-                                    onChange={e => setStockEdits(ed => ({ ...ed, [key]: parseInt(e.target.value) || 0 }))}
-                                    style={{ width: '80px', padding: '.3rem .5rem', border: '1px solid var(--color-border)', borderRadius: '.375rem', fontSize: '0.875rem' }} />
-                                </td>
-                                <td style={{ padding: '.6rem .75rem' }}>
-                                  <button
-                                    onClick={() => saveVariantStock(p.id, v.id, v.size, editVal)}
-                                    disabled={stockSaving[key] || !(key in stockEdits)}
-                                    style={{ padding: '.3rem .8rem', borderRadius: '.375rem', background: key in stockEdits ? 'var(--color-primary)' : 'var(--color-surface-offset)', color: key in stockEdits ? 'white' : 'var(--color-text-muted)', border: 'none', fontSize: '0.75rem', fontWeight: 600, cursor: key in stockEdits ? 'pointer' : 'default' }}>
-                                    {stockSaving[key] ? 'Saving…' : 'Save'}
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })}
+                        {sortVariants(p.variants ?? []).map(v => {
+                          const key = v.id;
+                          const editVal = stockEdits[key] ?? Number(v.stock_count);
+                          return (
+                            <tr key={v.id} style={{ borderTop: '1px solid var(--color-border)' }}>
+                              <td style={{ padding: '.6rem .75rem', fontWeight: 700 }}>{v.size}</td>
+                              <td style={{ padding: '.6rem .75rem' }}><StockBadge count={editVal} threshold={5} /></td>
+                              <td style={{ padding: '.6rem .75rem' }}>
+                                <input type="number" min={0} value={editVal}
+                                  onChange={e => setStockEdits(ed => ({ ...ed, [key]: parseInt(e.target.value) || 0 }))}
+                                  style={{ width: '80px', padding: '.3rem .5rem', border: '1px solid var(--color-border)', borderRadius: '.375rem', fontSize: '0.875rem' }} />
+                              </td>
+                              <td style={{ padding: '.6rem .75rem' }}>
+                                <button
+                                  onClick={() => saveVariantStock(p.id, v.id, v.size, editVal)}
+                                  disabled={stockSaving[key] || !(key in stockEdits)}
+                                  style={{ padding: '.3rem .8rem', borderRadius: '.375rem', background: key in stockEdits ? 'var(--color-primary)' : 'var(--color-surface-offset)', color: key in stockEdits ? 'white' : 'var(--color-text-muted)', border: 'none', fontSize: '0.75rem', fontWeight: 600, cursor: key in stockEdits ? 'pointer' : 'default' }}>
+                                  {stockSaving[key] ? 'Saving…' : 'Save'}
+                                </button>
+                              </td>
+                              <td style={{ padding: '.6rem .75rem' }}>
+                                <button
+                                  onClick={() => deleteVariant(v.id, v.size)}
+                                  disabled={deleting[v.id]}
+                                  style={{ padding: '.3rem .7rem', borderRadius: '.375rem', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: '0.75rem', cursor: 'pointer' }}>
+                                  {deleting[v.id] ? '…' : '🗑️'}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
 
@@ -371,8 +393,8 @@ export default function AdminDashboard() {
                       ))}
                       <input value={newSizes[p.id] ?? ''}
                         onChange={e => setNewSizes(n => ({ ...n, [p.id]: e.target.value }))}
-                        placeholder="Custom size…"
-                        style={{ padding: '.3rem .6rem', border: '1px solid var(--color-border)', borderRadius: '.375rem', fontSize: '0.8rem', width: '120px' }}
+                        placeholder="Custom e.g. 32, 38…"
+                        style={{ padding: '.3rem .6rem', border: '1px solid var(--color-border)', borderRadius: '.375rem', fontSize: '0.8rem', width: '140px' }}
                         onKeyDown={e => e.key === 'Enter' && addSize(p.id)} />
                       <button onClick={() => addSize(p.id)}
                         style={{ padding: '.3rem .7rem', borderRadius: '.375rem', background: 'var(--color-primary)', color: 'white', border: 'none', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>Add</button>

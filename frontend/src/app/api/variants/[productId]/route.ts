@@ -9,8 +9,10 @@ export async function GET(_req: NextRequest, { params }: { params: { productId: 
   const { data, error } = await sb
     .from('product_variants')
     .select('id, size, stock_count')
-    .eq('product_id', params.productId)
-    .order('size');
+    .eq('product_id', params.productId);
+  // No .order() — frontend sorts intelligently (letter sizes first, then numeric)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data ?? []);
+  // Coerce stock_count to integer at source
+  const normalised = (data ?? []).map(v => ({ ...v, stock_count: Number(v.stock_count) }));
+  return NextResponse.json(normalised);
 }

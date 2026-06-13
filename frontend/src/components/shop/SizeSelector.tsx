@@ -1,7 +1,16 @@
 'use client';
 import { useEffect, useState } from 'react';
 
-const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
+const LETTER_SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
+
+function sortSizes(variants: Variant[]): Variant[] {
+  const letter = variants.filter(v => LETTER_SIZE_ORDER.includes(v.size))
+    .sort((a, b) => LETTER_SIZE_ORDER.indexOf(a.size) - LETTER_SIZE_ORDER.indexOf(b.size));
+  const numeric = variants.filter(v => /^\d/.test(v.size))
+    .sort((a, b) => parseFloat(a.size) - parseFloat(b.size));
+  const other = variants.filter(v => !LETTER_SIZE_ORDER.includes(v.size) && !/^\d/.test(v.size));
+  return [...letter, ...numeric, ...other];
+}
 
 type Variant = { id: string; size: string; stock_count: number };
 
@@ -21,12 +30,8 @@ export function SizeSelector({
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
-          // Coerce stock_count to number — Supabase REST can return strings
           const normalised = data.map((v: Variant) => ({ ...v, stock_count: Number(v.stock_count) }));
-          const sorted = normalised.sort((a: Variant, b: Variant) =>
-            SIZE_ORDER.indexOf(a.size) - SIZE_ORDER.indexOf(b.size)
-          );
-          setVariants(sorted);
+          setVariants(sortSizes(normalised));
         }
         setLoading(false);
       })
@@ -36,7 +41,7 @@ export function SizeSelector({
   function select(v: Variant) {
     if (v.stock_count === 0) return;
     setSelected(v.size);
-    onSizeChange?.(v.size, v.stock_count > 0);
+    onSizeChange?.(v.size, true);
   }
 
   if (!loading && variants.length === 0) return null;
@@ -95,7 +100,7 @@ export function SizeSelector({
               }}
             >
               {v.size}
-              {lowStock && !outOfStock && (
+              {lowStock && (
                 <span style={{
                   position: 'absolute', top: '-6px', right: '-6px',
                   background: '#f59e0b', color: 'white',
