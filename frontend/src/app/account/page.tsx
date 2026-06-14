@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../context/AuthContext';
 import { formatAUD } from '../../lib/products';
 
 type OrderItem = { id: string; name: string; quantity: number; price: number; size?: string };
@@ -13,38 +13,28 @@ type Order = {
 
 export default function AccountPage() {
   const router = useRouter();
+  const { user, session, loading: authLoading, signOut } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [email, setEmail] = useState('');
+  const [ordersLoading, setOrdersLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { router.push('/login'); return; }
+    if (authLoading) return;
+    if (!user || !session) { router.push('/login'); return; }
 
-      setEmail(session.user.email ?? '');
+    fetch('/api/account/orders', {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) setOrders(data);
+        else setError(data.error ?? 'Failed to load orders');
+      })
+      .catch(() => setError('Network error — please try again.'))
+      .finally(() => setOrdersLoading(false));
+  }, [authLoading, user, session, router]);
 
-      const res = await fetch('/api/account/orders', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-
-      if (res.status === 401) { router.push('/login'); return; }
-
-      const data = await res.json();
-      if (!res.ok) { setError(data.error ?? 'Failed to load orders'); }
-      else { setOrders(Array.isArray(data) ? data : []); }
-
-      setLoading(false);
-    })();
-  }, [router]);
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push('/');
-  }
-
-  if (loading) return (
+  if (authLoading || ordersLoading) return (
     <main style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)' }}>
       Loading your account…
     </main>
@@ -55,8 +45,8 @@ export default function AccountPage() {
       <div style={{ background: 'white', borderBottom: '1px solid var(--color-border)', padding: '1rem 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <a href="/" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-primary)', textDecoration: 'none' }}>Ethnic Story</a>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-          <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{email}</span>
-          <button onClick={handleLogout} style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Sign out</button>
+          <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{user?.email}</span>
+          <button onClick={signOut} style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Sign out</button>
         </div>
       </div>
 

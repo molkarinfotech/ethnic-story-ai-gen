@@ -8,8 +8,8 @@ import {
   useElements,
 } from '@stripe/react-stripe-js';
 import { useCart } from '../../context/CartContext';
+import { useAuth } from '../../context/AuthContext';
 import { formatAUD } from '../../lib/products';
-import { supabase } from '../../lib/supabase';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
@@ -20,19 +20,15 @@ export type ShippingAddress = {
   line1: string; line2: string; suburb: string; state: string; postcode: string;
 };
 
-async function getAccessToken(): Promise<string | null> {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token ?? null;
-}
-
 function PaymentForm({
-  grandTotal, items, clearCart, shipping_address, paymentIntentId,
+  grandTotal, items, clearCart, shipping_address, paymentIntentId, accessToken,
 }: {
   grandTotal: number;
   items: ReturnType<typeof useCart>['items'];
   clearCart: () => void;
   shipping_address: ShippingAddress;
   paymentIntentId: string;
+  accessToken: string | null;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -52,15 +48,13 @@ function PaymentForm({
     setLoading(true);
     setErrorMsg('');
 
-    // Update payment intent with form data + user_id before confirming
     try {
-      const token = await getAccessToken();
       await fetch('/api/update-payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           paymentIntentId,
-          token,
+          token: accessToken,
           metadata: {
             customer_name:     name,
             customer_email:    email,
@@ -85,13 +79,7 @@ function PaymentForm({
         payment_method_data: {
           billing_details: {
             name, email, phone,
-            address: {
-              line1,
-              line2: shipping_address.line2 || undefined,
-              city: suburb, state,
-              postal_code: postcode,
-              country: 'AU',
-            },
+            address: { line1, line2: shipping_address.line2 || undefined, city: suburb, state, postal_code: postcode, country: 'AU' },
           },
         },
       },
@@ -168,9 +156,7 @@ function PaymentForm({
       <div className="stripe-element-wrap">
         <PaymentElement options={{ layout: 'tabs' }} />
       </div>
-
       {errorMsg && <div className="stripe-error" role="alert">{errorMsg}</div>}
-
       <button type="submit" className="btn btn-primary"
         disabled={!stripe || loading}
         style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-6)', minHeight: '52px', fontSize: 'var(--text-base)' }}>
@@ -185,6 +171,7 @@ function PaymentForm({
 
 export function CheckoutForm() {
   const { items, totalPrice, totalItems, clearCart, hydrated } = useCart();
+  const { session } = useAuth();
   const [clientSecret, setClientSecret] = useState('');
   const [paymentIntentId, setPaymentIntentId] = useState('');
   const [intentError, setIntentError] = useState('');
@@ -199,25 +186,22 @@ export function CheckoutForm() {
 
   useEffect(() => {
     if (!hydrated || totalItems === 0) return;
-    (async () => {
-      const token = await getAccessToken();
-      fetch('/api/create-payment-intent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: grandTotal, token }),
+    fetch('/api/create-payment-intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: grandTotal, token: session?.access_token ?? null }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.clientSecret) {
+          setClientSecret(data.clientSecret);
+          setPaymentIntentId(data.clientSecret.split('_secret_')[0]);
+        } else {
+          setIntentError(data.error ?? 'Could not initialise payment.');
+        }
       })
-        .then(r => r.json())
-        .then(data => {
-          if (data.clientSecret) {
-            setClientSecret(data.clientSecret);
-            setPaymentIntentId(data.clientSecret.split('_secret_')[0]);
-          } else {
-            setIntentError(data.error ?? 'Could not initialise payment.');
-          }
-        })
-        .catch(() => setIntentError('Network error — please refresh and try again.'));
-    })();
-  }, [hydrated, totalItems, grandTotal]);
+      .catch(() => setIntentError('Network error — please refresh and try again.'));
+  }, [hydrated, totalItems, grandTotal, session]);
 
   if (!hydrated) return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Loading your bag…</div>;
   if (totalItems === 0) return (
@@ -264,6 +248,7 @@ export function CheckoutForm() {
           clearCart={clearCart}
           shipping_address={addrProxy}
           paymentIntentId={paymentIntentId}
+          accessToken={session?.access_token ?? null}
         />
         <aside className="order-summary">
           <h2 className="checkout-section-title">Order summary</h2>
