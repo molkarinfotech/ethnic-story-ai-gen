@@ -77,17 +77,15 @@ export async function POST(req: NextRequest) {
   const file = formData.get('image') as File | null;
   if (!file) return NextResponse.json({ error: 'image required' }, { status: 400 });
 
-  // Always fetch products for matching — needed even if Vision fails
   const sb = getServiceSupabase();
   const { data: products } = await sb
     .from('products')
-    .select('id, name, slug, category, image')
+    .select('id, name, slug, category')
     .order('name');
   const allProducts = products ?? [];
 
   const apiKey = process.env.GOOGLE_VISION_API_KEY?.trim();
 
-  // If no API key, return graceful fallback with products but no detections
   if (!apiKey) {
     return NextResponse.json({
       visionSkipped: true,
@@ -99,14 +97,13 @@ export async function POST(req: NextRequest) {
       detectedSize: null,
       fullText: '',
       suggestedProducts: allProducts.slice(0, 5),
+      allProducts,
     });
   }
 
-  // Convert file to base64
   const arrayBuffer = await file.arrayBuffer();
   const base64 = Buffer.from(arrayBuffer).toString('base64');
 
-  // Call Google Vision API
   let visionResult: any = null;
   let visionError: string | null = null;
 
@@ -131,7 +128,6 @@ export async function POST(req: NextRequest) {
 
     const visionData = await visionRes.json();
 
-    // Google Vision errors come back as 200 with an error field
     if (!visionRes.ok || visionData.error) {
       const msg = visionData.error?.message ?? visionData.error ?? `HTTP ${visionRes.status}`;
       visionError = `Google Vision: ${msg}`;
@@ -144,7 +140,6 @@ export async function POST(req: NextRequest) {
     visionError = `Network error calling Vision API: ${e.message}`;
   }
 
-  // If Vision failed, return fallback with clear error message
   if (visionError || !visionResult) {
     return NextResponse.json({
       visionSkipped: true,
@@ -156,17 +151,14 @@ export async function POST(req: NextRequest) {
       detectedSize: null,
       fullText: '',
       suggestedProducts: allProducts.slice(0, 5),
+      allProducts,
     });
   }
 
-  // --- Extract labels ---
-  const labelAnnotations: { description: string; score: number }[] =
-    visionResult?.labelAnnotations ?? [];
+  const labelAnnotations: { description: string; score: number }[] = visionResult?.labelAnnotations ?? [];
   const labels = labelAnnotations.map((l: any) => l.description);
 
-  // --- Extract dominant colours ---
-  const dominantColors: any[] =
-    visionResult?.imagePropertiesAnnotation?.dominantColors?.colors ?? [];
+  const dominantColors: any[] = visionResult?.imagePropertiesAnnotation?.dominantColors?.colors ?? [];
 
   const detectedColours = dominantColors
     .sort((a: any, b: any) => b.score - a.score)
@@ -183,15 +175,10 @@ export async function POST(req: NextRequest) {
     .filter((c: any, i: number, arr: any[]) => arr.findIndex((x: any) => x.name === c.name) === i);
 
   const primaryColour = detectedColours[0]?.name ?? null;
-
-  // --- Extract text for size detection ---
   const fullText: string = visionResult?.textAnnotations?.[0]?.description ?? '';
   const detectedSize = extractSize(fullText);
-
-  // --- Detect category ---
   const detectedCategory = detectCategory(labels);
 
-  // --- Fuzzy match against products ---
   const labelLower = labels.map((l: string) => l.toLowerCase());
   const scoredProducts = allProducts.map(p => {
     let score = 0;
@@ -214,5 +201,6 @@ export async function POST(req: NextRequest) {
     detectedSize,
     fullText,
     suggestedProducts: scoredProducts.slice(0, 5),
+    allProducts,
   });
 }

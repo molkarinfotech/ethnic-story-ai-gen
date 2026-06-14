@@ -3,7 +3,7 @@ import { useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 type DetectedColour = { name: string; score: number; pixelFraction: number };
-type SuggestedProduct = { id: string; name: string; slug: string; category: string; image?: string };
+type SuggestedProduct = { id: string; name: string; slug: string; category: string };
 
 type AnalysisResult = {
   visionSkipped: boolean;
@@ -31,15 +31,11 @@ type NewProductForm = {
   price: string;
   original_price: string;
   description: string;
-  fabric: string;
-  occasion: string;
 };
 
-const SIZES      = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
+const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
 const CATEGORIES = ['sarees', 'lehengas', 'kurtas', 'kids'];
-const OCCASIONS  = ['Wedding', 'Festival', 'Casual', 'Party', 'Daily Wear', 'Bridal'];
 
-// ── Styles ──────────────────────────────────────────────────────────────────
 const card: React.CSSProperties = {
   background: 'white', borderRadius: '1rem',
   boxShadow: '0 2px 12px rgba(0,0,0,.08)',
@@ -57,12 +53,10 @@ const inputStyle: React.CSSProperties = {
   borderRadius: '.65rem', fontSize: '.95rem', boxSizing: 'border-box', background: 'white',
 };
 const selectStyle: React.CSSProperties = {
-  ...({} as any),
   width: '100%', padding: '.65rem .85rem', border: '1.5px solid #e5e7eb',
-  borderRadius: '.65rem', fontSize: '.95rem', boxSizing: 'border-box' as any,
-  background: 'white', cursor: 'pointer', appearance: 'auto' as any,
-};
-const label: React.CSSProperties = {
+  borderRadius: '.65rem', fontSize: '.95rem', background: 'white', cursor: 'pointer',
+} as React.CSSProperties;
+const fieldLabel: React.CSSProperties = {
   fontSize: '.8rem', fontWeight: 700, color: '#6b7280',
   textTransform: 'uppercase', letterSpacing: '.05em', display: 'block', marginBottom: '.4rem',
 };
@@ -83,7 +77,7 @@ function slugify(str: string) {
 }
 
 export default function ScanPage() {
-  const router  = useRouter();
+  const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [preview,   setPreview]   = useState<string | null>(null);
@@ -94,7 +88,6 @@ export default function ScanPage() {
   const [saved,     setSaved]     = useState(false);
   const [error,     setError]     = useState<string | null>(null);
 
-  // product picker
   const [productSearch, setProductSearch] = useState('');
   const [showNewProduct, setShowNewProduct] = useState(false);
   const [creatingProduct, setCreatingProduct] = useState(false);
@@ -104,11 +97,9 @@ export default function ScanPage() {
   });
 
   const [newProduct, setNewProduct] = useState<NewProductForm>({
-    name: '', category: '', price: '', original_price: '',
-    description: '', fabric: '', occasion: '',
+    name: '', category: '', price: '', original_price: '', description: '',
   });
 
-  // ── authFetch ──────────────────────────────────────────────────────────────
   async function authFetch(url: string, init: RequestInit = {}) {
     const res = await fetch(url, { ...init, credentials: 'include' });
     if (res.status === 401) {
@@ -118,7 +109,6 @@ export default function ScanPage() {
     return res;
   }
 
-  // ── Photo capture ──────────────────────────────────────────────────────────
   const handleFile = useCallback(async (file: File) => {
     setError(null); setAnalysis(null); setSaved(false); setShowNewProduct(false);
     setImageFile(file);
@@ -156,29 +146,26 @@ export default function ScanPage() {
     setPreview(null); setImageFile(null); setAnalysis(null);
     setSaved(false); setError(null); setShowNewProduct(false); setProductSearch('');
     setForm({ productId: '', productName: '', colour: '', size: '', stockCount: 1 });
-    setNewProduct({ name: '', category: '', price: '', original_price: '', description: '', fabric: '', occasion: '' });
+    setNewProduct({ name: '', category: '', price: '', original_price: '', description: '' });
     if (fileRef.current) fileRef.current.value = '';
   }
 
-  // ── Create new product ─────────────────────────────────────────────────────
   async function handleCreateProduct() {
-    if (!newProduct.name)     { setError('Product name is required');  return; }
-    if (!newProduct.category) { setError('Category is required');      return; }
-    if (!newProduct.price)    { setError('Price is required');          return; }
+    if (!newProduct.name)     { setError('Product name is required'); return; }
+    if (!newProduct.category) { setError('Category is required');     return; }
+    if (!newProduct.price)    { setError('Price is required');        return; }
     setCreatingProduct(true); setError(null);
     try {
-      const slug = slugify(newProduct.name);
-      const body = {
-        name:           newProduct.name.trim(),
-        slug,
-        category:       newProduct.category,
-        price:          parseFloat(newProduct.price),
-        original_price: newProduct.original_price ? parseFloat(newProduct.original_price) : null,
-        description:    newProduct.description.trim() || null,
-        fabric:         newProduct.fabric.trim()      || null,
-        occasion:       newProduct.occasion           || null,
-        in_stock:       true,
+      const body: Record<string, unknown> = {
+        name:     newProduct.name.trim(),
+        slug:     slugify(newProduct.name),
+        category: newProduct.category,
+        price:    parseFloat(newProduct.price),
+        in_stock: true,
       };
+      if (newProduct.original_price) body.original_price = parseFloat(newProduct.original_price);
+      if (newProduct.description)    body.description    = newProduct.description.trim();
+
       const res  = await authFetch('/api/admin/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -187,16 +174,14 @@ export default function ScanPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed to create product');
 
-      // Select the newly created product and close form
       setForm(f => ({ ...f, productId: data.id, productName: data.name }));
-      // Add it into suggestedProducts list so dropdown shows it
       setAnalysis(a => a ? {
         ...a,
         allProducts: [data, ...(a.allProducts ?? [])],
         suggestedProducts: [data, ...(a.suggestedProducts ?? [])],
       } : a);
       setShowNewProduct(false);
-      setNewProduct({ name: '', category: '', price: '', original_price: '', description: '', fabric: '', occasion: '' });
+      setNewProduct({ name: '', category: '', price: '', original_price: '', description: '' });
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -204,7 +189,6 @@ export default function ScanPage() {
     }
   }
 
-  // ── Save to inventory ──────────────────────────────────────────────────────
   async function handleSave() {
     if (!form.productId) { setError('Please select a product'); return; }
     if (!form.size)      { setError('Please select a size');    return; }
@@ -238,17 +222,13 @@ export default function ScanPage() {
   }
 
   const showForm = analysis !== null && !analysing;
-
-  // Filtered product list for dropdown
-  const allProducts   = analysis?.allProducts ?? analysis?.suggestedProducts ?? [];
+  const allProducts = analysis?.allProducts ?? analysis?.suggestedProducts ?? [];
   const filteredProds = productSearch.trim()
     ? allProducts.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()))
     : allProducts;
 
   return (
     <div style={{ minHeight: '100dvh', background: '#fdf2f8', fontFamily: 'system-ui, sans-serif' }}>
-
-      {/* Top bar */}
       <div style={{ background: '#9d174d', color: 'white', padding: '.85rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem' }}>
           <button onClick={() => router.push('/admin')} style={{ background: 'none', border: 'none', color: 'white', fontSize: '1.2rem', cursor: 'pointer', padding: 0 }}>←</button>
@@ -258,8 +238,6 @@ export default function ScanPage() {
       </div>
 
       <div style={{ maxWidth: '520px', margin: '0 auto', padding: '1rem' }}>
-
-        {/* Camera picker */}
         {!preview && (
           <div onClick={() => fileRef.current?.click()}
             style={{ background: 'white', border: '2px dashed #e9a8c8', borderRadius: '1.25rem', padding: '3rem 1rem', textAlign: 'center', cursor: 'pointer', marginBottom: '1rem' }}>
@@ -270,7 +248,6 @@ export default function ScanPage() {
           </div>
         )}
 
-        {/* Preview */}
         {preview && (
           <div style={{ ...card, padding: 0, overflow: 'hidden', position: 'relative', marginBottom: '1rem' }}>
             <img src={preview} alt="Scanned" style={{ width: '100%', maxHeight: '300px', objectFit: 'cover', display: 'block' }} />
@@ -292,7 +269,6 @@ export default function ScanPage() {
           </div>
         )}
 
-        {/* Vision warning */}
         {analysis?.visionSkipped && analysis.visionError && (
           <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '.75rem', padding: '.75rem 1rem', color: '#92400e', fontSize: '.8rem', marginBottom: '1rem', display: 'flex', gap: '.5rem' }}>
             <span>⚠️</span>
@@ -301,14 +277,12 @@ export default function ScanPage() {
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.75rem', padding: '.85rem 1rem', color: '#dc2626', fontSize: '.875rem', marginBottom: '1rem' }}>
             ❌ {error}
           </div>
         )}
 
-        {/* AI detections */}
         {showForm && !analysis.visionSkipped && (
           <div style={card}>
             <div style={{ fontWeight: 700, marginBottom: '.6rem', color: '#6b7280', fontSize: '.8rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>🤖 AI Detected</div>
@@ -321,16 +295,13 @@ export default function ScanPage() {
           </div>
         )}
 
-        {/* ── Review form ── */}
         {showForm && (
           <div style={card}>
             <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1rem' }}>✏️ Review &amp; Confirm</div>
 
-            {/* ── Product dropdown ── */}
             <div style={{ marginBottom: '1rem' }}>
-              <label style={label}>Product</label>
+              <label style={fieldLabel}>Product</label>
 
-              {/* Search + select */}
               {!showNewProduct && (
                 <>
                   <input
@@ -342,7 +313,7 @@ export default function ScanPage() {
                   <select
                     value={form.productId}
                     onChange={e => {
-                      const id   = e.target.value;
+                      const id = e.target.value;
                       const name = filteredProds.find(p => p.id === id)?.name ?? '';
                       setForm(f => ({ ...f, productId: id, productName: name }));
                     }}
@@ -364,18 +335,17 @@ export default function ScanPage() {
                 </>
               )}
 
-              {/* ── New Product form ── */}
               {showNewProduct && (
                 <div style={{ background: '#fdf2f8', borderRadius: '.75rem', padding: '1rem', border: '1.5px solid #fbcfe8' }}>
                   <div style={{ fontWeight: 700, marginBottom: '.75rem', color: '#9d174d', fontSize: '.9rem' }}>🆕 New Product Details</div>
 
                   <div style={{ marginBottom: '.65rem' }}>
-                    <label style={label}>Product Name *</label>
+                    <label style={fieldLabel}>Product Name *</label>
                     <input value={newProduct.name} onChange={e => setNewProduct(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Red Bridal Lehenga" style={inputStyle} />
                   </div>
 
                   <div style={{ marginBottom: '.65rem' }}>
-                    <label style={label}>Category *</label>
+                    <label style={fieldLabel}>Category *</label>
                     <select value={newProduct.category} onChange={e => setNewProduct(p => ({ ...p, category: e.target.value }))} style={selectStyle}>
                       <option value="">— Select —</option>
                       {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
@@ -384,36 +354,23 @@ export default function ScanPage() {
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.5rem', marginBottom: '.65rem' }}>
                     <div>
-                      <label style={label}>Price (₹) *</label>
-                      <input type="number" value={newProduct.price} onChange={e => setNewProduct(p => ({ ...p, price: e.target.value }))} placeholder="e.g. 4999" style={inputStyle} />
+                      <label style={fieldLabel}>Selling Price (₹) *</label>
+                      <input type="number" min="0" value={newProduct.price} onChange={e => setNewProduct(p => ({ ...p, price: e.target.value }))} placeholder="e.g. 4999" style={inputStyle} />
                     </div>
                     <div>
-                      <label style={label}>Original Price (₹)</label>
-                      <input type="number" value={newProduct.original_price} onChange={e => setNewProduct(p => ({ ...p, original_price: e.target.value }))} placeholder="e.g. 6999" style={inputStyle} />
+                      <label style={fieldLabel}>Original Price (₹)</label>
+                      <input type="number" min="0" value={newProduct.original_price} onChange={e => setNewProduct(p => ({ ...p, original_price: e.target.value }))} placeholder="e.g. 6999" style={inputStyle} />
                     </div>
-                  </div>
-
-                  <div style={{ marginBottom: '.65rem' }}>
-                    <label style={label}>Fabric</label>
-                    <input value={newProduct.fabric} onChange={e => setNewProduct(p => ({ ...p, fabric: e.target.value }))} placeholder="e.g. Silk, Cotton, Georgette" style={inputStyle} />
-                  </div>
-
-                  <div style={{ marginBottom: '.65rem' }}>
-                    <label style={label}>Occasion</label>
-                    <select value={newProduct.occasion} onChange={e => setNewProduct(p => ({ ...p, occasion: e.target.value }))} style={selectStyle}>
-                      <option value="">— Select —</option>
-                      {OCCASIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
                   </div>
 
                   <div style={{ marginBottom: '.75rem' }}>
-                    <label style={label}>Description</label>
+                    <label style={fieldLabel}>Description</label>
                     <textarea
                       value={newProduct.description}
                       onChange={e => setNewProduct(p => ({ ...p, description: e.target.value }))}
-                      placeholder="Optional product description…"
+                      placeholder="Optional — fabric, occasion, notes…"
                       rows={3}
-                      style={{ ...inputStyle, resize: 'vertical' as any }}
+                      style={{ ...inputStyle, resize: 'vertical' } as React.CSSProperties}
                     />
                   </div>
 
@@ -421,7 +378,7 @@ export default function ScanPage() {
                     <button onClick={handleCreateProduct} disabled={creatingProduct} style={{ ...btnPrimary, flex: 1, opacity: creatingProduct ? .7 : 1 }}>
                       {creatingProduct ? '⏳ Creating…' : '✅ Create Product'}
                     </button>
-                    <button onClick={() => setShowNewProduct(false)} style={{ padding: '.75rem 1rem', borderRadius: '.75rem', border: '1.5px solid #e5e7eb', background: 'white', color: '#6b7280', cursor: 'pointer', fontWeight: 600, fontSize: '.85rem' }}>
+                    <button onClick={() => { setShowNewProduct(false); setError(null); }} style={{ padding: '.75rem 1rem', borderRadius: '.75rem', border: '1.5px solid #e5e7eb', background: 'white', color: '#6b7280', cursor: 'pointer', fontWeight: 600, fontSize: '.85rem' }}>
                       Cancel
                     </button>
                   </div>
@@ -429,9 +386,8 @@ export default function ScanPage() {
               )}
             </div>
 
-            {/* ── Colour ── */}
             <div style={{ marginBottom: '1rem' }}>
-              <label style={label}>Colour</label>
+              <label style={fieldLabel}>Colour</label>
               {analysis.detectedColours.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem', marginBottom: '.5rem' }}>
                   {analysis.detectedColours.map(c => (
@@ -442,9 +398,8 @@ export default function ScanPage() {
               <input value={form.colour} onChange={e => setForm(f => ({ ...f, colour: e.target.value }))} placeholder="Type a colour…" style={inputStyle} />
             </div>
 
-            {/* ── Size ── */}
             <div style={{ marginBottom: '1rem' }}>
-              <label style={label}>Size</label>
+              <label style={fieldLabel}>Size</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem', marginBottom: '.5rem' }}>
                 {SIZES.map(s => (
                   <button key={s} onClick={() => setForm(f => ({ ...f, size: s }))} style={pill(form.size === s)}>{s}</button>
@@ -453,9 +408,8 @@ export default function ScanPage() {
               <input value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} placeholder="Or type a size…" style={inputStyle} />
             </div>
 
-            {/* ── Stock ── */}
             <div style={{ marginBottom: '1.25rem' }}>
-              <label style={label}>Stock qty</label>
+              <label style={fieldLabel}>Stock qty</label>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                 <button onClick={() => setForm(f => ({ ...f, stockCount: Math.max(0, f.stockCount - 1) }))} style={{ width: '42px', height: '42px', borderRadius: '50%', border: '1.5px solid #e5e7eb', background: 'white', fontSize: '1.3rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
                 <span style={{ fontSize: '1.6rem', fontWeight: 700, minWidth: '2.5rem', textAlign: 'center' }}>{form.stockCount}</span>
