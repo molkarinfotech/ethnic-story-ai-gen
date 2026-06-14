@@ -4,16 +4,10 @@ import { getServiceSupabase } from '../../../lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-const missingVars: string[] = [];
-if (!process.env.STRIPE_SECRET_KEY)        missingVars.push('STRIPE_SECRET_KEY');
-if (!process.env.STRIPE_WEBHOOK_SECRET)    missingVars.push('STRIPE_WEBHOOK_SECRET');
-if (!process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_SECRET_KEY)
-  missingVars.push('SUPABASE_SERVICE_ROLE_KEY');
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL && !process.env.SUPABASE_URL)
-  missingVars.push('NEXT_PUBLIC_SUPABASE_URL');
-if (missingVars.length) {
-  console.error('[stripe-webhook] MISSING ENV VARS:', missingVars.join(', '));
-}
+// Disable Next.js body parsing — Stripe needs the raw bytes
+export const config = {
+  api: { bodyParser: false },
+};
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? '';
@@ -21,39 +15,46 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? '';
 console.log('[stripe-webhook] Secret loaded:', webhookSecret ? webhookSecret.slice(0, 20) + '...' : 'NOT SET');
 
 export async function POST(req: NextRequest) {
-  const buf  = await req.arrayBuffer();
-  const body = Buffer.from(buf).toString('utf8');
-  const sig  = req.headers.get('stripe-signature') ?? '';
+  const sig = req.headers.get('stripe-signature') ?? '';
 
-  console.log('[stripe-webhook] Incoming POST | sig present:', sig ? 'YES' : 'NO', '| secret present:', webhookSecret ? 'YES' : 'NO');
+  // Read body as raw bytes — critical for signature verification
+  const chunks: Uint8Array[] = [];
+  const reader = req.body?.getReader();
+  if (!reader) {
+    return NextResponse.json({ error: 'No body' }, { status: 400 });
+  }
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) chunks.push(value);
+  }
+  const rawBody = Buffer.concat(chunks.map(c => Buffer.from(c)));
+
+  console.log('[stripe-webhook] Body length:', rawBody.length, '| sig present:', sig ? 'YES' : 'NO');
   console.log('[stripe-webhook] Using secret:', webhookSecret.slice(0, 20) + '...');
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
+    event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
   } catch (err: any) {
     console.error('[stripe-webhook] Signature validation failed:', err.message);
-    console.error('[stripe-webhook] Secret used (first 20):', webhookSecret.slice(0, 20));
-    console.error('[stripe-webhook] Sig header (first 60):', sig.slice(0, 60));
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
-  console.log('[stripe-webhook] Received event:', event.type, event.id);
+  console.log('[stripe-webhook] Event verified:', event.type, event.id);
 
   if (event.type === 'payment_intent.succeeded') {
     const pi = event.data.object as Stripe.PaymentIntent;
     const m  = pi.metadata ?? {};
 
-    console.log('[stripe-webhook] PaymentIntent:', pi.id, '| amount:', pi.amount, '| metadata keys:', Object.keys(m).join(', '));
+    console.log('[stripe-webhook] PI:', pi.id, '| amount:', pi.amount, '| metadata:', Object.keys(m).join(', '));
 
     let items: object[] = [];
     try { items = JSON.parse(m.items ?? '[]'); } catch { items = []; }
 
     const sb = getServiceSupabase();
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || 'MISSING';
-    const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || 'MISSING';
-    console.log('[stripe-webhook] Supabase URL:', supabaseUrl.slice(0, 40));
-    console.log('[stripe-webhook] Service key set:', serviceKey !== 'MISSING' ? 'YES (' + serviceKey.slice(0, 10) + '...)' : 'NO - INSERT WILL FAIL');
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
+    console.log('[stripe-webhook] Service key set:', serviceKey ? 'YES (' + serviceKey.slice(0, 10) + '...)' : 'NO - INSERT WILL FAIL');
 
     const { error, data } = await sb.from('orders').insert({
       stripe_payment_intent_id: pi.id,
@@ -74,18 +75,11 @@ export async function POST(req: NextRequest) {
     }).select();
 
     if (error) {
-      console.error('[stripe-webhook] Supabase INSERT FAILED');
-      console.error('  code:    ', error.code);
-      console.error('  message: ', error.message);
-      console.error('  details: ', error.details);
-      console.error('  hint:    ', error.hint);
-      return NextResponse.json(
-        { error: 'Database insert failed', detail: error.message },
-        { status: 500 }
-      );
+      console.error('[stripe-webhook] INSERT FAILED:', error.code, error.message);
+      return NextResponse.json({ error: 'Database insert failed', detail: error.message }, { status: 500 });
     }
 
-    console.log('[stripe-webhook] Order saved successfully. Row:', JSON.stringify(data));
+    console.log('[stripe-webhook] Order saved:', JSON.stringify(data));
   }
 
   return NextResponse.json({ received: true });
