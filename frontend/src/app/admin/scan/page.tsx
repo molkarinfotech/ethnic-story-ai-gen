@@ -65,6 +65,16 @@ export default function ScanPage() {
     productId: '', productName: '', colour: '', size: '', stockCount: 1,
   });
 
+  // Helper: fetch with credentials always included; redirects to login on 401
+  async function authFetch(url: string, init: RequestInit = {}) {
+    const res = await fetch(url, { ...init, credentials: 'include' });
+    if (res.status === 401) {
+      router.push('/admin/login');
+      throw new Error('Session expired — please log in again');
+    }
+    return res;
+  }
+
   const handleFile = useCallback(async (file: File) => {
     setError(null); setAnalysis(null); setSaved(false);
     setImageFile(file);
@@ -74,9 +84,16 @@ export default function ScanPage() {
     try {
       const fd = new FormData();
       fd.append('image', file);
-      const res  = await fetch('/api/admin/scan-analyse', { method: 'POST', body: fd });
+      const res  = await fetch('/api/admin/scan-analyse', {
+        method: 'POST',
+        body: fd,
+        credentials: 'include',
+      });
+      if (res.status === 401) {
+        router.push('/admin/login');
+        throw new Error('Session expired — please log in again');
+      }
       const data: AnalysisResult = await res.json();
-
       if (!res.ok) throw new Error((data as any).error ?? 'Analysis failed');
 
       setAnalysis(data);
@@ -92,6 +109,7 @@ export default function ScanPage() {
     } finally {
       setAnalysing(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function onInputChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -113,16 +131,18 @@ export default function ScanPage() {
     setSaving(true); setError(null);
 
     try {
+      // 1. Upload image → product_images
       const fd = new FormData();
       fd.append('image',      imageFile);
       fd.append('product_id', form.productId);
       fd.append('colour',     form.colour);
       fd.append('sort_order', '0');
-      const uploadRes  = await fetch('/api/admin/scan-upload', { method: 'POST', body: fd });
+      const uploadRes  = await authFetch('/api/admin/scan-upload', { method: 'POST', body: fd });
       const uploadData = await uploadRes.json();
       if (!uploadRes.ok) throw new Error(uploadData.error ?? 'Upload failed');
 
-      const stockRes  = await fetch('/api/admin/stock', {
+      // 2. Upsert variant stock
+      const stockRes  = await authFetch('/api/admin/stock', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ product_id: form.productId, size: form.size, colour: form.colour, stock_count: form.stockCount }),
@@ -172,7 +192,6 @@ export default function ScanPage() {
           <div style={{ ...card, padding: 0, overflow: 'hidden', position: 'relative', marginBottom: '1rem' }}>
             <img src={preview} alt="Scanned garment" style={{ width: '100%', maxHeight: '320px', objectFit: 'cover', display: 'block' }} />
 
-            {/* Analysing overlay */}
             {analysing && (
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', gap: '.75rem' }}>
                 <div style={{ fontSize: '2.5rem' }}>🔍</div>
@@ -180,7 +199,6 @@ export default function ScanPage() {
               </div>
             )}
 
-            {/* Saved overlay */}
             {saved && (
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(22,163,74,.88)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', gap: '.5rem' }}>
                 <div style={{ fontSize: '3rem' }}>✅</div>
@@ -196,12 +214,12 @@ export default function ScanPage() {
           </div>
         )}
 
-        {/* Vision warning (non-fatal) */}
+        {/* Vision warning */}
         {analysis?.visionSkipped && analysis.visionError && (
           <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '.75rem', padding: '.75rem 1rem', color: '#92400e', fontSize: '.8rem', marginBottom: '1rem', display: 'flex', gap: '.5rem', alignItems: 'flex-start' }}>
             <span style={{ flexShrink: 0 }}>⚠️</span>
             <div>
-              <strong>Vision AI unavailable</strong> — {analysis.visionError}<br/>
+              <strong>Vision AI unavailable</strong> — {analysis.visionError}<br />
               <span style={{ opacity: .8 }}>You can still fill in the form manually below.</span>
             </div>
           </div>
@@ -214,7 +232,7 @@ export default function ScanPage() {
           </div>
         )}
 
-        {/* AI detections summary */}
+        {/* AI detections */}
         {showForm && !analysis.visionSkipped && (
           <div style={card}>
             <div style={{ fontWeight: 700, marginBottom: '.6rem', color: '#6b7280', fontSize: '.8rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>🤖 AI Detected</div>
@@ -240,7 +258,6 @@ export default function ScanPage() {
           <div style={card}>
             <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1rem' }}>✏️ Review &amp; Confirm</div>
 
-            {/* Product */}
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ fontSize: '.8rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', display: 'block', marginBottom: '.4rem' }}>Product</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '.4rem' }}>
@@ -260,7 +277,6 @@ export default function ScanPage() {
               </div>
             </div>
 
-            {/* Colour */}
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ fontSize: '.8rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', display: 'block', marginBottom: '.4rem' }}>Colour</label>
               {analysis.detectedColours.length > 0 && (
@@ -273,7 +289,6 @@ export default function ScanPage() {
               <input value={form.colour} onChange={e => setForm(f => ({ ...f, colour: e.target.value }))} placeholder="Type a colour…" style={inputStyle} />
             </div>
 
-            {/* Size */}
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ fontSize: '.8rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', display: 'block', marginBottom: '.4rem' }}>Size</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem', marginBottom: '.5rem' }}>
@@ -284,7 +299,6 @@ export default function ScanPage() {
               <input value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} placeholder="Or type a size…" style={inputStyle} />
             </div>
 
-            {/* Stock qty */}
             <div style={{ marginBottom: '1.25rem' }}>
               <label style={{ fontSize: '.8rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', display: 'block', marginBottom: '.5rem' }}>Stock qty</label>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -302,7 +316,7 @@ export default function ScanPage() {
 
         {!preview && (
           <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: '.85rem', marginTop: '1.5rem', lineHeight: 1.7 }}>
-            Point your camera at a garment.<br/>
+            Point your camera at a garment.<br />
             AI will detect <strong>colour</strong>, <strong>type</strong> and <strong>size label</strong> automatically.
           </div>
         )}
