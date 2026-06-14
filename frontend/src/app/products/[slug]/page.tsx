@@ -3,12 +3,9 @@ import { formatAUD } from '../../../lib/products';
 import { notFound } from 'next/navigation';
 import { AddToCartSection } from '../../../components/shop/AddToCartSection';
 
-export const revalidate = 60;
-
-export async function generateStaticParams() {
-  const products = await getProducts();
-  return products.map(p => ({ slug: p.slug }));
-}
+// Always render fresh — never serve a cached/stale product page
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 const categoryLabel: Record<string, string> = {
   sarees: 'Sarees', lehengas: 'Lehengas', kurtas: 'Kurtas', kids: 'Kids Wear',
@@ -163,7 +160,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
                 )}
               </div>
 
-              {/* AddToCartSection owns the size selector */}
+              {/* AddToCartSection owns the size selector + live stock */}
               <AddToCartSection product={{ ...product, originalPrice: origPrice }} />
 
               {/* Trust row */}
@@ -246,7 +243,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
         padding: 'var(--space-12) 0', textAlign: 'center',
       }}>
         <div style={{ color: 'var(--color-gold)', fontSize: '.8rem', letterSpacing: '.2em', textTransform: 'uppercase', fontWeight: 700 }}>
-          ✷   Rooted in Indian Craft   ✷   Designed for Modern Celebrations   ✷
+          ✷   Rooted in Indian Craft   ✷   Designed for Modern Celebrations   ✷
         </div>
       </div>
 
