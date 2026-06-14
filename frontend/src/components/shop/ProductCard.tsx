@@ -16,49 +16,33 @@ function uniqueColours(variants: Variant[]): string[] {
 
 export function ProductCard({ id, slug, name, subtitle, price, originalPrice, badge, image, category }: Product & { images?: string[] }) {
   const { addItem }                     = useCart();
-  const [variants, setVariants]         = useState<Variant[]>([]);
+  const [allVariants, setAllVariants]   = useState<Variant[]>([]); // all variants incl. OOS, loaded once
+  const [variants, setVariants]         = useState<Variant[]>([]); // in-stock only, loaded on expand
   const [selectedColour, setColour]     = useState<string>('');
   const [selectedSize, setSize]         = useState<string>('');
   const [qty, setQty]                   = useState(1);
   const [expanded, setExpanded]         = useState(false);
   const [added, setAdded]               = useState(false);
   const [loading, setLoading]           = useState(false);
+  const [stockLoaded, setStockLoaded]   = useState(false);
   // Multi-image carousel state
   const [images, setImages]             = useState<string[]>(image ? [image] : []);
   const [imgIdx, setImgIdx]             = useState(0);
   const timerRef                        = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch variants + images on expand
+  // ── Pre-fetch ALL variants (incl. OOS) once on mount to know global stock state ──
   useEffect(() => {
-    if (!expanded) return;
-    setLoading(true);
-    Promise.all([
-      fetch(`/api/variants/${id}`).then(r => r.json()),
-      fetch(`/api/products/${id}`).then(r => r.json()).catch(() => null),
-    ]).then(([varData, prodData]) => {
-      const vars: Variant[] = Array.isArray(varData) ? varData.filter((v: Variant) => v.stock_count > 0) : [];
-      setVariants(vars);
-      const firstColour = vars.find(v => v.colour)?.colour ?? '';
-      setColour(firstColour);
-      if (prodData && Array.isArray(prodData.images) && prodData.images.length > 0) {
-        setImages([prodData.image, ...prodData.images].filter(Boolean) as string[]);
-      }
-    }).catch(() => setVariants([])).finally(() => setLoading(false));
-  }, [expanded, id]);
+    fetch(`/api/variants/${id}`)
+      .then(r => r.json())
+      .then((data: Variant[]) => {
+        if (Array.isArray(data)) {
+          setAllVariants(data.map(v => ({ ...v, stock_count: Number(v.stock_count) })));
+        }
+        setStockLoaded(true);
+      })
+      .catch(() => setStockLoaded(true));
 
-  // Auto-cycle images on tile hover (start when more than 1 image)
-  function startCycle() {
-    if (images.length <= 1) return;
-    timerRef.current = setInterval(() => setImgIdx(i => (i + 1) % images.length), 1200);
-  }
-  function stopCycle() {
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    setImgIdx(0);
-  }
-  useEffect(() => () => stopCycle(), []);
-
-  // Pre-fetch images array even before expand so hover cycle works immediately
-  useEffect(() => {
+    // Pre-fetch images for hover cycle
     fetch(`/api/products/${id}`)
       .then(r => r.json())
       .then(prod => {
@@ -69,8 +53,39 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
       .catch(() => {});
   }, [id]);
 
+  // Fetch variants + images on expand (in-stock only for the picker)
+  useEffect(() => {
+    if (!expanded) return;
+    setLoading(true);
+    Promise.all([
+      fetch(`/api/variants/${id}`).then(r => r.json()),
+      fetch(`/api/products/${id}`).then(r => r.json()).catch(() => null),
+    ]).then(([varData, prodData]) => {
+      const vars: Variant[] = Array.isArray(varData) ? varData.filter((v: Variant) => Number(v.stock_count) > 0) : [];
+      setVariants(vars);
+      const firstColour = vars.find(v => v.colour)?.colour ?? '';
+      setColour(firstColour);
+      if (prodData && Array.isArray(prodData.images) && prodData.images.length > 0) {
+        setImages([prodData.image, ...prodData.images].filter(Boolean) as string[]);
+      }
+    }).catch(() => setVariants([])).finally(() => setLoading(false));
+  }, [expanded, id]);
+
+  // Auto-cycle images on tile hover
+  function startCycle() {
+    if (images.length <= 1) return;
+    timerRef.current = setInterval(() => setImgIdx(i => (i + 1) % images.length), 1200);
+  }
+  function stopCycle() {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    setImgIdx(0);
+  }
+  useEffect(() => () => stopCycle(), []);
+
   function handleAddClick(e: React.MouseEvent) {
     e.preventDefault();
+    // If all variants are OOS, do nothing
+    if (stockLoaded && totallyOutOfStock) return;
     if (!expanded) { setExpanded(true); return; }
     if (!selectedSize) return;
     addItem({ id, slug, name, subtitle, price, originalPrice, badge, image, category, selectedSize, selectedColour } as any);
@@ -91,6 +106,13 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
   const maxQty = selectedVariant?.stock_count ?? 10;
   const currentImage = images[imgIdx] ?? image;
 
+  // Determine out-of-stock state from the pre-fetched allVariants
+  const totallyOutOfStock = stockLoaded && allVariants.length > 0 && allVariants.every(v => v.stock_count === 0);
+  // Also OOS if stockLoaded and no variants at all (never been stocked)
+  const noVariants = stockLoaded && allVariants.length === 0;
+
+  const isOOS = totallyOutOfStock || noVariants;
+
   return (
     <div
       className="product-card"
@@ -105,6 +127,21 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
                 style={{ transition: 'opacity .3s', width: '100%', height: '100%', objectFit: 'cover' }} />
             : <span style={{ fontSize: '4rem' }}>🥻</span>}
           {badge && <span className="product-card__badge">{badge}</span>}
+          {/* Out-of-stock overlay on image */}
+          {isOOS && (
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'rgba(0,0,0,0.35)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <span style={{
+                background: 'rgba(255,255,255,0.92)', color: '#dc2626',
+                fontWeight: 700, fontSize: '.75rem', letterSpacing: '.06em',
+                textTransform: 'uppercase', padding: '.35rem .8rem',
+                borderRadius: '.4rem', border: '1px solid #fca5a5',
+              }}>Out of Stock</span>
+            </div>
+          )}
           {/* Dot indicators */}
           {images.length > 1 && (
             <div style={{ position: 'absolute', bottom: '6px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '4px' }}>
@@ -125,7 +162,7 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
       </a>
 
       <div style={{ padding: '0 1rem 1rem' }}>
-        {expanded && (
+        {expanded && !isOOS && (
           <div style={{ marginBottom: '.6rem' }}>
             {loading ? (
               <p style={{ fontSize: '.75rem', color: 'var(--color-text-muted)', margin: '.25rem 0' }}>Loading…</p>
@@ -186,10 +223,14 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
         <button
           className={`add-to-cart-btn${added ? ' add-to-cart-btn--added' : ''}`}
           onClick={handleAddClick}
-          disabled={expanded && (!inStock || (variants.length > 0 && !selectedSize) || (hasColours && !selectedColour))}
-          style={{ width: '100%' }}
+          disabled={isOOS || (expanded && (!inStock || (variants.length > 0 && !selectedSize) || (hasColours && !selectedColour)))}
+          style={{
+            width: '100%',
+            ...(isOOS ? { background: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb', cursor: 'not-allowed' } : {}),
+          }}
         >
           {added ? '✓ Added to Bag'
+            : isOOS ? 'Out of Stock'
             : expanded && hasColours && !selectedColour ? 'Select a colour'
             : expanded && !selectedSize && variants.length > 0 ? 'Select a size'
             : expanded && variants.length === 0 && !loading ? 'Out of stock'

@@ -4,6 +4,19 @@ import { useRouter } from 'next/navigation';
 
 type SuggestedProduct = { id: string; name: string; slug: string; category: string };
 
+type VisionResult = {
+  visionSkipped: boolean;
+  visionError: string | null;
+  labels: string[];
+  detectedCategory: string | null;
+  detectedColours: { name: string; score: number }[];
+  primaryColour: string | null;
+  detectedSize: string | null;
+  fullText: string;
+  suggestedProducts: SuggestedProduct[];
+  allProducts: SuggestedProduct[];
+};
+
 type FormState = {
   productId: string;
   productName: string;
@@ -67,11 +80,13 @@ export default function ScanPage() {
   const router  = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [preview,   setPreview]   = useState<string | null>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [saving,    setSaving]    = useState(false);
-  const [saved,     setSaved]     = useState(false);
-  const [error,     setError]     = useState<string | null>(null);
+  const [preview,      setPreview]      = useState<string | null>(null);
+  const [imageFile,    setImageFile]    = useState<File | null>(null);
+  const [saving,       setSaving]       = useState(false);
+  const [saved,        setSaved]        = useState(false);
+  const [error,        setError]        = useState<string | null>(null);
+  const [analysing,    setAnalysing]    = useState(false);
+  const [visionResult, setVisionResult] = useState<VisionResult | null>(null);
 
   // Product list — loaded once on mount
   const [allProducts,     setAllProducts]     = useState<SuggestedProduct[]>([]);
@@ -97,24 +112,40 @@ export default function ScanPage() {
     return res;
   }
 
-  // Load products list
-  async function loadProducts() {
-    setLoadingProducts(true);
-    try {
-      const res  = await authFetch('/api/admin/products');
-      const data = await res.json();
-      if (Array.isArray(data)) setAllProducts(data);
-    } catch { /* silent */ } finally {
-      setLoadingProducts(false);
-    }
-  }
-
   const handleFile = useCallback(async (file: File) => {
-    setError(null); setSaved(false); setShowNewProduct(false);
+    setError(null); setSaved(false); setShowNewProduct(false); setVisionResult(null);
     setImageFile(file);
     setPreview(URL.createObjectURL(file));
-    // Load the product list now so the dropdown is ready
-    await loadProducts();
+
+    // ── Call Google Vision analyse endpoint ──────────────────────────────────
+    setAnalysing(true);
+    try {
+      const fd = new FormData();
+      fd.append('image', file);
+      const res  = await authFetch('/api/admin/scan-analyse', { method: 'POST', body: fd });
+      const data: VisionResult = await res.json();
+      setVisionResult(data);
+      setAllProducts(data.allProducts ?? []);
+
+      // Auto-populate colour + size from Vision if detected
+      setForm(f => ({
+        ...f,
+        colour: data.primaryColour ?? f.colour,
+        size:   data.detectedSize  ?? f.size,
+      }));
+    } catch (e: any) {
+      // Vision failed — still load product list manually
+      setLoadingProducts(true);
+      try {
+        const res  = await authFetch('/api/admin/products');
+        const data = await res.json();
+        if (Array.isArray(data)) setAllProducts(data);
+      } catch { /* silent */ } finally {
+        setLoadingProducts(false);
+      }
+    } finally {
+      setAnalysing(false);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -126,7 +157,7 @@ export default function ScanPage() {
   function reset() {
     setPreview(null); setImageFile(null);
     setSaved(false); setError(null); setShowNewProduct(false); setProductSearch('');
-    setAllProducts([]);
+    setAllProducts([]); setVisionResult(null);
     setForm({ productId: '', productName: '', colour: '', size: '', stockCount: 1 });
     setNewProduct({ name: '', category: '', price: '', original_price: '', description: '' });
     if (fileRef.current) fileRef.current.value = '';
@@ -210,6 +241,10 @@ export default function ScanPage() {
 
   const showForm = preview !== null;
 
+  // Suggested products from Vision (only when Vision ran successfully)
+  const suggestedProds: SuggestedProduct[] =
+    visionResult && !visionResult.visionSkipped ? visionResult.suggestedProducts : [];
+
   return (
     <div style={{ minHeight: '100dvh', background: '#fdf2f8', fontFamily: 'system-ui, sans-serif' }}>
       {/* Top bar */}
@@ -249,6 +284,43 @@ export default function ScanPage() {
           </div>
         )}
 
+        {/* Analysing spinner */}
+        {analysing && (
+          <div style={{ background: 'white', borderRadius: '.75rem', padding: '.85rem 1rem', display: 'flex', alignItems: 'center', gap: '.75rem', marginBottom: '1rem', boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
+            <span style={{ fontSize: '1.3rem', animation: 'spin 1s linear infinite', display: 'inline-block' }}>🔍</span>
+            <span style={{ fontSize: '.9rem', color: '#6b7280', fontWeight: 600 }}>Analysing image with Google Vision…</span>
+          </div>
+        )}
+
+        {/* Vision results card */}
+        {visionResult && !analysing && (
+          <div style={{ ...card, marginBottom: '1rem', background: visionResult.visionSkipped ? '#fffbeb' : '#f0fdf4', border: `1px solid ${visionResult.visionSkipped ? '#fde68a' : '#bbf7d0'}` }}>
+            {visionResult.visionSkipped ? (
+              <div style={{ fontSize: '.82rem', color: '#92400e' }}>
+                ⚠️ <strong>Vision skipped:</strong> {visionResult.visionError}
+              </div>
+            ) : (
+              <>
+                <div style={{ fontWeight: 700, fontSize: '.85rem', color: '#15803d', marginBottom: '.5rem' }}>🤖 Google Vision detected:</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', marginBottom: '.45rem' }}>
+                  {visionResult.detectedColours.map(c => (
+                    <span key={c.name} style={{ background: '#dcfce7', color: '#166534', borderRadius: '.4rem', padding: '.2rem .55rem', fontSize: '.75rem', fontWeight: 600 }}>🎨 {c.name}</span>
+                  ))}
+                  {visionResult.detectedCategory && (
+                    <span style={{ background: '#ede9fe', color: '#6d28d9', borderRadius: '.4rem', padding: '.2rem .55rem', fontSize: '.75rem', fontWeight: 600 }}>📂 {visionResult.detectedCategory}</span>
+                  )}
+                  {visionResult.detectedSize && (
+                    <span style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: '.4rem', padding: '.2rem .55rem', fontSize: '.75rem', fontWeight: 600 }}>📏 {visionResult.detectedSize}</span>
+                  )}
+                </div>
+                {visionResult.labels.length > 0 && (
+                  <div style={{ fontSize: '.75rem', color: '#4b5563' }}>Labels: {visionResult.labels.slice(0, 8).join(', ')}</div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         {/* Error */}
         {error && (
           <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.75rem', padding: '.85rem 1rem', color: '#dc2626', fontSize: '.875rem', marginBottom: '1rem' }}>
@@ -271,6 +343,22 @@ export default function ScanPage() {
                     <div style={{ color: '#9ca3af', fontSize: '.85rem', padding: '.5rem 0' }}>Loading products…</div>
                   ) : (
                     <>
+                      {/* Vision suggestions */}
+                      {suggestedProds.length > 0 && !form.productId && (
+                        <div style={{ marginBottom: '.6rem' }}>
+                          <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#6b7280', marginBottom: '.3rem' }}>🤖 Suggested matches:</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '.3rem' }}>
+                            {suggestedProds.map(p => (
+                              <button key={p.id}
+                                onClick={() => setForm(f => ({ ...f, productId: p.id, productName: p.name }))}
+                                style={{ textAlign: 'left', padding: '.5rem .75rem', borderRadius: '.5rem', border: '1.5px solid #e9d5ff', background: '#faf5ff', color: '#4c1d95', fontSize: '.82rem', fontWeight: 600, cursor: 'pointer' }}>
+                                ✨ {p.name} <span style={{ fontWeight: 400, color: '#7c3aed' }}>({p.category})</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       <input
                         value={productSearch}
                         onChange={e => setProductSearch(e.target.value)}
@@ -389,7 +477,7 @@ export default function ScanPage() {
         {!preview && (
           <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: '.85rem', marginTop: '1.5rem', lineHeight: 1.7 }}>
             Photograph the garment, then fill in colour, size and stock.<br />
-            The image will be saved and linked to the product automatically.
+            Google Vision will auto-detect colour, category and size.
           </div>
         )}
       </div>
