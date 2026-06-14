@@ -35,6 +35,40 @@ export async function POST(req: NextRequest, { params }: { params: { productId: 
   return NextResponse.json(data);
 }
 
+// PATCH: update sort_order, url, and/or colour on an existing image row
+// Body: { id: string, sort_order?: number, url?: string, colour?: string }
+export async function PATCH(req: NextRequest, { params: _p }: { params: { productId: string } }) {
+  const body = await req.json();
+  const { id, sort_order, url, colour } = body as {
+    id?: string;
+    sort_order?: number;
+    url?: string;
+    colour?: string;
+  };
+
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+  const update: Record<string, unknown> = {};
+  if (sort_order !== undefined) update.sort_order = sort_order;
+  if (url       !== undefined) update.url        = url;
+  if (colour    !== undefined) update.colour     = colour;
+
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+  }
+
+  const sb = getServiceSupabase();
+  const { data, error } = await sb
+    .from('product_images')
+    .update(update)
+    .eq('id', id)
+    .select('id, colour, url, sort_order')
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data);
+}
+
 // DELETE: remove a single image by id (pass ?id=...)
 export async function DELETE(req: NextRequest, { params: _p }: { params: { productId: string } }) {
   const { searchParams } = new URL(req.url);
