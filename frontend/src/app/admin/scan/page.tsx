@@ -33,9 +33,17 @@ type NewProductForm = {
   description: string;
 };
 
-const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
-const CATEGORIES = ['sarees', 'lehengas', 'kurtas', 'kids'];
+type ModelImage = { url: string | null; b64: string | null };
 
+const SIZES      = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
+const CATEGORIES = ['sarees', 'lehengas', 'kurtas', 'kids'];
+const MODEL_STYLES = [
+  { id: 'studio',    label: '🎞️ Studio',    desc: 'White background, clean e-com look' },
+  { id: 'outdoor',   label: '🌿 Outdoor',   desc: 'Natural light, heritage backdrop' },
+  { id: 'editorial', label: '✨ Editorial', desc: 'Dramatic Vogue-style lighting' },
+];
+
+// ── Styles ───────────────────────────────────────────────────────────────────
 const card: React.CSSProperties = {
   background: 'white', borderRadius: '1rem',
   boxShadow: '0 2px 12px rgba(0,0,0,.08)',
@@ -88,7 +96,7 @@ export default function ScanPage() {
   const [analysing,    setAnalysing]    = useState(false);
   const [visionResult, setVisionResult] = useState<VisionResult | null>(null);
 
-  // Product list — loaded once on mount
+  // Product list
   const [allProducts,     setAllProducts]     = useState<SuggestedProduct[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [productSearch,   setProductSearch]   = useState('');
@@ -98,10 +106,18 @@ export default function ScanPage() {
   const [form, setForm] = useState<FormState>({
     productId: '', productName: '', colour: '', size: '', stockCount: 1,
   });
-
   const [newProduct, setNewProduct] = useState<NewProductForm>({
     name: '', category: '', price: '', original_price: '', description: '',
   });
+
+  // ── AI Model Generation state ────────────────────────────────────────────
+  const [showModelGen,   setShowModelGen]   = useState(false);
+  const [modelStyle,     setModelStyle]     = useState('studio');
+  const [generatingModel,setGeneratingModel]= useState(false);
+  const [modelImages,    setModelImages]    = useState<ModelImage[]>([]);
+  const [modelError,     setModelError]     = useState<string | null>(null);
+  const [savedModelIdx,  setSavedModelIdx]  = useState<number | null>(null);
+  const [savingModelIdx, setSavingModelIdx] = useState<number | null>(null);
 
   async function authFetch(url: string, init: RequestInit = {}) {
     const res = await fetch(url, { ...init, credentials: 'include' });
@@ -114,10 +130,10 @@ export default function ScanPage() {
 
   const handleFile = useCallback(async (file: File) => {
     setError(null); setSaved(false); setShowNewProduct(false); setVisionResult(null);
+    setModelImages([]); setModelError(null); setSavedModelIdx(null);
     setImageFile(file);
     setPreview(URL.createObjectURL(file));
 
-    // ── Call Google Vision analyse endpoint ──────────────────────────────────
     setAnalysing(true);
     try {
       const fd = new FormData();
@@ -126,15 +142,12 @@ export default function ScanPage() {
       const data: VisionResult = await res.json();
       setVisionResult(data);
       setAllProducts(data.allProducts ?? []);
-
-      // Auto-populate colour + size from Vision if detected
       setForm(f => ({
         ...f,
         colour: data.primaryColour ?? f.colour,
         size:   data.detectedSize  ?? f.size,
       }));
-    } catch (e: any) {
-      // Vision failed — still load product list manually
+    } catch {
       setLoadingProducts(true);
       try {
         const res  = await authFetch('/api/admin/products');
@@ -160,7 +173,73 @@ export default function ScanPage() {
     setAllProducts([]); setVisionResult(null);
     setForm({ productId: '', productName: '', colour: '', size: '', stockCount: 1 });
     setNewProduct({ name: '', category: '', price: '', original_price: '', description: '' });
+    setShowModelGen(false); setModelImages([]); setModelError(null); setSavedModelIdx(null);
     if (fileRef.current) fileRef.current.value = '';
+  }
+
+  // ── Generate model images ────────────────────────────────────────────────
+  async function handleGenerateModel() {
+    if (!imageFile) return;
+    setGeneratingModel(true); setModelError(null); setModelImages([]); setSavedModelIdx(null);
+    try {
+      const fd = new FormData();
+      fd.append('image',       imageFile);
+      fd.append('style',       modelStyle);
+      fd.append('description', [
+        visionResult?.detectedCategory ?? '',
+        form.colour ? `in ${form.colour}` : '',
+        form.productName ? `— ${form.productName}` : '',
+      ].filter(Boolean).join(' ').trim() || 'ethnic Indian garment');
+      const res  = await authFetch('/api/admin/scan-model-gen', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Generation failed');
+      setModelImages(data.images ?? []);
+    } catch (e: unknown) {
+      setModelError(e instanceof Error ? e.message : 'Generation failed');
+    } finally {
+      setGeneratingModel(false);
+    }
+  }
+
+  // ── Save a generated model image as product image ───────────────────────
+  async function handleSaveModelImage(idx: number) {
+    if (!form.productId) {
+      setModelError('Select a product first (in the details form below) before saving a model image.');
+      return;
+    }
+    const img = modelImages[idx];
+    const src = img.url ?? (img.b64 ? `data:image/png;base64,${img.b64}` : null);
+    if (!src) return;
+
+    setSavingModelIdx(idx); setModelError(null);
+    try {
+      // Fetch the image from the URL into a Blob (if it's a URL)
+      let blob: Blob;
+      if (img.url) {
+        const r = await fetch(img.url);
+        blob = await r.blob();
+      } else {
+        // base64 → Blob
+        const binary = atob(img.b64!);
+        const arr = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+        blob = new Blob([arr], { type: 'image/png' });
+      }
+      const file = new File([blob], `model-gen-${Date.now()}.png`, { type: 'image/png' });
+      const fd = new FormData();
+      fd.append('image',      file);
+      fd.append('product_id', form.productId);
+      fd.append('colour',     form.colour || 'default');
+      fd.append('sort_order', '1');
+      const res  = await authFetch('/api/admin/scan-upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Upload failed');
+      setSavedModelIdx(idx);
+    } catch (e: unknown) {
+      setModelError(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setSavingModelIdx(null);
+    }
   }
 
   async function handleCreateProduct() {
@@ -178,7 +257,6 @@ export default function ScanPage() {
       };
       if (newProduct.original_price) body.original_price = parseFloat(newProduct.original_price);
       if (newProduct.description)    body.description    = newProduct.description.trim();
-
       const res  = await authFetch('/api/admin/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -186,13 +264,12 @@ export default function ScanPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed to create product');
-
       setAllProducts(prev => [data, ...prev]);
       setForm(f => ({ ...f, productId: data.id, productName: data.name }));
       setShowNewProduct(false);
       setNewProduct({ name: '', category: '', price: '', original_price: '', description: '' });
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Create failed');
     } finally {
       setCreatingProduct(false);
     }
@@ -212,24 +289,22 @@ export default function ScanPage() {
       const uploadRes  = await authFetch('/api/admin/scan-upload', { method: 'POST', body: fd });
       const uploadData = await uploadRes.json();
       if (!uploadRes.ok) throw new Error(uploadData.error ?? 'Upload failed');
-
       const stockRes  = await authFetch('/api/admin/stock', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          product_id: form.productId,
-          size: form.size,
-          colour: form.colour,
+          product_id:  form.productId,
+          size:        form.size,
+          colour:      form.colour,
           stock_count: form.stockCount,
         }),
       });
       const stockData = await stockRes.json();
       if (!stockRes.ok) throw new Error(stockData.error ?? 'Stock update failed');
-
       setSaved(true);
       setTimeout(reset, 1800);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -239,9 +314,7 @@ export default function ScanPage() {
     ? allProducts.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()))
     : allProducts;
 
-  const showForm = preview !== null;
-
-  // Suggested products from Vision (only when Vision ran successfully)
+  const showForm    = preview !== null;
   const suggestedProds: SuggestedProduct[] =
     visionResult && !visionResult.visionSkipped ? visionResult.suggestedProducts : [];
 
@@ -292,13 +365,11 @@ export default function ScanPage() {
           </div>
         )}
 
-        {/* Vision results card */}
+        {/* Vision results */}
         {visionResult && !analysing && (
           <div style={{ ...card, marginBottom: '1rem', background: visionResult.visionSkipped ? '#fffbeb' : '#f0fdf4', border: `1px solid ${visionResult.visionSkipped ? '#fde68a' : '#bbf7d0'}` }}>
             {visionResult.visionSkipped ? (
-              <div style={{ fontSize: '.82rem', color: '#92400e' }}>
-                ⚠️ <strong>Vision skipped:</strong> {visionResult.visionError}
-              </div>
+              <div style={{ fontSize: '.82rem', color: '#92400e' }}>⚠️ <strong>Vision skipped:</strong> {visionResult.visionError}</div>
             ) : (
               <>
                 <div style={{ fontWeight: 700, fontSize: '.85rem', color: '#15803d', marginBottom: '.5rem' }}>🤖 Google Vision detected:</div>
@@ -321,11 +392,103 @@ export default function ScanPage() {
           </div>
         )}
 
+        {/* ── AI MODEL GENERATION PANEL ─────────────────────────────────── */}
+        {showForm && !saved && (
+          <div style={{ ...card, background: 'linear-gradient(135deg,#fdf2f8,#fdf4ff)', border: '1.5px solid #f0abfc', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '.75rem' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '1rem', color: '#7e22ce' }}>✨ AI Model Images</div>
+                <div style={{ fontSize: '.78rem', color: '#9ca3af', marginTop: '.15rem' }}>Generate a model wearing this garment</div>
+              </div>
+              <button
+                onClick={() => setShowModelGen(v => !v)}
+                style={{ padding: '.35rem .85rem', borderRadius: '2rem', border: '1.5px solid #d8b4fe', background: showModelGen ? '#7e22ce' : 'white', color: showModelGen ? 'white' : '#7e22ce', fontSize: '.8rem', fontWeight: 700, cursor: 'pointer' }}>
+                {showModelGen ? '▲ Hide' : '▼ Open'}
+              </button>
+            </div>
+
+            {showModelGen && (
+              <>
+                {/* Style picker */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ ...fieldLabel, color: '#7e22ce' }}>Photography Style</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '.4rem' }}>
+                    {MODEL_STYLES.map(s => (
+                      <button key={s.id} onClick={() => setModelStyle(s.id)}
+                        style={{ textAlign: 'left', padding: '.55rem .85rem', borderRadius: '.6rem', cursor: 'pointer',
+                          border: modelStyle === s.id ? '2px solid #7e22ce' : '1.5px solid #e5e7eb',
+                          background: modelStyle === s.id ? '#faf5ff' : 'white',
+                          color: modelStyle === s.id ? '#7e22ce' : '#374151',
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontWeight: 700, fontSize: '.88rem' }}>{s.label}</span>
+                        <span style={{ fontSize: '.75rem', color: '#9ca3af' }}>{s.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Generate button */}
+                <button
+                  onClick={handleGenerateModel}
+                  disabled={generatingModel}
+                  style={{ width: '100%', padding: '.9rem', borderRadius: '.75rem', border: 'none',
+                    background: generatingModel ? '#c084fc' : 'linear-gradient(135deg,#7e22ce,#9d174d)',
+                    color: 'white', fontSize: '.95rem', fontWeight: 700, cursor: generatingModel ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.5rem',
+                    transition: 'opacity .2s', opacity: generatingModel ? .8 : 1 }}>
+                  {generatingModel
+                    ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⏳</span> Generating (10–30s)…</>)
+                    : '🪄 Generate Model Images'}
+                </button>
+
+                {/* Model error */}
+                {modelError && (
+                  <div style={{ marginTop: '.75rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.6rem', padding: '.65rem .85rem', color: '#dc2626', fontSize: '.82rem' }}>
+                    ❌ {modelError}
+                  </div>
+                )}
+
+                {/* Generated images */}
+                {modelImages.length > 0 && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <div style={{ fontWeight: 700, fontSize: '.85rem', color: '#7e22ce', marginBottom: '.5rem' }}>Generated images — tap to save as product photo:</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.6rem' }}>
+                      {modelImages.map((img, idx) => {
+                        const src = img.url ?? (img.b64 ? `data:image/png;base64,${img.b64}` : null);
+                        if (!src) return null;
+                        const isSaved  = savedModelIdx === idx;
+                        const isSaving = savingModelIdx === idx;
+                        return (
+                          <div key={idx} style={{ position: 'relative', borderRadius: '.75rem', overflow: 'hidden', border: isSaved ? '2.5px solid #16a34a' : '1.5px solid #e5e7eb', boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
+                            <img src={src} alt={`Generated model ${idx + 1}`} style={{ width: '100%', aspectRatio: '2/3', objectFit: 'cover', display: 'block' }} />
+                            <button
+                              onClick={() => handleSaveModelImage(idx)}
+                              disabled={isSaving || isSaved}
+                              style={{ position: 'absolute', bottom: '.5rem', left: '.5rem', right: '.5rem',
+                                padding: '.45rem', borderRadius: '.5rem', border: 'none',
+                                background: isSaved ? 'rgba(22,163,74,.9)' : 'rgba(0,0,0,.65)',
+                                color: 'white', fontWeight: 700, fontSize: '.78rem', cursor: isSaved ? 'default' : 'pointer',
+                                backdropFilter: 'blur(4px)' }}>
+                              {isSaving ? '⏳ Saving…' : isSaved ? '✅ Saved!' : '💾 Save as Product Photo'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ marginTop: '.6rem', fontSize: '.75rem', color: '#9ca3af', textAlign: 'center' }}>
+                      ℹ️ Select a product below first, then save the image you prefer.
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+        {/* ─────────────────────────────────────────────────────────────── */}
+
         {/* Error */}
         {error && (
-          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.75rem', padding: '.85rem 1rem', color: '#dc2626', fontSize: '.875rem', marginBottom: '1rem' }}>
-            ❌ {error}
-          </div>
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.75rem', padding: '.85rem 1rem', color: '#dc2626', fontSize: '.875rem', marginBottom: '1rem' }}>❌ {error}</div>
         )}
 
         {/* Form */}
@@ -336,21 +499,18 @@ export default function ScanPage() {
             {/* Product picker */}
             <div style={{ marginBottom: '1rem' }}>
               <label style={fieldLabel}>Product</label>
-
               {!showNewProduct && (
                 <>
                   {loadingProducts ? (
                     <div style={{ color: '#9ca3af', fontSize: '.85rem', padding: '.5rem 0' }}>Loading products…</div>
                   ) : (
                     <>
-                      {/* Vision suggestions */}
                       {suggestedProds.length > 0 && !form.productId && (
                         <div style={{ marginBottom: '.6rem' }}>
                           <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#6b7280', marginBottom: '.3rem' }}>🤖 Suggested matches:</div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '.3rem' }}>
                             {suggestedProds.map(p => (
-                              <button key={p.id}
-                                onClick={() => setForm(f => ({ ...f, productId: p.id, productName: p.name }))}
+                              <button key={p.id} onClick={() => setForm(f => ({ ...f, productId: p.id, productName: p.name }))}
                                 style={{ textAlign: 'left', padding: '.5rem .75rem', borderRadius: '.5rem', border: '1.5px solid #e9d5ff', background: '#faf5ff', color: '#4c1d95', fontSize: '.82rem', fontWeight: 600, cursor: 'pointer' }}>
                                 ✨ {p.name} <span style={{ fontWeight: 400, color: '#7c3aed' }}>({p.category})</span>
                               </button>
@@ -358,47 +518,33 @@ export default function ScanPage() {
                           </div>
                         </div>
                       )}
-
-                      <input
-                        value={productSearch}
-                        onChange={e => setProductSearch(e.target.value)}
-                        placeholder="Search products…"
-                        style={{ ...inputStyle, marginBottom: '.4rem' }}
-                      />
-                      <select
-                        value={form.productId}
+                      <input value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search products…" style={{ ...inputStyle, marginBottom: '.4rem' }} />
+                      <select value={form.productId}
                         onChange={e => {
                           const id = e.target.value;
                           const name = filteredProds.find(p => p.id === id)?.name ?? '';
                           setForm(f => ({ ...f, productId: id, productName: name }));
                         }}
-                        style={selectStyle}
-                      >
+                        style={selectStyle}>
                         <option value="">— Select a product —</option>
-                        {filteredProds.map(p => (
-                          <option key={p.id} value={p.id}>{p.name} ({p.category})</option>
-                        ))}
+                        {filteredProds.map(p => <option key={p.id} value={p.id}>{p.name} ({p.category})</option>)}
                       </select>
                       {form.productId && (
                         <div style={{ marginTop: '.4rem', fontSize: '.8rem', color: '#16a34a', fontWeight: 600 }}>✓ {form.productName}</div>
                       )}
                     </>
                   )}
-                  <button onClick={() => { setShowNewProduct(true); setError(null); }} style={{ ...btnSecondary, marginTop: '.6rem' }}>
-                    + Add New Product
-                  </button>
+                  <button onClick={() => { setShowNewProduct(true); setError(null); }} style={{ ...btnSecondary, marginTop: '.6rem' }}>+ Add New Product</button>
                 </>
               )}
 
               {showNewProduct && (
                 <div style={{ background: '#fdf2f8', borderRadius: '.75rem', padding: '1rem', border: '1.5px solid #fbcfe8' }}>
                   <div style={{ fontWeight: 700, marginBottom: '.75rem', color: '#9d174d', fontSize: '.9rem' }}>🆕 New Product Details</div>
-
                   <div style={{ marginBottom: '.65rem' }}>
                     <label style={fieldLabel}>Product Name *</label>
                     <input value={newProduct.name} onChange={e => setNewProduct(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Red Bridal Lehenga" style={inputStyle} />
                   </div>
-
                   <div style={{ marginBottom: '.65rem' }}>
                     <label style={fieldLabel}>Category *</label>
                     <select value={newProduct.category} onChange={e => setNewProduct(p => ({ ...p, category: e.target.value }))} style={selectStyle}>
@@ -406,7 +552,6 @@ export default function ScanPage() {
                       {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
                     </select>
                   </div>
-
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.5rem', marginBottom: '.65rem' }}>
                     <div>
                       <label style={fieldLabel}>Selling Price (₹) *</label>
@@ -417,25 +562,13 @@ export default function ScanPage() {
                       <input type="number" min="0" value={newProduct.original_price} onChange={e => setNewProduct(p => ({ ...p, original_price: e.target.value }))} placeholder="e.g. 6999" style={inputStyle} />
                     </div>
                   </div>
-
                   <div style={{ marginBottom: '.75rem' }}>
                     <label style={fieldLabel}>Description</label>
-                    <textarea
-                      value={newProduct.description}
-                      onChange={e => setNewProduct(p => ({ ...p, description: e.target.value }))}
-                      placeholder="Optional — fabric, occasion, notes…"
-                      rows={3}
-                      style={{ ...inputStyle, resize: 'vertical' } as React.CSSProperties}
-                    />
+                    <textarea value={newProduct.description} onChange={e => setNewProduct(p => ({ ...p, description: e.target.value }))} placeholder="Optional — fabric, occasion, notes…" rows={3} style={{ ...inputStyle, resize: 'vertical' } as React.CSSProperties} />
                   </div>
-
                   <div style={{ display: 'flex', gap: '.5rem' }}>
-                    <button onClick={handleCreateProduct} disabled={creatingProduct} style={{ ...btnPrimary, flex: 1, opacity: creatingProduct ? .7 : 1 }}>
-                      {creatingProduct ? '⏳ Creating…' : '✅ Create Product'}
-                    </button>
-                    <button onClick={() => { setShowNewProduct(false); setError(null); }} style={{ padding: '.75rem 1rem', borderRadius: '.75rem', border: '1.5px solid #e5e7eb', background: 'white', color: '#6b7280', cursor: 'pointer', fontWeight: 600, fontSize: '.85rem' }}>
-                      Cancel
-                    </button>
+                    <button onClick={handleCreateProduct} disabled={creatingProduct} style={{ ...btnPrimary, flex: 1, opacity: creatingProduct ? .7 : 1 }}>{creatingProduct ? '⏳ Creating…' : '✅ Create Product'}</button>
+                    <button onClick={() => { setShowNewProduct(false); setError(null); }} style={{ padding: '.75rem 1rem', borderRadius: '.75rem', border: '1.5px solid #e5e7eb', background: 'white', color: '#6b7280', cursor: 'pointer', fontWeight: 600, fontSize: '.85rem' }}>Cancel</button>
                   </div>
                 </div>
               )}
@@ -451,9 +584,7 @@ export default function ScanPage() {
             <div style={{ marginBottom: '1rem' }}>
               <label style={fieldLabel}>Size</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem', marginBottom: '.5rem' }}>
-                {SIZES.map(s => (
-                  <button key={s} onClick={() => setForm(f => ({ ...f, size: s }))} style={pill(form.size === s)}>{s}</button>
-                ))}
+                {SIZES.map(s => <button key={s} onClick={() => setForm(f => ({ ...f, size: s }))} style={pill(form.size === s)}>{s}</button>)}
               </div>
               <input value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} placeholder="Or type a size…" style={inputStyle} />
             </div>
@@ -477,7 +608,8 @@ export default function ScanPage() {
         {!preview && (
           <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: '.85rem', marginTop: '1.5rem', lineHeight: 1.7 }}>
             Photograph the garment, then fill in colour, size and stock.<br />
-            Google Vision will auto-detect colour, category and size.
+            Google Vision will auto-detect colour, category and size.<br />
+            <span style={{ color: '#c084fc', fontWeight: 600 }}>✨ New: generate AI model images automatically!</span>
           </div>
         )}
       </div>
