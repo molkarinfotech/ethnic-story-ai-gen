@@ -1,56 +1,118 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Product, formatAUD } from '../../lib/products';
 import { useCart } from '../../context/CartContext';
 
-type Variant = { id: string; size: string; stock_count: number };
+type Variant = { id: string; size: string; colour: string; stock_count: number };
 
-export function ProductCard({ id, slug, name, subtitle, price, originalPrice, badge, image, category }: Product) {
-  const { addItem } = useCart();
-  const [variants, setVariants]     = useState<Variant[]>([]);
-  const [selectedSize, setSize]     = useState<string>('');
-  const [qty, setQty]               = useState(1);
-  const [expanded, setExpanded]     = useState(false);
-  const [added, setAdded]           = useState(false);
-  const [loading, setLoading]       = useState(false);
+function uniqueColours(variants: Variant[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of variants) {
+    if (v.colour && !seen.has(v.colour)) { seen.add(v.colour); out.push(v.colour); }
+  }
+  return out;
+}
 
+export function ProductCard({ id, slug, name, subtitle, price, originalPrice, badge, image, category }: Product & { images?: string[] }) {
+  const { addItem }                     = useCart();
+  const [variants, setVariants]         = useState<Variant[]>([]);
+  const [selectedColour, setColour]     = useState<string>('');
+  const [selectedSize, setSize]         = useState<string>('');
+  const [qty, setQty]                   = useState(1);
+  const [expanded, setExpanded]         = useState(false);
+  const [added, setAdded]               = useState(false);
+  const [loading, setLoading]           = useState(false);
+  // Multi-image carousel state
+  const [images, setImages]             = useState<string[]>(image ? [image] : []);
+  const [imgIdx, setImgIdx]             = useState(0);
+  const timerRef                        = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Fetch variants + images on expand
   useEffect(() => {
     if (!expanded) return;
     setLoading(true);
-    fetch(`/api/variants/${id}`)
-      .then(r => r.json())
-      .then((data: Variant[]) => {
-        setVariants(Array.isArray(data) ? data.filter(v => v.stock_count > 0) : []);
-      })
-      .catch(() => setVariants([]))
-      .finally(() => setLoading(false));
+    Promise.all([
+      fetch(`/api/variants/${id}`).then(r => r.json()),
+      fetch(`/api/products/${id}`).then(r => r.json()).catch(() => null),
+    ]).then(([varData, prodData]) => {
+      const vars: Variant[] = Array.isArray(varData) ? varData.filter((v: Variant) => v.stock_count > 0) : [];
+      setVariants(vars);
+      const firstColour = vars.find(v => v.colour)?.colour ?? '';
+      setColour(firstColour);
+      if (prodData && Array.isArray(prodData.images) && prodData.images.length > 0) {
+        setImages([prodData.image, ...prodData.images].filter(Boolean) as string[]);
+      }
+    }).catch(() => setVariants([])).finally(() => setLoading(false));
   }, [expanded, id]);
+
+  // Auto-cycle images on tile hover (start when more than 1 image)
+  function startCycle() {
+    if (images.length <= 1) return;
+    timerRef.current = setInterval(() => setImgIdx(i => (i + 1) % images.length), 1200);
+  }
+  function stopCycle() {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    setImgIdx(0);
+  }
+  useEffect(() => () => stopCycle(), []);
+
+  // Pre-fetch images array even before expand so hover cycle works immediately
+  useEffect(() => {
+    fetch(`/api/products/${id}`)
+      .then(r => r.json())
+      .then(prod => {
+        if (prod && Array.isArray(prod.images) && prod.images.length > 0) {
+          setImages([prod.image, ...prod.images].filter(Boolean) as string[]);
+        }
+      })
+      .catch(() => {});
+  }, [id]);
 
   function handleAddClick(e: React.MouseEvent) {
     e.preventDefault();
     if (!expanded) { setExpanded(true); return; }
     if (!selectedSize) return;
-    addItem({ id, slug, name, subtitle, price, originalPrice, badge, image, category, selectedSize } as any);
-    for (let i = 1; i < qty; i++) addItem({ id, slug, name, subtitle, price, originalPrice, badge, image, category, selectedSize } as any);
+    addItem({ id, slug, name, subtitle, price, originalPrice, badge, image, category, selectedSize, selectedColour } as any);
+    for (let i = 1; i < qty; i++) addItem({ id, slug, name, subtitle, price, originalPrice, badge, image, category, selectedSize, selectedColour } as any);
     setAdded(true);
     setExpanded(false);
     setSize('');
+    setColour('');
     setQty(1);
     setTimeout(() => setAdded(false), 1600);
   }
 
+  const colours = uniqueColours(variants);
+  const hasColours = colours.length > 0;
+  const filteredVariants = hasColours ? variants.filter(v => v.colour === selectedColour) : variants;
   const inStock = variants.some(v => v.stock_count > 0);
-  const selectedVariant = variants.find(v => v.size === selectedSize);
+  const selectedVariant = filteredVariants.find(v => v.size === selectedSize);
   const maxQty = selectedVariant?.stock_count ?? 10;
+  const currentImage = images[imgIdx] ?? image;
 
   return (
-    <div className="product-card" style={{ position: 'relative' }}>
+    <div
+      className="product-card"
+      style={{ position: 'relative' }}
+      onMouseEnter={startCycle}
+      onMouseLeave={stopCycle}
+    >
       <a href={`/products/${slug}`} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
-        <div className="product-card__image">
-          {image
-            ? <img src={image} alt={name} loading="lazy" />
+        <div className="product-card__image" style={{ position: 'relative', overflow: 'hidden' }}>
+          {currentImage
+            ? <img src={currentImage} alt={name} loading="lazy"
+                style={{ transition: 'opacity .3s', width: '100%', height: '100%', objectFit: 'cover' }} />
             : <span style={{ fontSize: '4rem' }}>🥻</span>}
           {badge && <span className="product-card__badge">{badge}</span>}
+          {/* Dot indicators */}
+          {images.length > 1 && (
+            <div style={{ position: 'absolute', bottom: '6px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '4px' }}>
+              {images.map((_, i) => (
+                <span key={i} style={{ width: '6px', height: '6px', borderRadius: '50%', background: i === imgIdx ? 'white' : 'rgba(255,255,255,.5)', display: 'inline-block', transition: 'background .2s' }} />
+              ))}
+            </div>
+          )}
         </div>
         <div className="product-card__body">
           <div className="product-card__name">{name}</div>
@@ -63,32 +125,44 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
       </a>
 
       <div style={{ padding: '0 1rem 1rem' }}>
-        {/* Size + Qty picker — shown after first click */}
         {expanded && (
           <div style={{ marginBottom: '.6rem' }}>
             {loading ? (
-              <p style={{ fontSize: '.75rem', color: 'var(--color-text-muted)', margin: '.25rem 0' }}>Loading sizes…</p>
+              <p style={{ fontSize: '.75rem', color: 'var(--color-text-muted)', margin: '.25rem 0' }}>Loading…</p>
             ) : variants.length === 0 ? (
               <p style={{ fontSize: '.75rem', color: '#dc2626', margin: '.25rem 0' }}>Out of stock</p>
             ) : (
               <>
+                {/* Colour pills */}
+                {hasColours && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.3rem', marginBottom: '.5rem' }}>
+                    <span style={{ fontSize: '.7rem', color: 'var(--color-text-muted)', fontWeight: 600, alignSelf: 'center', marginRight: '.2rem' }}>Colour:</span>
+                    {colours.map(c => (
+                      <button key={c} onClick={e => { e.preventDefault(); setColour(c); setSize(''); }}
+                        style={{
+                          padding: '.2rem .55rem', fontSize: '.7rem', fontWeight: 600,
+                          borderRadius: '.4rem',
+                          border: `1.5px solid ${selectedColour === c ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                          background: selectedColour === c ? 'var(--color-primary)' : 'white',
+                          color: selectedColour === c ? 'white' : 'var(--color-text)',
+                          cursor: 'pointer',
+                        }}>{c}</button>
+                    ))}
+                  </div>
+                )}
+
                 {/* Size pills */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', marginBottom: '.5rem' }}>
-                  {variants.map(v => (
-                    <button
-                      key={v.size}
-                      onClick={e => { e.preventDefault(); setSize(v.size); }}
+                  {filteredVariants.map(v => (
+                    <button key={v.size} onClick={e => { e.preventDefault(); setSize(v.size); }}
                       style={{
-                        padding: '.2rem .6rem',
-                        fontSize: '.72rem',
-                        fontWeight: 600,
+                        padding: '.2rem .6rem', fontSize: '.72rem', fontWeight: 600,
                         borderRadius: '.4rem',
                         border: `1.5px solid ${selectedSize === v.size ? 'var(--color-primary)' : 'var(--color-border)'}`,
                         background: selectedSize === v.size ? 'var(--color-primary)' : 'white',
                         color: selectedSize === v.size ? 'white' : 'var(--color-text)',
                         cursor: 'pointer',
-                      }}
-                    >{v.size}</button>
+                      }}>{v.size}</button>
                   ))}
                 </div>
 
@@ -99,7 +173,8 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
                       style={{ width: '26px', height: '26px', borderRadius: '.35rem', border: '1px solid var(--color-border)', background: 'white', cursor: 'pointer', fontWeight: 700 }}>−</button>
                     <span style={{ fontSize: '.85rem', fontWeight: 600, minWidth: '1.5rem', textAlign: 'center' }}>{qty}</span>
                     <button onClick={e => { e.preventDefault(); setQty(q => Math.min(maxQty, q + 1)); }}
-                      style={{ width: '26px', height: '26px', borderRadius: '.35rem', border: '1px solid var(--color-border)', background: 'white', cursor: 'pointer', fontWeight: 700 }}>+</button>
+                      disabled={qty >= maxQty}
+                      style={{ width: '26px', height: '26px', borderRadius: '.35rem', border: '1px solid var(--color-border)', background: 'white', cursor: qty >= maxQty ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: qty >= maxQty ? 0.35 : 1 }}>+</button>
                     <span style={{ fontSize: '.7rem', color: 'var(--color-text-muted)' }}>{maxQty} left</span>
                   </div>
                 )}
@@ -111,10 +186,11 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
         <button
           className={`add-to-cart-btn${added ? ' add-to-cart-btn--added' : ''}`}
           onClick={handleAddClick}
-          disabled={expanded && (!inStock || (variants.length > 0 && !selectedSize))}
+          disabled={expanded && (!inStock || (variants.length > 0 && !selectedSize) || (hasColours && !selectedColour))}
           style={{ width: '100%' }}
         >
           {added ? '✓ Added to Bag'
+            : expanded && hasColours && !selectedColour ? 'Select a colour'
             : expanded && !selectedSize && variants.length > 0 ? 'Select a size'
             : expanded && variants.length === 0 && !loading ? 'Out of stock'
             : 'Add to Bag'}
