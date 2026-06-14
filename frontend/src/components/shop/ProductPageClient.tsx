@@ -5,7 +5,7 @@ import { SizeSelector } from './SizeSelector';
 import { useCart } from '../../context/CartContext';
 import { formatAUD } from '../../lib/products';
 
-export type ColourImages = Record<string, string[]>; // colour -> ordered url[]
+export type ColourImages = Record<string, string[]>;
 
 interface Props {
   product: {
@@ -13,7 +13,7 @@ interface Props {
     price: number; originalPrice?: number; badge?: string;
     image?: string; category: string;
   };
-  colourImages: ColourImages;  // pre-fetched on server
+  colourImages: ColourImages;
   badge?: string;
   discount?: number | null;
   origPrice?: number | null;
@@ -22,10 +22,9 @@ interface Props {
 export function ProductPageClient({ product, colourImages, badge, discount, origPrice }: Props) {
   const { addItem, openCart } = useCart();
 
-  const [selectedColour, setSelectedColour] = useState<string>(() => {
-    // Default to first colour that has images, or ''
-    return Object.keys(colourImages)[0] ?? '';
-  });
+  const [selectedColour, setSelectedColour] = useState<string>(() =>
+    Object.keys(colourImages)[0] ?? ''
+  );
   const [size, setSize]               = useState<string | null>(null);
   const [sizeInStock, setSizeInStock] = useState(true);
   const [maxQty, setMaxQty]           = useState<number>(99);
@@ -33,7 +32,6 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
   const [error, setError]             = useState(false);
   const [added, setAdded]             = useState(false);
 
-  // Resolve which images to show: colour-specific → fallback ungrouped ('') → fallback primary image
   const images: string[] = (
     colourImages[selectedColour] ??
     colourImages[''] ??
@@ -70,14 +68,9 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
   const atMax      = size !== null && qty >= maxQty;
 
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'minmax(0,1.1fr) minmax(0,1fr)',
-      gap: 'var(--space-16)',
-      alignItems: 'start',
-    }}>
-      {/* LEFT — carousel reacts to colour */}
-      <div style={{ position: 'sticky', top: '6rem' }}>
+    <div className="pdp-layout">
+      {/* LEFT — carousel */}
+      <div className="pdp-gallery-col">
         <ProductImageCarousel
           images={images}
           name={product.name}
@@ -85,7 +78,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
           discount={discount}
         />
 
-        <div style={{ marginTop: 'var(--space-6)', background: 'var(--color-gold-soft)', border: '1px solid var(--color-gold)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4) var(--space-6)', display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>
+        <div className="pdp-artisan-badge">
           <span style={{ fontSize: '1.5rem' }}>✍️</span>
           <div>
             <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-gold)', letterSpacing: '.06em', textTransform: 'uppercase' }}>Handcrafted in India</div>
@@ -94,30 +87,28 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
         </div>
       </div>
 
-      {/* RIGHT — info + variant selector */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+      {/* RIGHT — info */}
+      <div className="pdp-info-col">
         <div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.75rem, 1.2rem + 2vw, 2.75rem)', fontWeight: 700, lineHeight: 1.15, color: 'var(--color-text)', margin: 0 }}>
-            {product.name}
-          </h1>
+          <h1 className="pdp-title-main">{product.name}</h1>
           {product.subtitle && (
             <p style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)', marginTop: 'var(--space-3)', lineHeight: 1.6 }}>{product.subtitle}</p>
           )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', margin: 'var(--space-4) 0' }}>
           <div style={{ flex: 1, height: '1px', background: 'var(--color-divider)' }} />
           <span style={{ color: 'var(--color-gold)', fontSize: '.75rem' }}>✷</span>
           <div style={{ flex: 1, height: '1px', background: 'var(--color-divider)' }} />
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.75rem, 1.4rem + 1vw, 2.25rem)', fontWeight: 700, color: 'var(--color-primary)' }}>{formatAUD(product.price)}</span>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-4)', flexWrap: 'wrap', marginBottom: 'var(--space-5)' }}>
+          <span className="pdp-price-main">{formatAUD(product.price)}</span>
           {origPrice && <s style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-faint)' }}>{formatAUD(origPrice)}</s>}
           {discount && <span style={{ background: 'var(--color-gold-soft)', color: 'var(--color-gold)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: '.25rem .7rem', borderRadius: 'var(--radius-full)' }}>Save {discount}%</span>}
         </div>
 
-        {/* Variant selector — colour change triggers carousel update */}
+        {/* Variant selector */}
         <div className="pdp-atc">
           <SizeSelector productId={product.id} onSizeChange={handleSizeChange} />
 
@@ -138,7 +129,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
               >+</button>
             </div>
             {atMax && (
-              <span style={{ fontSize: 'var(--text-xs)', color: '#dc2626', fontWeight: 600, marginLeft: 'var(--space-3)' }}>Max {maxQty} available</span>
+              <span style={{ fontSize: 'var(--text-xs)', color: '#dc2626', fontWeight: 600 }}>Max {maxQty} available</span>
             )}
           </div>
 
@@ -151,16 +142,16 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
             {added ? '✓ Added to Bag' : outOfStock ? 'Out of Stock' : 'Add to Bag'}
           </button>
 
-          <a href="/checkout" className="btn btn--outline" style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-3)' }}>
+          <a href="/checkout" className="btn btn--outline" style={{ width: '100%', justifyContent: 'center', display: 'flex', marginTop: 'var(--space-3)' }}>
             Buy Now
           </a>
         </div>
 
-        {/* Trust row */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', background: 'var(--color-surface)', border: '1px solid var(--color-divider)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
+        {/* Trust grid */}
+        <div className="pdp-trust-grid">
           {[['🚚','Free Shipping','Orders over A$150'],['↩️','Easy Returns','15-day hassle-free'],['✅','100% Authentic','Direct from artisans'],['🔒','Secure Checkout','Stripe & Razorpay']].map(([icon,title,sub]) => (
             <div key={title} style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: '1.1rem', marginTop: '.1rem' }}>{icon}</span>
+              <span style={{ fontSize: '1.1rem', marginTop: '.1rem', flexShrink: 0 }}>{icon}</span>
               <div>
                 <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text)' }}>{title}</div>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{sub}</div>
@@ -170,7 +161,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
         </div>
 
         {/* Accordions */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-4)' }}>
           {[
             { title: 'Product details', content: (
               <ul style={{ paddingLeft: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
