@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { supabase } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 import { Spinner } from '../../components/ui/Spinner';
 
 export default function SignupPage() {
@@ -30,16 +30,10 @@ export default function SignupPage() {
     });
   }
 
-  // ─ Success screen ───────────────────────────────────────
   if (done) return (
     <main style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)', padding: '2rem' }}>
       <div style={{ textAlign: 'center', maxWidth: '420px' }}>
-        <div style={{
-          width: '72px', height: '72px', borderRadius: '50%',
-          background: 'var(--color-gold-soft)', border: '2px solid var(--color-gold)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '2rem', margin: '0 auto 1.5rem',
-        }}>📧</div>
+        <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: 'var(--color-gold-soft)', border: '2px solid var(--color-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', margin: '0 auto 1.5rem' }}>📧</div>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.75rem', color: 'var(--color-text)', margin: 0 }}>Check your email</h2>
         <p style={{ color: 'var(--color-text-muted)', marginTop: '.75rem', lineHeight: 1.6 }}>
           We sent a confirmation link to <strong style={{ color: 'var(--color-text)' }}>{email}</strong>.<br />
@@ -53,7 +47,6 @@ export default function SignupPage() {
     </main>
   );
 
-  // ─ Signup form ───────────────────────────────────────
   return (
     <main style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)', padding: '2rem' }}>
       <div style={{ width: '100%', maxWidth: '420px' }}>
@@ -65,8 +58,6 @@ export default function SignupPage() {
         </div>
 
         <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-divider)', borderRadius: 'var(--radius-xl)', padding: '2rem', boxShadow: 'var(--shadow-sm)' }}>
-
-          {/* Google */}
           <button onClick={handleGoogle} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.75rem', padding: '.75rem', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'white', cursor: 'pointer', fontWeight: 600, fontSize: 'var(--text-sm)', marginBottom: '1.5rem' }}>
             <GoogleIcon />
             Continue with Google
@@ -119,7 +110,6 @@ export default function SignupPage() {
   );
 }
 
-// ── Shared helpers ───────────────────────────────────────────
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '.75rem 1rem',
   border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',

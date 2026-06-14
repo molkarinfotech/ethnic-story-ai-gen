@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { supabase } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 import { Spinner } from '../../components/ui/Spinner';
 
 export default function LoginPage() {
@@ -15,7 +15,6 @@ export default function LoginPage() {
     setLoading(true); setError('');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) { setError(error.message); setLoading(false); return; }
-    // Full page reload ensures session is hydrated before account page checks auth
     window.location.href = '/account';
   }
 
@@ -78,7 +77,7 @@ export default function LoginPage() {
         </div>
 
         <p style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
-          Don’t have an account?{' '}
+          Don't have an account?{' '}
           <a href="/signup" style={{ color: 'var(--color-primary)', fontWeight: 600 }}>Sign up</a>
         </p>
       </div>
