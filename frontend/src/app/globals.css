@@ -30,6 +30,34 @@ p { max-width: 68ch; text-wrap: pretty; }
 .section { padding: clamp(var(--space-12), 7vw, var(--space-24)) 0; }
 
 /* ═══════════════════════════════════════════════
+   ANNOUNCEMENT RIBBON
+═══════════════════════════════════════════════ */
+.announcement {
+  display: block;
+  width: 100%;
+  background: var(--color-primary);
+  color: #fff;
+  text-align: center;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 0.55rem 1rem;
+  position: relative;
+  z-index: 101;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 640px) {
+  .announcement {
+    font-size: 0.7rem;
+    padding: 0.45rem 0.75rem;
+    white-space: normal;
+    line-height: 1.4;
+  }
+}
+
+/* ═══════════════════════════════════════════════
    ANIMATIONS & KEYFRAMES
 ═══════════════════════════════════════════════ */
 @keyframes fadeUp {
