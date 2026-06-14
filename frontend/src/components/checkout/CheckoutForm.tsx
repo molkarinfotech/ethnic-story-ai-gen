@@ -9,6 +9,7 @@ import {
 } from '@stripe/react-stripe-js';
 import { useCart } from '../../context/CartContext';
 import { formatAUD } from '../../lib/products';
+import { supabase } from '../../lib/supabase';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
@@ -18,6 +19,11 @@ export type ShippingAddress = {
   name: string; email: string; phone: string;
   line1: string; line2: string; suburb: string; state: string; postcode: string;
 };
+
+async function getAccessToken(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ?? null;
+}
 
 function PaymentForm({
   grandTotal, items, clearCart, shipping_address, paymentIntentId,
@@ -46,13 +52,15 @@ function PaymentForm({
     setLoading(true);
     setErrorMsg('');
 
-    // Update payment intent with filled-in form data + user_id before confirming
+    // Update payment intent with form data + user_id before confirming
     try {
+      const token = await getAccessToken();
       await fetch('/api/update-payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           paymentIntentId,
+          token,
           metadata: {
             customer_name:     name,
             customer_email:    email,
@@ -68,9 +76,7 @@ function PaymentForm({
           },
         }),
       });
-    } catch {
-      // Non-fatal — continue with payment, webhook will have partial data
-    }
+    } catch { /* non-fatal */ }
 
     const { error } = await stripe.confirmPayment({
       elements,
@@ -193,23 +199,24 @@ export function CheckoutForm() {
 
   useEffect(() => {
     if (!hydrated || totalItems === 0) return;
-    // Create payment intent with minimal metadata — form data is sent in update-payment-intent just before confirm
-    fetch('/api/create-payment-intent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: grandTotal }),
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (data.clientSecret) {
-          setClientSecret(data.clientSecret);
-          // Extract payment intent ID from client secret (format: pi_xxx_secret_yyy)
-          setPaymentIntentId(data.clientSecret.split('_secret_')[0]);
-        } else {
-          setIntentError(data.error ?? 'Could not initialise payment.');
-        }
+    (async () => {
+      const token = await getAccessToken();
+      fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: grandTotal, token }),
       })
-      .catch(() => setIntentError('Network error — please refresh and try again.'));
+        .then(r => r.json())
+        .then(data => {
+          if (data.clientSecret) {
+            setClientSecret(data.clientSecret);
+            setPaymentIntentId(data.clientSecret.split('_secret_')[0]);
+          } else {
+            setIntentError(data.error ?? 'Could not initialise payment.');
+          }
+        })
+        .catch(() => setIntentError('Network error — please refresh and try again.'));
+    })();
   }, [hydrated, totalItems, grandTotal]);
 
   if (!hydrated) return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Loading your bag…</div>;

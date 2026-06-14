@@ -1,27 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { getServiceSupabase } from '../../../lib/supabase';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
 
 export async function POST(req: NextRequest) {
   try {
-    const { paymentIntentId, metadata } = await req.json();
+    const { paymentIntentId, metadata, token: accessToken } = await req.json();
     if (!paymentIntentId) return NextResponse.json({ error: 'Missing paymentIntentId' }, { status: 400 });
 
-    // Read user_id server-side
+    // Verify user server-side using the token sent from the client
     let user_id: string | null = null;
-    try {
-      const cookieStore = cookies();
-      const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        { cookies: { get: (name) => cookieStore.get(name)?.value } }
-      );
-      const { data: { user } } = await supabase.auth.getUser();
-      user_id = user?.id ?? null;
-    } catch { /* guest */ }
+    if (accessToken) {
+      try {
+        const sb = getServiceSupabase();
+        const { data: { user } } = await sb.auth.getUser(accessToken);
+        user_id = user?.id ?? null;
+      } catch { /* guest */ }
+    }
 
     await stripe.paymentIntents.update(paymentIntentId, {
       metadata: {

@@ -1,33 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { getServiceSupabase } from '../../../lib/supabase';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2023-10-16',
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
 
 export async function POST(req: NextRequest) {
   try {
-    const { amount, currency = 'aud', metadata = {} } = await req.json();
+    const { amount, currency = 'aud', token: accessToken } = await req.json();
 
     if (!amount || amount < 1) {
       return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
     }
 
-    // Attach logged-in user_id server-side so it cannot be spoofed
+    // Verify user server-side using the token sent from the client
     let user_id: string | null = null;
-    try {
-      const cookieStore = cookies();
-      const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        { cookies: { get: (name) => cookieStore.get(name)?.value } }
-      );
-      const { data: { user } } = await supabase.auth.getUser();
-      user_id = user?.id ?? null;
-    } catch {
-      // Guest checkout — no user_id
+    if (accessToken) {
+      try {
+        const sb = getServiceSupabase();
+        const { data: { user } } = await sb.auth.getUser(accessToken);
+        user_id = user?.id ?? null;
+      } catch { /* guest */ }
     }
 
     const paymentIntent = await stripe.paymentIntents.create({
@@ -35,7 +27,6 @@ export async function POST(req: NextRequest) {
       currency,
       automatic_payment_methods: { enabled: true },
       metadata: {
-        ...metadata,
         ...(user_id ? { user_id } : {}),
       },
     });
