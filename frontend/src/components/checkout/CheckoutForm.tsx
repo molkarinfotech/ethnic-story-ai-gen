@@ -48,6 +48,10 @@ function PaymentForm({
     setLoading(true);
     setErrorMsg('');
 
+    const orderItems = items.map(i => ({
+      id: i.id, name: i.name, quantity: i.quantity, price: i.price, size: i.selectedSize,
+    }));
+
     try {
       await fetch('/api/update-payment-intent', {
         method: 'POST',
@@ -64,18 +68,33 @@ function PaymentForm({
             shipping_suburb:   suburb,
             shipping_state:    state,
             shipping_postcode: postcode,
-            items: JSON.stringify(items.map(i => ({
-              id: i.id, name: i.name, quantity: i.quantity, price: i.price, size: i.selectedSize,
-            }))),
+            items: JSON.stringify(orderItems),
           },
         }),
       });
     } catch { /* non-fatal */ }
 
+    // Build a compact order snapshot and encode it into the return URL.
+    // This ensures the success page can show full order details immediately
+    // even before the Stripe webhook has fired and saved to the database.
+    const snap = {
+      name,
+      email,
+      phone,
+      line1: shipping_address.line1,
+      line2: shipping_address.line2,
+      suburb,
+      state,
+      postcode,
+      total: grandTotal,
+      items: orderItems,
+    };
+    const snapParam = btoa(encodeURIComponent(JSON.stringify(snap)));
+
     const { error } = await stripe.confirmPayment({
       elements,
       confirmParams: {
-        return_url: `${window.location.origin}/checkout/success`,
+        return_url: `${window.location.origin}/checkout/success?snap=${snapParam}`,
         payment_method_data: {
           billing_details: {
             name, email, phone,

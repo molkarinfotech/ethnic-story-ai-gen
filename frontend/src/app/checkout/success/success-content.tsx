@@ -5,31 +5,72 @@ import { formatAUD } from '../../../lib/products';
 
 type OrderItem = { id: string; name: string; quantity: number; price: number; size?: string };
 type Order = {
-  id: string; created_at: string; amount_aud: number; status: string;
+  id?: string; created_at?: string; amount_aud: number; status?: string;
   items: OrderItem[]; customer_name?: string; customer_email?: string;
   customer_phone?: string;
   shipping_address?: { line1?: string; line2?: string; suburb?: string; state?: string; postcode?: string };
 };
 
+/** Decode the compact order snapshot embedded in the return URL by CheckoutForm. */
+function decodeSnap(raw: string | null): Order | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(decodeURIComponent(atob(raw)));
+    return {
+      amount_aud: parsed.total,
+      items: parsed.items ?? [],
+      customer_name:  parsed.name,
+      customer_email: parsed.email,
+      customer_phone: parsed.phone,
+      shipping_address: {
+        line1:    parsed.line1,
+        line2:    parsed.line2,
+        suburb:   parsed.suburb,
+        state:    parsed.state,
+        postcode: parsed.postcode,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function SuccessContent() {
   const params = useSearchParams();
   const paymentIntent = params.get('payment_intent');
+  const snapRaw       = params.get('snap');
+
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!paymentIntent) { setLoading(false); return; }
+
+    // Show snapshot immediately so the page never looks blank for guests.
+    const snapOrder = decodeSnap(snapRaw);
+    if (snapOrder) {
+      setOrder(snapOrder);
+      setLoading(false);
+    }
+
+    // Still poll the DB in the background — once the webhook fires the DB
+    // row will appear and we upgrade to the full order (which has an id).
     let attempts = 0;
     const poll = async () => {
       try {
         const res = await fetch(`/api/order-by-intent?payment_intent=${paymentIntent}`);
-        if (res.ok) { setOrder(await res.json()); setLoading(false); return; }
+        if (res.ok) {
+          const dbOrder = await res.json();
+          setOrder(dbOrder);
+          setLoading(false);
+          return;
+        }
       } catch {}
-      if (++attempts < 8) setTimeout(poll, 1000);
+      if (++attempts < 10) setTimeout(poll, 1500);
       else setLoading(false);
     };
     poll();
-  }, [paymentIntent]);
+  }, [paymentIntent, snapRaw]);
 
   if (loading) return (
     <div style={{ minHeight: '60vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
@@ -42,7 +83,7 @@ export function SuccessContent() {
     <div style={{ minHeight: '60vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem', textAlign: 'center' }}>
       <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
       <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.75rem' }}>Order placed!</h2>
-      <p style={{ color: 'var(--color-text-muted)', marginTop: '.5rem', maxWidth: '38ch' }}>Your payment was successful. You’ll receive a confirmation email shortly.</p>
+      <p style={{ color: 'var(--color-text-muted)', marginTop: '.5rem', maxWidth: '38ch' }}>Your payment was successful. You'll receive a confirmation email shortly.</p>
       <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
         <a href="/account" className="btn btn-primary">View my orders</a>
         <a href="/collections" className="btn btn--outline">Continue shopping</a>
@@ -60,9 +101,11 @@ export function SuccessContent() {
         <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: '#dcfce7', border: '2px solid #16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', margin: '0 auto 1.25rem' }}>✓</div>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.5rem,1.2rem+1.5vw,2.25rem)', margin: 0 }}>Thank you{order.customer_name ? `, ${order.customer_name.split(' ')[0]}` : ''}!</h1>
         <p style={{ color: 'var(--color-text-muted)', marginTop: '.5rem' }}>Your order has been confirmed. Check your email for details.</p>
-        <div style={{ display: 'inline-block', marginTop: '.75rem', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '.5rem', padding: '.4rem 1rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-          Order #{order.id.slice(0, 8).toUpperCase()}
-        </div>
+        {order.id && (
+          <div style={{ display: 'inline-block', marginTop: '.75rem', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '.5rem', padding: '.4rem 1rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+            Order #{order.id.slice(0, 8).toUpperCase()}
+          </div>
+        )}
       </div>
 
       {/* Items */}

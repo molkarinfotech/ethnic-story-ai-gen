@@ -5,6 +5,7 @@ import { AuthProvider } from '../context/AuthContext';
 import { CartDrawer } from '../components/cart/CartDrawer';
 import { CartIcon } from '../components/cart/CartIcon';
 import { AuthNav } from '../components/AuthNav';
+import { MobileNav } from '../components/layout/MobileNav';
 
 export const metadata: Metadata = {
   title: 'Ethnic Story — Indian Ethnic Wear in Australia',
@@ -15,6 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="preconnect" href="https://api.fontshare.com" />
         <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&f[]=boska@400,500,700&display=swap" rel="stylesheet" />
       </head>
@@ -23,7 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <CartProvider>
             {/* Announcement Bar */}
             <div style={{ background: 'var(--color-primary)', color: 'var(--color-text-inverse)', textAlign: 'center', padding: '.5rem 1rem', fontSize: 'var(--text-xs)', letterSpacing: '.05em' }}>
-              Free shipping on orders over A$150  ·  Handcrafted in India  ·  Delivered Australia-wide
+              Free shipping on orders over A$150  ·  Handcrafted in India  ·  Delivered Australia-wide
             </div>
 
             {/* Header */}
@@ -48,7 +50,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <div className="site-header__actions">
                   <AuthNav />
                   <CartIcon />
-                  <a href="/collections" className="btn btn-primary" style={{ minHeight: '38px', padding: '.6rem 1.2rem', fontSize: 'var(--text-xs)' }}>Shop Now</a>
+                  <a href="/collections" className="btn btn-primary site-header__shop-btn" style={{ minHeight: '38px', padding: '.6rem 1.2rem', fontSize: 'var(--text-xs)' }}>Shop Now</a>
+                  <MobileNav />
                 </div>
               </div>
             </header>
