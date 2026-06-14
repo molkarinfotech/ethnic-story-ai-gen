@@ -4,7 +4,6 @@ import { getServiceSupabase } from '../../../lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-// ── Startup env-var check (visible in Vercel logs on cold start) ─────────────
 const missingVars: string[] = [];
 if (!process.env.STRIPE_SECRET_KEY)        missingVars.push('STRIPE_SECRET_KEY');
 if (!process.env.STRIPE_WEBHOOK_SECRET)    missingVars.push('STRIPE_WEBHOOK_SECRET');
@@ -17,17 +16,26 @@ if (missingVars.length) {
 }
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? '';
+
+// Debug: log first 20 chars so we can confirm which secret is loaded
+console.log('[stripe-webhook] Secret loaded:', webhookSecret ? webhookSecret.slice(0, 20) + '…' : 'NOT SET');
 
 export async function POST(req: NextRequest) {
-  const body = await req.text();
+  const buf = await req.arrayBuffer();
+  const body = Buffer.from(buf).toString('utf8');
   const sig  = req.headers.get('stripe-signature') ?? '';
+
+  console.log('[stripe-webhook] Incoming POST | sig present:', !!sig | 0, '| secret present:', !!webhookSecret | 0);
+  console.log('[stripe-webhook] Using secret:', webhookSecret.slice(0, 20) + '…');
 
   let event: Stripe.Event;
   try {
     event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
   } catch (err: any) {
     console.error('[stripe-webhook] Signature validation failed:', err.message);
+    console.error('[stripe-webhook] Secret used (first 20):', webhookSecret.slice(0, 20));
+    console.error('[stripe-webhook] Sig header (first 60):', sig.slice(0, 60));
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
@@ -43,12 +51,10 @@ export async function POST(req: NextRequest) {
     try { items = JSON.parse(m.items ?? '[]'); } catch { items = []; }
 
     const sb = getServiceSupabase();
-
-    // Verify Supabase client is usable
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || 'MISSING';
     const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || 'MISSING';
     console.log('[stripe-webhook] Supabase URL:', supabaseUrl.slice(0, 40));
-    console.log('[stripe-webhook] Service key set:', serviceKey !== 'MISSING' ? 'YES (' + serviceKey.slice(0, 10) + '…)' : 'NO — INSERT WILL FAIL');
+    console.log('[stripe-webhook] Service key set:', serviceKey !== 'MISSING' ? 'YES (' + serviceKey.slice(0, 10) + '\u2026)' : 'NO \u2014 INSERT WILL FAIL');
 
     const { error, data } = await sb.from('orders').insert({
       stripe_payment_intent_id: pi.id,
@@ -69,20 +75,18 @@ export async function POST(req: NextRequest) {
     }).select();
 
     if (error) {
-      // Log full error detail — visible in Vercel Functions logs
       console.error('[stripe-webhook] Supabase INSERT FAILED');
       console.error('  code:    ', error.code);
       console.error('  message: ', error.message);
       console.error('  details: ', error.details);
       console.error('  hint:    ', error.hint);
-      // Return 500 so Stripe marks delivery as failed and retries
       return NextResponse.json(
         { error: 'Database insert failed', detail: error.message },
         { status: 500 }
       );
     }
 
-    console.log('[stripe-webhook] ✅ Order saved successfully. Row:', JSON.stringify(data));
+    console.log('[stripe-webhook] \u2705 Order saved successfully. Row:', JSON.stringify(data));
   }
 
   return NextResponse.json({ received: true });
