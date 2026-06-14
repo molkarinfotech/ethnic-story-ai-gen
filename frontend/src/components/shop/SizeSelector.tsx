@@ -26,45 +26,46 @@ function uniqueColours(variants: Variant[]): string[] {
 export function SizeSelector({
   productId,
   onSizeChange,
+  onColourChange,
 }: {
   productId: string;
   onSizeChange?: (size: string | null, inStock: boolean, stockCount: number, colour: string) => void;
+  onColourChange?: (colour: string) => void;   // fires immediately on colour click before size selected
 }) {
-  const [variants, setVariants]         = useState<Variant[]>([]);
-  const [selectedColour, setColour]     = useState<string>('');
-  const [selected, setSelected]         = useState<string | null>(null);
-  const [loading, setLoading]           = useState(true);
+  const [variants, setVariants]     = useState<Variant[]>([]);
+  const [selectedColour, setColour] = useState<string>('');
+  const [selected, setSelected]     = useState<string | null>(null);
+  const [loading, setLoading]       = useState(true);
 
   useEffect(() => {
-    const url = `/api/variants/${productId}?t=${Date.now()}`;
-    fetch(url, { cache: 'no-store' })
+    fetch(`/api/variants/${productId}?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
-          const norm = data.map((v: Variant) => ({ ...v, colour: v.colour ?? '', stock_count: Number(v.stock_count) }));
-          setVariants(sortSizes(norm));
-          // Auto-select first colour if any
-          const firstColour = norm.find((v: Variant) => v.colour)?.colour ?? '';
+          const norm: Variant[] = data.map((v: Variant) => ({ ...v, colour: v.colour ?? '', stock_count: Number(v.stock_count) }));
+          const sorted = sortSizes(norm);
+          setVariants(sorted);
+          const firstColour = sorted.find(v => v.colour)?.colour ?? '';
           setColour(firstColour);
+          // notify parent of initial colour so carousel shows right images from the start
+          if (firstColour) onColourChange?.(firstColour);
         } else {
           setVariants([]);
         }
         setLoading(false);
       })
       .catch(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId]);
 
   const colours = uniqueColours(variants);
   const hasColours = colours.length > 0;
-
-  // Sizes filtered to selected colour (or all if no colours defined)
-  const filteredVariants = hasColours
-    ? variants.filter(v => v.colour === selectedColour)
-    : variants;
+  const filteredVariants = hasColours ? variants.filter(v => v.colour === selectedColour) : variants;
 
   function selectColour(c: string) {
     setColour(c);
     setSelected(null);
+    onColourChange?.(c);                          // ← update carousel immediately
     onSizeChange?.(null, false, 0, c);
   }
 
@@ -135,7 +136,7 @@ export function SizeSelector({
           const isSelected = selected === v.size;
           return (
             <button
-              key={v.size}
+              key={`${v.colour}-${v.size}`}
               onClick={() => selectSize(v)}
               disabled={outOfStock}
               title={outOfStock ? 'Out of stock' : lowStock ? `Only ${v.stock_count} left` : ''}
@@ -164,10 +165,8 @@ export function SizeSelector({
 
       {selectedVariant && (
         <p style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)', color: selectedVariant.stock_count <= 5 ? '#ca8a04' : 'var(--color-text-muted)' }}>
-          {selectedVariant.stock_count === 0
-            ? '❌ Out of stock'
-            : selectedVariant.stock_count <= 5
-            ? `⚠️ Only ${selectedVariant.stock_count} left in this size`
+          {selectedVariant.stock_count === 0 ? '❌ Out of stock'
+            : selectedVariant.stock_count <= 5 ? `⚠️ Only ${selectedVariant.stock_count} left in this size`
             : '✅ In stock'}
         </p>
       )}

@@ -1,9 +1,8 @@
 import { getProducts, getProductBySlug, Product } from '../../../lib/fetchProducts';
 import { formatAUD } from '../../../lib/products';
 import { notFound } from 'next/navigation';
-import { AddToCartSection } from '../../../components/shop/AddToCartSection';
-import { ProductImageCarousel } from '../../../components/shop/ProductImageCarousel';
 import { getServiceSupabase } from '../../../lib/supabase';
+import { ProductPageClient, ColourImages } from '../../../components/shop/ProductPageClient';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -16,16 +15,40 @@ export default async function ProductPage({ params }: { params: { slug: string }
   const product = await getProductBySlug(params.slug);
   if (!product) notFound();
 
-  // Fetch extra images directly (not in Product type yet)
   const sb = getServiceSupabase();
-  const { data: prodData } = await sb
-    .from('products')
-    .select('images')
-    .eq('id', product.id)
-    .single();
 
-  const extraImages: string[] = Array.isArray(prodData?.images) ? prodData.images : [];
-  const allImages: string[] = [product.image, ...extraImages].filter(Boolean) as string[];
+  // Fetch all per-colour images for this product
+  const { data: imgRows } = await sb
+    .from('product_images')
+    .select('colour, url, sort_order')
+    .eq('product_id', product.id)
+    .order('colour')
+    .order('sort_order');
+
+  // Build ColourImages map.  '' key = ungrouped (no colour assigned)
+  const colourImages: ColourImages = {};
+  for (const row of imgRows ?? []) {
+    const key = row.colour ?? '';
+    if (!colourImages[key]) colourImages[key] = [];
+    colourImages[key].push(row.url);
+  }
+
+  // If no rows in product_images yet, fall back to the legacy images[] column
+  if (Object.keys(colourImages).length === 0) {
+    const { data: prodData } = await sb
+      .from('products')
+      .select('images')
+      .eq('id', product.id)
+      .single();
+    const legacyImgs: string[] = Array.isArray(prodData?.images) ? prodData.images : [];
+    const all = [product.image, ...legacyImgs].filter(Boolean) as string[];
+    if (all.length > 0) colourImages[''] = all;
+  }
+
+  // Final fallback: primary image only
+  if (Object.keys(colourImages).length === 0 && product.image) {
+    colourImages[''] = [product.image];
+  }
 
   const allProducts = await getProducts();
   const related = allProducts
@@ -34,7 +57,6 @@ export default async function ProductPage({ params }: { params: { slug: string }
 
   const origPrice = product.original_price ?? product.originalPrice;
   const discount  = origPrice ? Math.round((1 - product.price / origPrice) * 100) : null;
-  const description = (product as Product & { description?: string }).description;
 
   return (
     <main style={{ background: 'var(--color-bg)' }}>
@@ -54,96 +76,31 @@ export default async function ProductPage({ params }: { params: { slug: string }
         </div>
       </div>
 
-      {/* Main PDP */}
+      {/* Main PDP — client component owns carousel + variant selector state */}
       <section style={{ padding: 'var(--space-16) 0 var(--space-20)' }}>
         <div className="container">
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.1fr) minmax(0,1fr)', gap: 'var(--space-16)', alignItems: 'start' }}>
-
-            {/* LEFT — Image carousel */}
-            <div style={{ position: 'sticky', top: '6rem' }}>
-              <ProductImageCarousel
-                images={allImages}
-                name={product.name}
-                badge={product.badge}
-                discount={discount}
-              />
-
-              {/* Craft badge */}
-              <div style={{ marginTop: 'var(--space-6)', background: 'var(--color-gold-soft)', border: '1px solid var(--color-gold)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4) var(--space-6)', display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>
-                <span style={{ fontSize: '1.5rem' }}>✍️</span>
-                <div>
-                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-gold)', letterSpacing: '.06em', textTransform: 'uppercase' }}>Handcrafted in India</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '.2rem' }}>By skilled artisans using traditional techniques</div>
-                </div>
-              </div>
-            </div>
-
-            {/* RIGHT — Info */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-              <div>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.4rem', background: 'var(--color-primary-highlight)', color: 'var(--color-primary)', fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', padding: '.35rem .9rem', borderRadius: 'var(--radius-full)', marginBottom: 'var(--space-4)' }}>
-                  {categoryLabel[product.category] ?? product.category}
-                </span>
-                <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.75rem, 1.2rem + 2vw, 2.75rem)', fontWeight: 700, lineHeight: 1.15, color: 'var(--color-text)', margin: 0 }}>{product.name}</h1>
-                {product.subtitle && (
-                  <p style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)', marginTop: 'var(--space-3)', lineHeight: 1.6 }}>{product.subtitle}</p>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                <div style={{ flex: 1, height: '1px', background: 'var(--color-divider)' }} />
-                <span style={{ color: 'var(--color-gold)', fontSize: '.75rem' }}>✷</span>
-                <div style={{ flex: 1, height: '1px', background: 'var(--color-divider)' }} />
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.75rem, 1.4rem + 1vw, 2.25rem)', fontWeight: 700, color: 'var(--color-primary)' }}>{formatAUD(product.price)}</span>
-                {origPrice && <s style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-faint)' }}>{formatAUD(origPrice)}</s>}
-                {discount && <span style={{ background: 'var(--color-gold-soft)', color: 'var(--color-gold)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: '.25rem .7rem', borderRadius: 'var(--radius-full)' }}>Save {discount}%</span>}
-              </div>
-
-              <AddToCartSection product={{ ...product, originalPrice: origPrice }} />
-
-              {/* Trust row */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', background: 'var(--color-surface)', border: '1px solid var(--color-divider)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
-                {[['\ud83d\ude9a','Free Shipping','Orders over A$150'],['\u21a9\ufe0f','Easy Returns','15-day hassle-free'],['\u2705','100% Authentic','Direct from artisans'],['\ud83d\udd12','Secure Checkout','Stripe & Razorpay']].map(([icon,title,sub]) => (
-                  <div key={title} style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: '1.1rem', marginTop: '.1rem' }}>{icon}</span>
-                    <div>
-                      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text)' }}>{title}</div>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{sub}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Accordions */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                {[
-                  { title: 'Product details', content: (
-                    <>
-                      <p style={{ color: 'var(--color-text-muted)', lineHeight: 1.7, marginBottom: 'var(--space-4)' }}>{description ?? 'Handcrafted by skilled artisans using traditional techniques.'}</p>
-                      <ul style={{ paddingLeft: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-                        <li>Care: Dry clean recommended</li>
-                        <li>Origin: Made in India</li>
-                        <li>SKU: {product.id.toUpperCase().slice(0, 8)}</li>
-                      </ul>
-                    </>
-                  )},
-                  { title: 'Shipping & returns', content: <p style={{ color: 'var(--color-text-muted)', lineHeight: 1.7 }}>Free standard shipping on orders over A$150. Express delivery available at checkout. Delivered Australia-wide within 5–9 business days. Returns accepted within 15 days of delivery in original, unworn condition.</p> },
-                ].map(({ title, content }) => (
-                  <details key={title} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-divider)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-                    <summary style={{ padding: 'var(--space-4) var(--space-5)', cursor: 'pointer', fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--color-text)', listStyle: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      {title}<span style={{ color: 'var(--color-gold)', fontSize: '1.1rem' }}>+</span>
-                    </summary>
-                    <div style={{ padding: '0 var(--space-5) var(--space-5)', borderTop: '1px solid var(--color-divider)' }}>
-                      <div style={{ paddingTop: 'var(--space-4)' }}>{content}</div>
-                    </div>
-                  </details>
-                ))}
-              </div>
-            </div>
+          <div style={{ marginBottom: 'var(--space-4)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.4rem', background: 'var(--color-primary-highlight)', color: 'var(--color-primary)', fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', padding: '.35rem .9rem', borderRadius: 'var(--radius-full)' }}>
+              {categoryLabel[product.category] ?? product.category}
+            </span>
           </div>
+          <ProductPageClient
+            product={{
+              id: product.id,
+              slug: product.slug,
+              name: product.name,
+              subtitle: product.subtitle,
+              price: product.price,
+              originalPrice: origPrice ?? undefined,
+              badge: product.badge,
+              image: product.image,
+              category: product.category,
+            }}
+            colourImages={colourImages}
+            badge={product.badge}
+            discount={discount}
+            origPrice={origPrice}
+          />
         </div>
       </section>
 
