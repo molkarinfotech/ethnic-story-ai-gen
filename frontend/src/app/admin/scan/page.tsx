@@ -2,20 +2,7 @@
 import { useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
-type DetectedColour = { name: string; score: number; pixelFraction: number };
 type SuggestedProduct = { id: string; name: string; slug: string; category: string };
-
-type AnalysisResult = {
-  visionSkipped: boolean;
-  visionError: string | null;
-  labels: string[];
-  detectedCategory: string | null;
-  detectedColours: DetectedColour[];
-  primaryColour: string | null;
-  detectedSize: string | null;
-  suggestedProducts: SuggestedProduct[];
-  allProducts: SuggestedProduct[];
-};
 
 type FormState = {
   productId: string;
@@ -52,7 +39,7 @@ const inputStyle: React.CSSProperties = {
   width: '100%', padding: '.65rem .85rem', border: '1.5px solid #e5e7eb',
   borderRadius: '.65rem', fontSize: '.95rem', boxSizing: 'border-box', background: 'white',
 };
-const selectStyle: React.CSSProperties = {
+const selectStyle = {
   width: '100%', padding: '.65rem .85rem', border: '1.5px solid #e5e7eb',
   borderRadius: '.65rem', fontSize: '.95rem', background: 'white', cursor: 'pointer',
 } as React.CSSProperties;
@@ -77,19 +64,20 @@ function slugify(str: string) {
 }
 
 export default function ScanPage() {
-  const router = useRouter();
+  const router  = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [preview,   setPreview]   = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [analysing, setAnalysing] = useState(false);
-  const [analysis,  setAnalysis]  = useState<AnalysisResult | null>(null);
   const [saving,    setSaving]    = useState(false);
   const [saved,     setSaved]     = useState(false);
   const [error,     setError]     = useState<string | null>(null);
 
-  const [productSearch, setProductSearch] = useState('');
-  const [showNewProduct, setShowNewProduct] = useState(false);
+  // Product list — loaded once on mount
+  const [allProducts,     setAllProducts]     = useState<SuggestedProduct[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [productSearch,   setProductSearch]   = useState('');
+  const [showNewProduct,  setShowNewProduct]  = useState(false);
   const [creatingProduct, setCreatingProduct] = useState(false);
 
   const [form, setForm] = useState<FormState>({
@@ -109,31 +97,24 @@ export default function ScanPage() {
     return res;
   }
 
+  // Load products list
+  async function loadProducts() {
+    setLoadingProducts(true);
+    try {
+      const res  = await authFetch('/api/admin/products');
+      const data = await res.json();
+      if (Array.isArray(data)) setAllProducts(data);
+    } catch { /* silent */ } finally {
+      setLoadingProducts(false);
+    }
+  }
+
   const handleFile = useCallback(async (file: File) => {
-    setError(null); setAnalysis(null); setSaved(false); setShowNewProduct(false);
+    setError(null); setSaved(false); setShowNewProduct(false);
     setImageFile(file);
     setPreview(URL.createObjectURL(file));
-    setAnalysing(true);
-    try {
-      const fd = new FormData();
-      fd.append('image', file);
-      const res  = await fetch('/api/admin/scan-analyse', { method: 'POST', body: fd, credentials: 'include' });
-      if (res.status === 401) { router.push('/admin/login'); return; }
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Analysis failed');
-      setAnalysis(data);
-      setForm(f => ({
-        ...f,
-        colour:      data.primaryColour ?? f.colour,
-        size:        data.detectedSize  ?? f.size,
-        productId:   data.suggestedProducts?.[0]?.id   ?? '',
-        productName: data.suggestedProducts?.[0]?.name ?? '',
-      }));
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setAnalysing(false);
-    }
+    // Load the product list now so the dropdown is ready
+    await loadProducts();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -143,8 +124,9 @@ export default function ScanPage() {
   }
 
   function reset() {
-    setPreview(null); setImageFile(null); setAnalysis(null);
+    setPreview(null); setImageFile(null);
     setSaved(false); setError(null); setShowNewProduct(false); setProductSearch('');
+    setAllProducts([]);
     setForm({ productId: '', productName: '', colour: '', size: '', stockCount: 1 });
     setNewProduct({ name: '', category: '', price: '', original_price: '', description: '' });
     if (fileRef.current) fileRef.current.value = '';
@@ -174,12 +156,8 @@ export default function ScanPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed to create product');
 
+      setAllProducts(prev => [data, ...prev]);
       setForm(f => ({ ...f, productId: data.id, productName: data.name }));
-      setAnalysis(a => a ? {
-        ...a,
-        allProducts: [data, ...(a.allProducts ?? [])],
-        suggestedProducts: [data, ...(a.suggestedProducts ?? [])],
-      } : a);
       setShowNewProduct(false);
       setNewProduct({ name: '', category: '', price: '', original_price: '', description: '' });
     } catch (e: any) {
@@ -207,7 +185,12 @@ export default function ScanPage() {
       const stockRes  = await authFetch('/api/admin/stock', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product_id: form.productId, size: form.size, colour: form.colour, stock_count: form.stockCount }),
+        body: JSON.stringify({
+          product_id: form.productId,
+          size: form.size,
+          colour: form.colour,
+          stock_count: form.stockCount,
+        }),
       });
       const stockData = await stockRes.json();
       if (!stockRes.ok) throw new Error(stockData.error ?? 'Stock update failed');
@@ -221,23 +204,25 @@ export default function ScanPage() {
     }
   }
 
-  const showForm = analysis !== null && !analysing;
-  const allProducts = analysis?.allProducts ?? analysis?.suggestedProducts ?? [];
   const filteredProds = productSearch.trim()
     ? allProducts.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()))
     : allProducts;
 
+  const showForm = preview !== null;
+
   return (
     <div style={{ minHeight: '100dvh', background: '#fdf2f8', fontFamily: 'system-ui, sans-serif' }}>
+      {/* Top bar */}
       <div style={{ background: '#9d174d', color: 'white', padding: '.85rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem' }}>
           <button onClick={() => router.push('/admin')} style={{ background: 'none', border: 'none', color: 'white', fontSize: '1.2rem', cursor: 'pointer', padding: 0 }}>←</button>
           <span style={{ fontWeight: 700, fontSize: '1rem' }}>📷 Inventory Scanner</span>
         </div>
-        <span style={{ fontSize: '.75rem', opacity: .7 }}>Google Vision</span>
       </div>
 
       <div style={{ maxWidth: '520px', margin: '0 auto', padding: '1rem' }}>
+
+        {/* Camera picker */}
         {!preview && (
           <div onClick={() => fileRef.current?.click()}
             style={{ background: 'white', border: '2px dashed #e9a8c8', borderRadius: '1.25rem', padding: '3rem 1rem', textAlign: 'center', cursor: 'pointer', marginBottom: '1rem' }}>
@@ -248,87 +233,69 @@ export default function ScanPage() {
           </div>
         )}
 
+        {/* Preview */}
         {preview && (
           <div style={{ ...card, padding: 0, overflow: 'hidden', position: 'relative', marginBottom: '1rem' }}>
             <img src={preview} alt="Scanned" style={{ width: '100%', maxHeight: '300px', objectFit: 'cover', display: 'block' }} />
-            {analysing && (
-              <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', gap: '.75rem' }}>
-                <div style={{ fontSize: '2.5rem' }}>🔍</div>
-                <div style={{ fontWeight: 700 }}>Analysing image…</div>
-              </div>
-            )}
             {saved && (
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(22,163,74,.88)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', gap: '.5rem' }}>
                 <div style={{ fontSize: '3rem' }}>✅</div>
                 <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>Saved to Inventory!</div>
               </div>
             )}
-            {!analysing && !saved && (
+            {!saved && (
               <button onClick={reset} style={{ position: 'absolute', top: '.6rem', right: '.6rem', background: 'rgba(0,0,0,.5)', color: 'white', border: 'none', borderRadius: '2rem', padding: '.3rem .75rem', fontSize: '.8rem', cursor: 'pointer' }}>↺ Retake</button>
             )}
           </div>
         )}
 
-        {analysis?.visionSkipped && analysis.visionError && (
-          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '.75rem', padding: '.75rem 1rem', color: '#92400e', fontSize: '.8rem', marginBottom: '1rem', display: 'flex', gap: '.5rem' }}>
-            <span>⚠️</span>
-            <div><strong>Vision AI unavailable</strong> — {analysis.visionError}<br />
-              <span style={{ opacity: .8 }}>Fill in the form manually below.</span></div>
-          </div>
-        )}
-
+        {/* Error */}
         {error && (
           <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.75rem', padding: '.85rem 1rem', color: '#dc2626', fontSize: '.875rem', marginBottom: '1rem' }}>
             ❌ {error}
           </div>
         )}
 
-        {showForm && !analysis.visionSkipped && (
+        {/* Form */}
+        {showForm && !saved && (
           <div style={card}>
-            <div style={{ fontWeight: 700, marginBottom: '.6rem', color: '#6b7280', fontSize: '.8rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>🤖 AI Detected</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem' }}>
-              {analysis.detectedCategory && <span style={{ background: '#fdf2f8', color: '#9d174d', border: '1px solid #fbcfe8', borderRadius: '2rem', padding: '.2rem .7rem', fontSize: '.8rem', fontWeight: 600 }}>📂 {analysis.detectedCategory}</span>}
-              {analysis.detectedColours.slice(0, 3).map(c => <span key={c.name} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '2rem', padding: '.2rem .7rem', fontSize: '.8rem', fontWeight: 600 }}>🎨 {c.name}</span>)}
-              {analysis.detectedSize && <span style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '2rem', padding: '.2rem .7rem', fontSize: '.8rem', fontWeight: 600 }}>📏 {analysis.detectedSize}</span>}
-              {analysis.labels.slice(0, 3).map(l => <span key={l} style={{ background: '#f9fafb', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: '2rem', padding: '.2rem .7rem', fontSize: '.75rem' }}>{l}</span>)}
-            </div>
-          </div>
-        )}
+            <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1rem' }}>✏️ Fill in details</div>
 
-        {showForm && (
-          <div style={card}>
-            <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1rem' }}>✏️ Review &amp; Confirm</div>
-
+            {/* Product picker */}
             <div style={{ marginBottom: '1rem' }}>
               <label style={fieldLabel}>Product</label>
 
               {!showNewProduct && (
                 <>
-                  <input
-                    value={productSearch}
-                    onChange={e => setProductSearch(e.target.value)}
-                    placeholder="Search products…"
-                    style={{ ...inputStyle, marginBottom: '.4rem' }}
-                  />
-                  <select
-                    value={form.productId}
-                    onChange={e => {
-                      const id = e.target.value;
-                      const name = filteredProds.find(p => p.id === id)?.name ?? '';
-                      setForm(f => ({ ...f, productId: id, productName: name }));
-                    }}
-                    style={selectStyle}
-                  >
-                    <option value="">— Select a product —</option>
-                    {filteredProds.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} ({p.category})</option>
-                    ))}
-                  </select>
-
-                  {form.productId && (
-                    <div style={{ marginTop: '.4rem', fontSize: '.8rem', color: '#16a34a', fontWeight: 600 }}>✓ {form.productName}</div>
+                  {loadingProducts ? (
+                    <div style={{ color: '#9ca3af', fontSize: '.85rem', padding: '.5rem 0' }}>Loading products…</div>
+                  ) : (
+                    <>
+                      <input
+                        value={productSearch}
+                        onChange={e => setProductSearch(e.target.value)}
+                        placeholder="Search products…"
+                        style={{ ...inputStyle, marginBottom: '.4rem' }}
+                      />
+                      <select
+                        value={form.productId}
+                        onChange={e => {
+                          const id = e.target.value;
+                          const name = filteredProds.find(p => p.id === id)?.name ?? '';
+                          setForm(f => ({ ...f, productId: id, productName: name }));
+                        }}
+                        style={selectStyle}
+                      >
+                        <option value="">— Select a product —</option>
+                        {filteredProds.map(p => (
+                          <option key={p.id} value={p.id}>{p.name} ({p.category})</option>
+                        ))}
+                      </select>
+                      {form.productId && (
+                        <div style={{ marginTop: '.4rem', fontSize: '.8rem', color: '#16a34a', fontWeight: 600 }}>✓ {form.productName}</div>
+                      )}
+                    </>
                   )}
-
                   <button onClick={() => { setShowNewProduct(true); setError(null); }} style={{ ...btnSecondary, marginTop: '.6rem' }}>
                     + Add New Product
                   </button>
@@ -386,18 +353,13 @@ export default function ScanPage() {
               )}
             </div>
 
+            {/* Colour */}
             <div style={{ marginBottom: '1rem' }}>
               <label style={fieldLabel}>Colour</label>
-              {analysis.detectedColours.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem', marginBottom: '.5rem' }}>
-                  {analysis.detectedColours.map(c => (
-                    <button key={c.name} onClick={() => setForm(f => ({ ...f, colour: c.name }))} style={pill(form.colour === c.name)}>{c.name}</button>
-                  ))}
-                </div>
-              )}
-              <input value={form.colour} onChange={e => setForm(f => ({ ...f, colour: e.target.value }))} placeholder="Type a colour…" style={inputStyle} />
+              <input value={form.colour} onChange={e => setForm(f => ({ ...f, colour: e.target.value }))} placeholder="e.g. Red, Royal Blue…" style={inputStyle} />
             </div>
 
+            {/* Size */}
             <div style={{ marginBottom: '1rem' }}>
               <label style={fieldLabel}>Size</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem', marginBottom: '.5rem' }}>
@@ -408,6 +370,7 @@ export default function ScanPage() {
               <input value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} placeholder="Or type a size…" style={inputStyle} />
             </div>
 
+            {/* Stock qty */}
             <div style={{ marginBottom: '1.25rem' }}>
               <label style={fieldLabel}>Stock qty</label>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -417,16 +380,16 @@ export default function ScanPage() {
               </div>
             </div>
 
-            <button onClick={handleSave} disabled={saving || saved} style={{ ...btnPrimary, opacity: saving || saved ? .7 : 1 }}>
-              {saving ? '⏳ Saving…' : saved ? '✅ Saved!' : '💾 Save to Inventory'}
+            <button onClick={handleSave} disabled={saving} style={{ ...btnPrimary, opacity: saving ? .7 : 1 }}>
+              {saving ? '⏳ Saving…' : '💾 Save to Inventory'}
             </button>
           </div>
         )}
 
         {!preview && (
           <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: '.85rem', marginTop: '1.5rem', lineHeight: 1.7 }}>
-            Point your camera at a garment.<br />
-            AI will detect <strong>colour</strong>, <strong>type</strong> and <strong>size label</strong> automatically.
+            Photograph the garment, then fill in colour, size and stock.<br />
+            The image will be saved and linked to the product automatically.
           </div>
         )}
       </div>
