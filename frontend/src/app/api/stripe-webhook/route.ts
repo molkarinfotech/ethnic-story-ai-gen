@@ -4,11 +4,6 @@ import { getServiceSupabase } from '../../../lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-// Disable Next.js body parsing — Stripe needs the raw bytes
-export const config = {
-  api: { bodyParser: false },
-};
-
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? '';
 
@@ -17,7 +12,7 @@ console.log('[stripe-webhook] Secret loaded:', webhookSecret ? webhookSecret.sli
 export async function POST(req: NextRequest) {
   const sig = req.headers.get('stripe-signature') ?? '';
 
-  // Read body as raw bytes — critical for signature verification
+  // Read raw bytes - critical for Stripe signature verification
   const chunks: Uint8Array[] = [];
   const reader = req.body?.getReader();
   if (!reader) {
@@ -31,7 +26,6 @@ export async function POST(req: NextRequest) {
   const rawBody = Buffer.concat(chunks.map(c => Buffer.from(c)));
 
   console.log('[stripe-webhook] Body length:', rawBody.length, '| sig present:', sig ? 'YES' : 'NO');
-  console.log('[stripe-webhook] Using secret:', webhookSecret.slice(0, 20) + '...');
 
   let event: Stripe.Event;
   try {
