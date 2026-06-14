@@ -1,6 +1,6 @@
 'use client';
 import { createContext, useContext, useEffect, useReducer, useCallback, useState, useRef } from 'react';
-import { supabase as sb } from '../lib/supabase'; // ← singleton fixes GoTrueClient warning
+import { supabase as sb } from '../lib/supabase';
 import { Product } from '../lib/products';
 
 export type CartItem = Product & { quantity: number; selectedSize?: string };
@@ -66,6 +66,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, { items: [], isOpen: false });
   const [hydrated, setHydrated] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const userIdRef = useRef<string | null>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function readLocal(): CartItem[] {
@@ -98,10 +99,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     await sb.from('carts').upsert({ user_id: uid, items, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
   }
 
+  // Keep a ref in sync so clearCart can read it without stale closure
+  useEffect(() => { userIdRef.current = userId; }, [userId]);
+
   useEffect(() => {
     sb.auth.getSession().then(async ({ data }) => {
       const uid = data.session?.user?.id ?? null;
       setUserId(uid);
+      userIdRef.current = uid;
       if (uid) {
         const local = readLocal();
         const remote = await loadFromSupabase(uid);
@@ -119,6 +124,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const uid = session?.user?.id ?? null;
       if (event === 'SIGNED_IN' && uid) {
         setUserId(uid);
+        userIdRef.current = uid;
         const local = readLocal();
         const remote = await loadFromSupabase(uid);
         const merged = mergeItems(remote, local);
@@ -127,6 +133,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         clearLocal();
       } else if (event === 'SIGNED_OUT') {
         setUserId(null);
+        userIdRef.current = null;
         dispatch({ type: 'CLEAR' });
         clearLocal();
       }
@@ -148,7 +155,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const addItem        = useCallback((product: Product) => dispatch({ type: 'ADD', product }), []);
   const removeItem     = useCallback((id: string, size: string | undefined) => dispatch({ type: 'REMOVE', id, size }), []);
   const updateQuantity = useCallback((id: string, size: string | undefined, quantity: number) => dispatch({ type: 'UPDATE', id, size, quantity }), []);
-  const clearCart      = useCallback(() => dispatch({ type: 'CLEAR' }), []);
+
+  // Immediately persist empty cart — bypass the 600ms debounce
+  const clearCart = useCallback(() => {
+    dispatch({ type: 'CLEAR' });
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    const uid = userIdRef.current;
+    if (uid) saveToSupabase(uid, []);
+    else {
+      try { localStorage.removeItem(LOCAL_KEY); } catch {}
+    }
+  }, []);
+
   const openCart       = useCallback(() => dispatch({ type: 'OPEN' }), []);
   const closeCart      = useCallback(() => dispatch({ type: 'CLOSE' }), []);
 
