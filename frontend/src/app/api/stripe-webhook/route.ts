@@ -37,6 +37,8 @@ export async function POST(req: NextRequest) {
     let items: { id: string; name: string; quantity: number; price: number; size?: string }[] = [];
     try { items = JSON.parse(m.items ?? '[]'); } catch { items = []; }
 
+    console.log('[stripe-webhook] Items from metadata:', JSON.stringify(items));
+
     const sb = getServiceSupabase();
 
     // ── 1. Save order ──────────────────────────────────────────────────────────
@@ -66,51 +68,44 @@ export async function POST(req: NextRequest) {
 
     console.log('[stripe-webhook] Order saved. user_id:', m.user_id || 'guest', '| row:', orderData?.[0]?.id);
 
-    // ── 2. Decrement stock per variant (product_id + size) ────────────────────
-    const stockErrors: string[] = [];
+    // ── 2. Decrement stock per variant (product_id + size) ─────────────────────
     for (const item of items) {
       if (!item.id || !item.quantity) continue;
 
-      // Find the matching variant row
-      const query = sb
+      // Build query — must materialise separately so .eq() chains work correctly
+      let variantQuery = sb
         .from('product_variants')
         .select('id, stock_count')
         .eq('product_id', item.id);
 
-      // Match by size if present (some products may have no variants/sizes)
-      if (item.size) query.eq('size', item.size);
+      if (item.size) {
+        variantQuery = variantQuery.eq('size', item.size);
+      }
 
-      const { data: variants, error: fetchErr } = await query.maybeSingle();
+      const { data: variant, error: fetchErr } = await variantQuery.maybeSingle();
 
       if (fetchErr) {
-        console.error(`[stripe-webhook] Variant fetch error for ${item.id}/${item.size}:`, fetchErr.message);
-        stockErrors.push(`${item.name} (fetch error)`);
+        console.error(`[stripe-webhook] Variant fetch error for ${item.id}/${item.size ?? 'no-size'}:`, fetchErr.message);
         continue;
       }
 
-      if (!variants) {
-        console.warn(`[stripe-webhook] No variant found for product=${item.id} size=${item.size ?? 'none'} — skipping stock deduct`);
+      if (!variant) {
+        console.warn(`[stripe-webhook] No variant found: product_id=${item.id} size=${item.size ?? 'none'} — skipping stock deduct`);
         continue;
       }
 
-      const newStock = Math.max(0, (variants.stock_count ?? 0) - item.quantity);
+      const newStock = Math.max(0, (variant.stock_count ?? 0) - item.quantity);
 
       const { error: updateErr } = await sb
         .from('product_variants')
         .update({ stock_count: newStock })
-        .eq('id', variants.id);
+        .eq('id', variant.id);
 
       if (updateErr) {
-        console.error(`[stripe-webhook] Stock update error for variant ${variants.id}:`, updateErr.message);
-        stockErrors.push(`${item.name} (update error)`);
+        console.error(`[stripe-webhook] Stock update error for variant ${variant.id}:`, updateErr.message);
       } else {
-        console.log(`[stripe-webhook] Stock decremented: product=${item.id} size=${item.size ?? 'N/A'} | ${variants.stock_count} → ${newStock}`);
+        console.log(`[stripe-webhook] ✓ Stock: product=${item.id} size=${item.size ?? 'N/A'} | ${variant.stock_count} → ${newStock}`);
       }
-    }
-
-    if (stockErrors.length > 0) {
-      console.warn('[stripe-webhook] Stock deduction partial failure:', stockErrors.join(', '));
-      // Still return 200 — order is saved; stock errors are non-fatal
     }
   }
 
