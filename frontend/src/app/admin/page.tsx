@@ -26,8 +26,9 @@ type Product = {
 
 type Order = {
   id: string; customer_name: string; customer_email: string;
-  total: number; status: string; created_at: string;
-  items: { name: string; quantity: number; price: number }[];
+  amount_aud: number; status: string; created_at: string;
+  items: { name: string; quantity: number; price: number; size?: string }[];
+  shipping_address?: { line1?: string; suburb?: string; state?: string; postcode?: string };
 };
 
 function StockBadge({ count, threshold }: { count: number; threshold: number }) {
@@ -56,6 +57,7 @@ export default function AdminDashboard() {
   const [seedingSizes, setSeedingSizes] = useState(false);
   const [seedSizesMsg, setSeedSizesMsg] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [expandedOrder, setExpandedOrder] = useState<Record<string, boolean>>({});
 
   async function fetchProducts() {
     const res = await fetch('/api/admin/stock');
@@ -163,7 +165,6 @@ export default function AdminDashboard() {
           <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>Admin Dashboard</span>
         </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <a href="/api/admin/debug" target="_blank" style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textDecoration: 'none' }}>Debug env</a>
           <button onClick={handleLogout} style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Sign out</button>
         </div>
       </div>
@@ -180,7 +181,7 @@ export default function AdminDashboard() {
           {[
             { label: 'Products', value: products.length, icon: '👗' },
             { label: 'Orders', value: orders.length, icon: '📦' },
-            { label: 'Revenue', value: formatAUD(orders.reduce((s, o) => s + (o.total ?? 0), 0)), icon: '💰' },
+            { label: 'Revenue', value: formatAUD(orders.reduce((s, o) => s + (Number(o.amount_aud) || 0), 0)), icon: '💰' },
             { label: 'Low Stock', value: lowStockCount, icon: '⚠️', alert: lowStockCount > 0 },
             { label: 'Out of Stock', value: outOfStockCount, icon: '🚫', alert: outOfStockCount > 0 },
           ].map(s => (
@@ -272,28 +273,47 @@ export default function AdminDashboard() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--color-surface-offset)' }}>
-                    {['Date', 'Customer', 'Items', 'Total', 'Status'].map(h => (
+                    {['Date', 'Customer', 'Items', 'Shipping', 'Total', 'Status'].map(h => (
                       <th key={h} style={{ padding: '.75rem 1rem', textAlign: 'left', fontWeight: 600, color: 'var(--color-text-muted)' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {orders.map((o, i) => (
-                    <tr key={o.id} style={{ borderTop: '1px solid var(--color-border)', background: i % 2 === 0 ? 'white' : 'var(--color-surface-offset)' }}>
+                    <tr key={o.id}
+                      onClick={() => setExpandedOrder(e => ({ ...e, [o.id]: !e[o.id] }))}
+                      style={{ borderTop: '1px solid var(--color-border)', background: i % 2 === 0 ? 'white' : 'var(--color-surface-offset)', cursor: 'pointer' }}>
                       <td style={{ padding: '.75rem 1rem', whiteSpace: 'nowrap' }}>{new Date(o.created_at).toLocaleDateString('en-AU')}</td>
                       <td style={{ padding: '.75rem 1rem' }}>
-                        <div style={{ fontWeight: 600 }}>{o.customer_name}</div>
-                        <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>{o.customer_email}</div>
+                        <div style={{ fontWeight: 600 }}>{o.customer_name || '—'}</div>
+                        <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>{o.customer_email || '—'}</div>
                       </td>
-                      <td style={{ padding: '.75rem 1rem' }}>{Array.isArray(o.items) ? o.items.map(it => `${it.name} ×${it.quantity}`).join(', ') : '—'}</td>
-                      <td style={{ padding: '.75rem 1rem', fontWeight: 600 }}>{formatAUD(o.total)}</td>
+                      <td style={{ padding: '.75rem 1rem', maxWidth: '220px' }}>
+                        {Array.isArray(o.items) ? o.items.map(it => `${it.name}${it.size ? ` (${it.size})` : ''} ×${it.quantity}`).join(', ') : '—'}
+                        {expandedOrder[o.id] && o.items && (
+                          <ul style={{ margin: '.5rem 0 0', padding: '0 0 0 1rem', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                            {o.items.map((it, idx) => (
+                              <li key={idx}>{it.name}{it.size ? ` — ${it.size}` : ''} × {it.quantity} @ {formatAUD(it.price)}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </td>
+                      <td style={{ padding: '.75rem 1rem', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                        {o.shipping_address ? [
+                          o.shipping_address.line1,
+                          o.shipping_address.suburb,
+                          o.shipping_address.state,
+                          o.shipping_address.postcode,
+                        ].filter(Boolean).join(', ') : '—'}
+                      </td>
+                      <td style={{ padding: '.75rem 1rem', fontWeight: 600 }}>{formatAUD(Number(o.amount_aud))}</td>
                       <td style={{ padding: '.75rem 1rem' }}>
                         <span style={{ background: '#dcfce7', color: '#16a34a', borderRadius: '2rem', padding: '.2rem .7rem', fontSize: '0.75rem', fontWeight: 600, textTransform: 'capitalize' }}>{o.status}</span>
                       </td>
                     </tr>
                   ))}
                   {orders.length === 0 && (
-                    <tr><td colSpan={5} style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>No orders yet.</td></tr>
+                    <tr><td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>No orders yet.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -349,7 +369,7 @@ export default function AdminDashboard() {
                       </thead>
                       <tbody>
                         {(p.variants ?? []).length === 0 && (
-                          <tr><td colSpan={5} style={{ padding: '.75rem', color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>No sizes yet — click "👚 Seed default sizes" above or add one below.</td></tr>
+                          <tr><td colSpan={5} style={{ padding: '.75rem', color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>No sizes yet.</td></tr>
                         )}
                         {sortVariants(p.variants ?? []).map(v => {
                           const key = v.id;
