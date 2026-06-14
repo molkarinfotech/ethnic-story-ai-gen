@@ -19,14 +19,14 @@ export function SizeSelector({
   onSizeChange,
 }: {
   productId: string;
-  onSizeChange?: (size: string | null, inStock: boolean) => void;
+  // Now also passes the numeric stock count so the parent can cap quantity
+  onSizeChange?: (size: string | null, inStock: boolean, stockCount: number) => void;
 }) {
   const [variants, setVariants] = useState<Variant[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Cache-bust with timestamp so no browser/CDN ever serves stale variants
     const url = `/api/variants/${productId}?t=${Date.now()}`;
     console.debug('[SizeSelector] fetching variants for productId:', productId);
     fetch(url, { cache: 'no-store' })
@@ -50,7 +50,7 @@ export function SizeSelector({
   function select(v: Variant) {
     if (v.stock_count === 0) return;
     setSelected(v.size);
-    onSizeChange?.(v.size, true);
+    onSizeChange?.(v.size, true, v.stock_count);
   }
 
   if (!loading && variants.length === 0) return null;
