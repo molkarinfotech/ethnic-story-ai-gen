@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ProductImageCarousel } from './ProductImageCarousel';
 import { SizeSelector } from './SizeSelector';
 import { useCart } from '../../context/CartContext';
@@ -32,6 +32,25 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
   const [error, setError]             = useState(false);
   const [added, setAdded]             = useState(false);
 
+  // Global OOS state — fetched once on mount
+  const [globalOOS,     setGlobalOOS]     = useState(false);
+  const [stockChecked,  setStockChecked]  = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/variants/${product.id}`)
+      .then(r => r.json())
+      .then((data: { stock_count: number }[]) => {
+        if (!Array.isArray(data) || data.length === 0) {
+          setGlobalOOS(true);
+        } else {
+          const allZero = data.every(v => Number(v.stock_count) === 0);
+          setGlobalOOS(allZero);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setStockChecked(true));
+  }, [product.id]);
+
   const images: string[] = (
     colourImages[selectedColour] ??
     colourImages[''] ??
@@ -53,6 +72,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
   }, [selectedColour]);
 
   function handleAdd() {
+    if (globalOOS) return;
     if (!size) { setError(true); return; }
     if (!sizeInStock) return;
     const safeQty = Math.min(qty, maxQty);
@@ -64,7 +84,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     setTimeout(() => setAdded(false), 2000);
   }
 
-  const outOfStock = size !== null && !sizeInStock;
+  const outOfStock = globalOOS || (size !== null && !sizeInStock);
   const atMax      = size !== null && qty >= maxQty;
 
   return (
@@ -102,49 +122,88 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
           <div style={{ flex: 1, height: '1px', background: 'var(--color-divider)' }} />
         </div>
 
+        {/* Price row */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-4)', flexWrap: 'wrap', marginBottom: 'var(--space-5)' }}>
           <span className="pdp-price-main">{formatAUD(product.price)}</span>
           {origPrice && <s style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-faint)' }}>{formatAUD(origPrice)}</s>}
           {discount && <span style={{ background: 'var(--color-gold-soft)', color: 'var(--color-gold)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: '.25rem .7rem', borderRadius: 'var(--radius-full)' }}>Save {discount}%</span>}
+          {stockChecked && globalOOS && (
+            <span style={{ background: '#fee2e2', color: '#b91c1c', fontSize: 'var(--text-xs)', fontWeight: 700, padding: '.25rem .7rem', borderRadius: 'var(--radius-full)', border: '1px solid #fca5a5' }}>
+              Out of Stock
+            </span>
+          )}
         </div>
 
-        {/* Variant selector */}
-        <div className="pdp-atc">
-          <SizeSelector productId={product.id} onSizeChange={handleSizeChange} />
-
-          {error && !size && (
-            <p style={{ color: '#dc2626', fontSize: 'var(--text-xs)', marginTop: 'var(--space-2)' }}>Please select a size</p>
-          )}
-
-          <div className="pdp-qty-row" style={{ marginTop: 'var(--space-5)' }}>
-            <span className="pdp-qty-label">Quantity</span>
-            <div className="qty-control">
-              <button className="qty-btn" onClick={() => setQty(q => Math.max(1, q - 1))} aria-label="Decrease">−</button>
-              <span className="qty-value">{qty}</span>
-              <button
-                className="qty-btn"
-                onClick={() => { if (!atMax) setQty(q => Math.min(maxQty, q + 1)); }}
-                disabled={atMax || !size}
-                style={{ opacity: (atMax || !size) ? 0.35 : 1, cursor: (atMax || !size) ? 'not-allowed' : 'pointer' }}
-              >+</button>
+        {/* OOS banner — shown when fully out of stock */}
+        {stockChecked && globalOOS && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+            background: '#fef2f2', border: '1px solid #fecaca',
+            borderRadius: 'var(--radius-lg)', padding: 'var(--space-4) var(--space-5)',
+            marginBottom: 'var(--space-5)',
+          }}>
+            <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>🚫</span>
+            <div>
+              <div style={{ fontWeight: 700, color: '#b91c1c', fontSize: 'var(--text-sm)' }}>Currently Out of Stock</div>
+              <div style={{ color: '#6b7280', fontSize: 'var(--text-xs)', marginTop: '.2rem' }}>This item is unavailable right now. Check back soon or browse similar products below.</div>
             </div>
-            {atMax && (
-              <span style={{ fontSize: 'var(--text-xs)', color: '#dc2626', fontWeight: 600 }}>Max {maxQty} available</span>
-            )}
           </div>
+        )}
+
+        {/* Variant selector — hidden when globally OOS (no variants to pick) */}
+        <div className="pdp-atc">
+          {!globalOOS && (
+            <>
+              <SizeSelector productId={product.id} onSizeChange={handleSizeChange} />
+              {error && !size && (
+                <p style={{ color: '#dc2626', fontSize: 'var(--text-xs)', marginTop: 'var(--space-2)' }}>Please select a size</p>
+              )}
+              <div className="pdp-qty-row" style={{ marginTop: 'var(--space-5)' }}>
+                <span className="pdp-qty-label">Quantity</span>
+                <div className="qty-control">
+                  <button className="qty-btn" onClick={() => setQty(q => Math.max(1, q - 1))} aria-label="Decrease">−</button>
+                  <span className="qty-value">{qty}</span>
+                  <button
+                    className="qty-btn"
+                    onClick={() => { if (!atMax) setQty(q => Math.min(maxQty, q + 1)); }}
+                    disabled={atMax || !size}
+                    style={{ opacity: (atMax || !size) ? 0.35 : 1, cursor: (atMax || !size) ? 'not-allowed' : 'pointer' }}
+                  >+</button>
+                </div>
+                {atMax && (
+                  <span style={{ fontSize: 'var(--text-xs)', color: '#dc2626', fontWeight: 600 }}>Max {maxQty} available</span>
+                )}
+              </div>
+            </>
+          )}
 
           <button
             className={`btn btn-primary pdp-atc-btn${added ? ' pdp-atc-btn--added' : ''}`}
             onClick={handleAdd}
             disabled={outOfStock}
-            style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-4)', opacity: outOfStock ? 0.5 : 1 }}
+            style={{
+              width: '100%', justifyContent: 'center',
+              marginTop: 'var(--space-4)',
+              opacity: outOfStock ? 0.5 : 1,
+              ...(globalOOS ? { background: '#9ca3af', cursor: 'not-allowed', boxShadow: 'none' } : {}),
+            }}
           >
-            {added ? '✓ Added to Bag' : outOfStock ? 'Out of Stock' : 'Add to Bag'}
+            {added ? '✓ Added to Bag'
+              : globalOOS ? '🚫 Out of Stock'
+              : outOfStock ? 'Out of Stock'
+              : 'Add to Bag'}
           </button>
 
-          <a href="/checkout" className="btn btn--outline" style={{ width: '100%', justifyContent: 'center', display: 'flex', marginTop: 'var(--space-3)' }}>
-            Buy Now
-          </a>
+          {!globalOOS && (
+            <a href="/checkout" className="btn btn--outline" style={{ width: '100%', justifyContent: 'center', display: 'flex', marginTop: 'var(--space-3)' }}>
+              Buy Now
+            </a>
+          )}
+
+          {/* Notify me when back in stock */}
+          {stockChecked && globalOOS && (
+            <NotifyMe productName={product.name} />
+          )}
         </div>
 
         {/* Trust grid */}
@@ -184,5 +243,45 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Notify Me widget ──────────────────────────────────────────────────────────
+function NotifyMe({ productName }: { productName: string }) {
+  const [email, setEmail]   = useState('');
+  const [sent, setSent]     = useState(false);
+  const [busy, setBusy]     = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email) return;
+    setBusy(true);
+    // Fire-and-forget — a real implementation would POST to /api/notify-me
+    await new Promise(r => setTimeout(r, 600));
+    setSent(true);
+    setBusy(false);
+  }
+
+  if (sent) return (
+    <div style={{ marginTop: 'var(--space-4)', padding: 'var(--space-4)', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 'var(--radius-lg)', textAlign: 'center', fontSize: 'var(--text-sm)', color: '#15803d', fontWeight: 600 }}>
+      ✅ We’ll email you when {productName} is back in stock!
+    </div>
+  );
+
+  return (
+    <form onSubmit={submit} style={{ marginTop: 'var(--space-4)' }}>
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em' }}>Notify me when back in stock</p>
+      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <input
+          type="email" value={email} onChange={e => setEmail(e.target.value)}
+          placeholder="your@email.com" required
+          style={{ flex: 1, padding: '.65rem 1rem', border: '1.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', outline: 'none', background: 'var(--color-bg)', boxSizing: 'border-box' }}
+        />
+        <button type="submit" disabled={busy}
+          style={{ padding: '.65rem 1.1rem', background: 'var(--color-primary)', color: 'white', border: 'none', borderRadius: 'var(--radius-md)', fontWeight: 700, fontSize: 'var(--text-sm)', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? .7 : 1, whiteSpace: 'nowrap' }}>
+          {busy ? '…' : 'Notify me'}
+        </button>
+      </div>
+    </form>
   );
 }

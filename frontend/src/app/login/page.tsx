@@ -9,6 +9,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -19,6 +20,7 @@ export default function LoginPage() {
   }
 
   async function handleGoogle() {
+    setGoogleLoading(true);
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/account` },
@@ -29,6 +31,7 @@ export default function LoginPage() {
     <main style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)', padding: '2rem' }}>
       <div style={{ width: '100%', maxWidth: '420px' }}>
 
+        {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <div style={{ fontSize: '1.5rem', color: 'var(--color-gold)', marginBottom: '.5rem' }}>✷</div>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.5rem,1.2rem+1vw,2rem)', color: 'var(--color-text)', margin: 0 }}>Welcome back</h1>
@@ -36,9 +39,27 @@ export default function LoginPage() {
         </div>
 
         <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-divider)', borderRadius: 'var(--radius-xl)', padding: '2rem', boxShadow: 'var(--shadow-sm)' }}>
-          <button onClick={handleGoogle} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.75rem', padding: '.75rem', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'white', cursor: 'pointer', fontWeight: 600, fontSize: 'var(--text-sm)', marginBottom: '1.5rem' }}>
-            <GoogleIcon />
-            Continue with Google
+
+          {/* Google button */}
+          <button
+            onClick={handleGoogle}
+            disabled={googleLoading}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: '.75rem', padding: '.85rem',
+              border: '1.5px solid #dadce0', borderRadius: 'var(--radius-md)',
+              background: googleLoading ? '#f8f8f8' : 'white',
+              cursor: googleLoading ? 'not-allowed' : 'pointer',
+              fontWeight: 600, fontSize: 'var(--text-sm)',
+              boxShadow: '0 1px 3px rgba(0,0,0,.08)',
+              marginBottom: '1.5rem',
+              transition: 'box-shadow .15s, background .15s',
+              opacity: googleLoading ? .75 : 1,
+              color: '#3c4043',
+            }}
+          >
+            {googleLoading ? <Spinner size={18} color="#9d174d" /> : <GoogleIcon />}
+            {googleLoading ? 'Redirecting…' : 'Continue with Google'}
           </button>
 
           <Divider />
@@ -48,7 +69,7 @@ export default function LoginPage() {
 
             <Field label="Email">
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
-                style={inputStyle} placeholder="you@example.com" />
+                style={inputStyle} placeholder="you@example.com" autoComplete="email" />
             </Field>
 
             <Field label="Password">
@@ -57,7 +78,8 @@ export default function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={password} onChange={e => setPassword(e.target.value)} required
                   style={{ ...inputStyle, paddingRight: '2.75rem' }}
-                  placeholder="••••••••" />
+                  placeholder="••••••••"
+                  autoComplete="current-password" />
                 <button type="button" onClick={() => setShowPassword(p => !p)}
                   style={{ position: 'absolute', right: '.75rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-faint)', fontSize: '.85rem', padding: 0 }}>
                   {showPassword ? '🙈' : '👁️'}
@@ -71,13 +93,18 @@ export default function LoginPage() {
 
             <button type="submit" disabled={loading}
               style={{ width: '100%', padding: '.85rem', background: 'var(--color-primary)', color: 'white', border: 'none', borderRadius: 'var(--radius-md)', fontWeight: 700, fontSize: 'var(--text-sm)', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? .7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.5rem' }}>
-              {loading ? <><Spinner size={18} color="white" /> Signing in…</> : 'Sign in'}
+              {loading ? <><Spinner size={18} color="white" /> Signing in…</> : 'Sign in with Email'}
             </button>
           </form>
+
+          {/* Social proof nudge */}
+          <p style={{ textAlign: 'center', marginTop: '1.25rem', fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>
+            🔒 Secure sign-in · Your data is never shared
+          </p>
         </div>
 
         <p style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
-          Don't have an account?{' '}
+          Don’t have an account?{' '}
           <a href="/signup" style={{ color: 'var(--color-primary)', fontWeight: 600 }}>Sign up</a>
         </p>
       </div>
@@ -87,9 +114,10 @@ export default function LoginPage() {
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '.75rem 1rem',
-  border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+  border: '1.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
   fontSize: 'var(--text-sm)', background: 'var(--color-bg)',
   color: 'var(--color-text)', boxSizing: 'border-box',
+  outline: 'none', transition: 'border-color .15s',
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -105,7 +133,7 @@ function Divider() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
       <div style={{ flex: 1, height: '1px', background: 'var(--color-divider)' }} />
-      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>or</span>
+      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', fontWeight: 500 }}>or continue with email</span>
       <div style={{ flex: 1, height: '1px', background: 'var(--color-divider)' }} />
     </div>
   );
@@ -113,13 +141,15 @@ function Divider() {
 
 function ErrorBanner({ message }: { message: string }) {
   return (
-    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 'var(--radius-md)', padding: '.75rem 1rem', color: '#dc2626', fontSize: 'var(--text-sm)' }}>{message}</div>
+    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 'var(--radius-md)', padding: '.75rem 1rem', color: '#dc2626', fontSize: 'var(--text-sm)', display: 'flex', gap: '.5rem', alignItems: 'flex-start' }}>
+      <span style={{ flexShrink: 0 }}>⚠️</span> {message}
+    </div>
   );
 }
 
 function GoogleIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18">
+    <svg width="20" height="20" viewBox="0 0 18 18" aria-hidden="true">
       <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
       <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
       <path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/>
