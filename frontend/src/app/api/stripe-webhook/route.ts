@@ -34,12 +34,13 @@ export async function POST(req: NextRequest) {
     const pi = event.data.object as Stripe.PaymentIntent;
     const m  = pi.metadata ?? {};
 
-    let items: object[] = [];
+    let items: { id: string; name: string; quantity: number; price: number; size?: string }[] = [];
     try { items = JSON.parse(m.items ?? '[]'); } catch { items = []; }
 
     const sb = getServiceSupabase();
 
-    const { error, data } = await sb.from('orders').insert({
+    // ── 1. Save order ──────────────────────────────────────────────────────────
+    const { error: insertError, data: orderData } = await sb.from('orders').insert({
       stripe_payment_intent_id: pi.id,
       amount_aud:               pi.amount / 100,
       status:                   'paid',
@@ -58,12 +59,59 @@ export async function POST(req: NextRequest) {
       items,
     }).select();
 
-    if (error) {
-      console.error('[stripe-webhook] INSERT FAILED:', error.code, error.message);
-      return NextResponse.json({ error: 'Database insert failed', detail: error.message }, { status: 500 });
+    if (insertError) {
+      console.error('[stripe-webhook] INSERT FAILED:', insertError.code, insertError.message);
+      return NextResponse.json({ error: 'Database insert failed', detail: insertError.message }, { status: 500 });
     }
 
-    console.log('[stripe-webhook] Order saved. user_id:', m.user_id || 'guest', '| row:', data?.[0]?.id);
+    console.log('[stripe-webhook] Order saved. user_id:', m.user_id || 'guest', '| row:', orderData?.[0]?.id);
+
+    // ── 2. Decrement stock per variant (product_id + size) ────────────────────
+    const stockErrors: string[] = [];
+    for (const item of items) {
+      if (!item.id || !item.quantity) continue;
+
+      // Find the matching variant row
+      const query = sb
+        .from('product_variants')
+        .select('id, stock_count')
+        .eq('product_id', item.id);
+
+      // Match by size if present (some products may have no variants/sizes)
+      if (item.size) query.eq('size', item.size);
+
+      const { data: variants, error: fetchErr } = await query.maybeSingle();
+
+      if (fetchErr) {
+        console.error(`[stripe-webhook] Variant fetch error for ${item.id}/${item.size}:`, fetchErr.message);
+        stockErrors.push(`${item.name} (fetch error)`);
+        continue;
+      }
+
+      if (!variants) {
+        console.warn(`[stripe-webhook] No variant found for product=${item.id} size=${item.size ?? 'none'} — skipping stock deduct`);
+        continue;
+      }
+
+      const newStock = Math.max(0, (variants.stock_count ?? 0) - item.quantity);
+
+      const { error: updateErr } = await sb
+        .from('product_variants')
+        .update({ stock_count: newStock })
+        .eq('id', variants.id);
+
+      if (updateErr) {
+        console.error(`[stripe-webhook] Stock update error for variant ${variants.id}:`, updateErr.message);
+        stockErrors.push(`${item.name} (update error)`);
+      } else {
+        console.log(`[stripe-webhook] Stock decremented: product=${item.id} size=${item.size ?? 'N/A'} | ${variants.stock_count} → ${newStock}`);
+      }
+    }
+
+    if (stockErrors.length > 0) {
+      console.warn('[stripe-webhook] Stock deduction partial failure:', stockErrors.join(', '));
+      // Still return 200 — order is saved; stock errors are non-fatal
+    }
   }
 
   return NextResponse.json({ received: true });
