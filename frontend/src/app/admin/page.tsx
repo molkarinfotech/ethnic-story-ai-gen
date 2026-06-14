@@ -14,7 +14,7 @@ function sortVariants(variants: Variant[]) {
   return [...letter, ...numeric, ...other];
 }
 
-type Variant = { id: string; size: string; stock_count: number };
+type Variant = { id: string; size: string; colour: string; stock_count: number };
 
 type Product = {
   id: string; slug: string; name: string; subtitle?: string;
@@ -27,7 +27,7 @@ type Product = {
 type Order = {
   id: string; customer_name: string; customer_email: string;
   amount_aud: number; status: string; created_at: string;
-  items: { name: string; quantity: number; price: number; size?: string }[];
+  items: { name: string; quantity: number; price: number; size?: string; colour?: string }[];
   shipping_address?: { line1?: string; suburb?: string; state?: string; postcode?: string };
 };
 
@@ -50,12 +50,15 @@ export default function AdminDashboard() {
   const [stockSaving, setStockSaving] = useState<Record<string, boolean>>({});
   const [deleting, setDeleting] = useState<Record<string, boolean>>({});
   const [newSizes, setNewSizes] = useState<Record<string, string>>({});
+  const [newColours, setNewColours] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState('');
   const [seeding, setSeeding] = useState(false);
   const [seedMsg, setSeedMsg] = useState('');
   const [seedingSizes, setSeedingSizes] = useState(false);
   const [seedSizesMsg, setSeedSizesMsg] = useState('');
+  const [seedingColours, setSeedingColours] = useState(false);
+  const [seedColoursMsg, setSeedColoursMsg] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [expandedOrder, setExpandedOrder] = useState<Record<string, boolean>>({});
 
@@ -103,20 +106,29 @@ export default function AdminDashboard() {
     fetchProducts();
   }
 
+  async function handleSeedColours() {
+    setSeedingColours(true); setSeedColoursMsg('');
+    const res = await fetch('/api/admin/seed-colours', { method: 'POST' });
+    const data = await res.json();
+    setSeedColoursMsg(data.error ? `❌ ${data.error}` : `✅ ${data.message}`);
+    setSeedingColours(false);
+    fetchProducts();
+  }
+
   async function handleLogout() {
     await fetch('/api/admin/login', { method: 'DELETE' });
     router.push('/admin/login');
   }
 
-  async function saveVariantStock(productId: string, variantId: string | null, size: string, count: number) {
-    const key = variantId ?? `${productId}-${size}`;
+  async function saveVariantStock(productId: string, variantId: string | null, size: string, count: number, colour = '') {
+    const key = variantId ?? `${productId}-${size}-${colour}`;
     setStockSaving(s => ({ ...s, [key]: true }));
     await fetch('/api/admin/stock', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(variantId
         ? { variant_id: variantId, stock_count: count }
-        : { product_id: productId, size, stock_count: count }
+        : { product_id: productId, size, colour, stock_count: count }
       ),
     });
     await fetchProducts();
@@ -124,8 +136,8 @@ export default function AdminDashboard() {
     setStockSaving(s => ({ ...s, [key]: false }));
   }
 
-  async function deleteVariant(variantId: string, size: string) {
-    if (!confirm(`Remove size "${size}"? This cannot be undone.`)) return;
+  async function deleteVariant(variantId: string, size: string, colour: string) {
+    if (!confirm(`Remove "${size}${colour ? ` / ${colour}` : ''}"? This cannot be undone.`)) return;
     setDeleting(d => ({ ...d, [variantId]: true }));
     await fetch('/api/admin/stock', {
       method: 'DELETE',
@@ -136,15 +148,17 @@ export default function AdminDashboard() {
     setDeleting(d => ({ ...d, [variantId]: false }));
   }
 
-  async function addSize(productId: string) {
+  async function addVariant(productId: string) {
     const size = (newSizes[productId] ?? '').trim();
+    const colour = (newColours[productId] ?? '').trim();
     if (!size) return;
     await fetch('/api/admin/stock', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product_id: productId, size, stock_count: 0 }),
+      body: JSON.stringify({ product_id: productId, size, colour, stock_count: 0 }),
     });
     setNewSizes(n => ({ ...n, [productId]: '' }));
+    setNewColours(n => ({ ...n, [productId]: '' }));
     await fetchProducts();
   }
 
@@ -164,9 +178,7 @@ export default function AdminDashboard() {
           <span style={{ color: 'var(--color-border)' }}>|</span>
           <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>Admin Dashboard</span>
         </div>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <button onClick={handleLogout} style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Sign out</button>
-        </div>
+        <button onClick={handleLogout} style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Sign out</button>
       </div>
 
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
@@ -197,10 +209,10 @@ export default function AdminDashboard() {
         <div style={{ display: 'flex', gap: '.5rem', marginBottom: '1.5rem' }}>
           {(['products', 'orders', 'inventory'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
-              style={{ padding: '.5rem 1.25rem', borderRadius: '2rem', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem', background: tab === t ? 'var(--color-primary)' : 'white', color: tab === t ? 'white' : 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '.4rem' }}>
+              style={{ padding: '.5rem 1.25rem', borderRadius: '2rem', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem', background: tab === t ? 'var(--color-primary)' : 'white', color: tab === t ? 'white' : 'var(--color-text-muted)' }}>
               {t.charAt(0).toUpperCase() + t.slice(1)}
               {t === 'inventory' && outOfStockCount > 0 && (
-                <span style={{ background: '#dc2626', color: 'white', borderRadius: '2rem', padding: '0 .45rem', fontSize: '0.7rem' }}>{outOfStockCount}</span>
+                <span style={{ background: '#dc2626', color: 'white', borderRadius: '2rem', padding: '0 .45rem', fontSize: '0.7rem', marginLeft: '.4rem' }}>{outOfStockCount}</span>
               )}
             </button>
           ))}
@@ -289,11 +301,11 @@ export default function AdminDashboard() {
                         <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>{o.customer_email || '—'}</div>
                       </td>
                       <td style={{ padding: '.75rem 1rem', maxWidth: '220px' }}>
-                        {Array.isArray(o.items) ? o.items.map(it => `${it.name}${it.size ? ` (${it.size})` : ''} ×${it.quantity}`).join(', ') : '—'}
+                        {Array.isArray(o.items) ? o.items.map(it => `${it.name}${it.size ? ` (${it.size}${it.colour ? ` / ${it.colour}` : ''})` : ''} ×${it.quantity}`).join(', ') : '—'}
                         {expandedOrder[o.id] && o.items && (
                           <ul style={{ margin: '.5rem 0 0', padding: '0 0 0 1rem', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                             {o.items.map((it, idx) => (
-                              <li key={idx}>{it.name}{it.size ? ` — ${it.size}` : ''} × {it.quantity} @ {formatAUD(it.price)}</li>
+                              <li key={idx}>{it.name}{it.size ? ` — ${it.size}${it.colour ? ` / ${it.colour}` : ''}` : ''} × {it.quantity} @ {formatAUD(it.price)}</li>
                             ))}
                           </ul>
                         )}
@@ -325,12 +337,17 @@ export default function AdminDashboard() {
         {tab === 'inventory' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '.75rem' }}>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>Inventory — Size &amp; Stock</h2>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>Inventory — Size, Colour &amp; Stock</h2>
               <div style={{ display: 'flex', gap: '.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
                 {seedSizesMsg && <span style={{ fontSize: '0.8rem', color: seedSizesMsg.startsWith('✅') ? '#16a34a' : '#dc2626' }}>{seedSizesMsg}</span>}
+                {seedColoursMsg && <span style={{ fontSize: '0.8rem', color: seedColoursMsg.startsWith('✅') ? '#16a34a' : '#dc2626' }}>{seedColoursMsg}</span>}
                 <button onClick={handleSeedSizes} disabled={seedingSizes}
                   style={{ padding: '.4rem .9rem', borderRadius: '.5rem', border: '1px solid var(--color-border)', background: 'white', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
-                  {seedingSizes ? 'Seeding sizes…' : '👚 Seed default sizes (XS–XXL × 10)'}
+                  {seedingSizes ? 'Seeding sizes…' : '👚 Seed default sizes'}
+                </button>
+                <button onClick={handleSeedColours} disabled={seedingColours}
+                  style={{ padding: '.4rem .9rem', borderRadius: '.5rem', border: '1px solid #a855f7', background: '#faf5ff', color: '#7c3aed', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
+                  {seedingColours ? 'Seeding…' : '🎨 Seed colour variants & images'}
                 </button>
                 <span style={{ background: '#fef2f2', color: '#dc2626', borderRadius: '2rem', padding: '.2rem .8rem', fontSize: '0.8rem', fontWeight: 600 }}>{outOfStockCount} out of stock</span>
                 <span style={{ background: '#fefce8', color: '#ca8a04', borderRadius: '2rem', padding: '.2rem .8rem', fontSize: '0.8rem', fontWeight: 600 }}>{lowStockCount} low stock</span>
@@ -346,12 +363,12 @@ export default function AdminDashboard() {
                     {p.image && <img src={p.image} alt={p.name} style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '.375rem' }} />}
                     <div>
                       <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{p.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>{p.category} &middot; {(p.variants ?? []).length} sizes</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>{p.category} &middot; {(p.variants ?? []).length} variants</div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem' }}>
                     {(p.variants ?? []).some(v => Number(v.stock_count) === 0) && (
-                      <span style={{ background: '#fef2f2', color: '#dc2626', borderRadius: '2rem', padding: '.15rem .6rem', fontSize: '0.7rem', fontWeight: 600 }}>Has OOS sizes</span>
+                      <span style={{ background: '#fef2f2', color: '#dc2626', borderRadius: '2rem', padding: '.15rem .6rem', fontSize: '0.7rem', fontWeight: 600 }}>Has OOS variants</span>
                     )}
                     <span style={{ color: 'var(--color-text-muted)' }}>{expanded[p.id] ? '▲' : '▼'}</span>
                   </div>
@@ -362,20 +379,21 @@ export default function AdminDashboard() {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', marginBottom: '1rem' }}>
                       <thead>
                         <tr style={{ background: 'var(--color-surface-offset)' }}>
-                          {['Size', 'Status', 'Stock count', 'Save', 'Delete'].map(h => (
+                          {['Colour', 'Size', 'Status', 'Stock count', 'Save', 'Delete'].map(h => (
                             <th key={h} style={{ padding: '.5rem .75rem', textAlign: 'left', fontWeight: 600, color: 'var(--color-text-muted)' }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {(p.variants ?? []).length === 0 && (
-                          <tr><td colSpan={5} style={{ padding: '.75rem', color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>No sizes yet.</td></tr>
+                          <tr><td colSpan={6} style={{ padding: '.75rem', color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>No variants yet.</td></tr>
                         )}
                         {sortVariants(p.variants ?? []).map(v => {
                           const key = v.id;
                           const editVal = stockEdits[key] ?? Number(v.stock_count);
                           return (
                             <tr key={v.id} style={{ borderTop: '1px solid var(--color-border)' }}>
+                              <td style={{ padding: '.6rem .75rem', color: v.colour ? 'var(--color-text)' : 'var(--color-text-faint)', fontStyle: v.colour ? 'normal' : 'italic' }}>{v.colour || '—'}</td>
                               <td style={{ padding: '.6rem .75rem', fontWeight: 700 }}>{v.size}</td>
                               <td style={{ padding: '.6rem .75rem' }}><StockBadge count={editVal} threshold={5} /></td>
                               <td style={{ padding: '.6rem .75rem' }}>
@@ -385,7 +403,7 @@ export default function AdminDashboard() {
                               </td>
                               <td style={{ padding: '.6rem .75rem' }}>
                                 <button
-                                  onClick={() => saveVariantStock(p.id, v.id, v.size, editVal)}
+                                  onClick={() => saveVariantStock(p.id, v.id, v.size, editVal, v.colour)}
                                   disabled={stockSaving[key] || !(key in stockEdits)}
                                   style={{ padding: '.3rem .8rem', borderRadius: '.375rem', background: key in stockEdits ? 'var(--color-primary)' : 'var(--color-surface-offset)', color: key in stockEdits ? 'white' : 'var(--color-text-muted)', border: 'none', fontSize: '0.75rem', fontWeight: 600, cursor: key in stockEdits ? 'pointer' : 'default' }}>
                                   {stockSaving[key] ? 'Saving…' : 'Save'}
@@ -393,7 +411,7 @@ export default function AdminDashboard() {
                               </td>
                               <td style={{ padding: '.6rem .75rem' }}>
                                 <button
-                                  onClick={() => deleteVariant(v.id, v.size)}
+                                  onClick={() => deleteVariant(v.id, v.size, v.colour)}
                                   disabled={deleting[v.id]}
                                   style={{ padding: '.3rem .7rem', borderRadius: '.375rem', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: '0.75rem', cursor: 'pointer' }}>
                                   {deleting[v.id] ? '…' : '🗑️'}
@@ -405,18 +423,23 @@ export default function AdminDashboard() {
                       </tbody>
                     </table>
 
+                    {/* Add variant row */}
                     <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Add size:</span>
-                      {['XS','S','M','L','XL','XXL','Free Size'].filter(s => !(p.variants ?? []).find(v => v.size === s)).map(s => (
-                        <button key={s} onClick={() => saveVariantStock(p.id, null, s, 0)}
-                          style={{ padding: '.25rem .6rem', borderRadius: '.375rem', border: '1px dashed var(--color-border)', background: 'white', fontSize: '0.75rem', cursor: 'pointer', color: 'var(--color-text-muted)' }}>+ {s}</button>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Add variant:</span>
+                      <input value={newColours[p.id] ?? ''}
+                        onChange={e => setNewColours(n => ({ ...n, [p.id]: e.target.value }))}
+                        placeholder="Colour (optional)"
+                        style={{ padding: '.3rem .6rem', border: '1px solid var(--color-border)', borderRadius: '.375rem', fontSize: '0.8rem', width: '140px' }} />
+                      {['XS','S','M','L','XL','XXL','Free Size'].map(s => (
+                        <button key={s} onClick={() => { setNewSizes(n => ({ ...n, [p.id]: s })); }}
+                          style={{ padding: '.25rem .6rem', borderRadius: '.375rem', border: `1px dashed ${newSizes[p.id] === s ? 'var(--color-primary)' : 'var(--color-border)'}`, background: newSizes[p.id] === s ? 'var(--color-primary-highlight)' : 'white', fontSize: '0.75rem', cursor: 'pointer', color: newSizes[p.id] === s ? 'var(--color-primary)' : 'var(--color-text-muted)' }}>{s}</button>
                       ))}
                       <input value={newSizes[p.id] ?? ''}
                         onChange={e => setNewSizes(n => ({ ...n, [p.id]: e.target.value }))}
-                        placeholder="Custom e.g. 32, 38…"
-                        style={{ padding: '.3rem .6rem', border: '1px solid var(--color-border)', borderRadius: '.375rem', fontSize: '0.8rem', width: '140px' }}
-                        onKeyDown={e => e.key === 'Enter' && addSize(p.id)} />
-                      <button onClick={() => addSize(p.id)}
+                        placeholder="Custom size…"
+                        style={{ padding: '.3rem .6rem', border: '1px solid var(--color-border)', borderRadius: '.375rem', fontSize: '0.8rem', width: '120px' }}
+                        onKeyDown={e => e.key === 'Enter' && addVariant(p.id)} />
+                      <button onClick={() => addVariant(p.id)}
                         style={{ padding: '.3rem .7rem', borderRadius: '.375rem', background: 'var(--color-primary)', color: 'white', border: 'none', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>Add</button>
                     </div>
                   </div>
