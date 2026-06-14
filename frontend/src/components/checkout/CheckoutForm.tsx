@@ -15,25 +15,18 @@ const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
 const AU_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'];
 
 export type ShippingAddress = {
-  name: string;
-  email: string;
-  phone: string;
-  line1: string;
-  line2: string;
-  suburb: string;
-  state: string;
-  postcode: string;
+  name: string; email: string; phone: string;
+  line1: string; line2: string; suburb: string; state: string; postcode: string;
 };
 
 function PaymentForm({
-  grandTotal, items, totalPrice, shipping, clearCart, shipping_address,
+  grandTotal, items, clearCart, shipping_address, paymentIntentId,
 }: {
   grandTotal: number;
   items: ReturnType<typeof useCart>['items'];
-  totalPrice: number;
-  shipping: number;
   clearCart: () => void;
   shipping_address: ShippingAddress;
+  paymentIntentId: string;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -44,7 +37,6 @@ function PaymentForm({
     e.preventDefault();
     if (!stripe || !elements) return;
 
-    // Basic validation
     const { name, email, phone, line1, suburb, state, postcode } = shipping_address;
     if (!name || !email || !phone || !line1 || !suburb || !state || !postcode) {
       setErrorMsg('Please fill in all required fields before paying.');
@@ -54,20 +46,43 @@ function PaymentForm({
     setLoading(true);
     setErrorMsg('');
 
+    // Update payment intent with filled-in form data + user_id before confirming
+    try {
+      await fetch('/api/update-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentIntentId,
+          metadata: {
+            customer_name:     name,
+            customer_email:    email,
+            customer_phone:    phone,
+            shipping_line1:    shipping_address.line1,
+            shipping_line2:    shipping_address.line2,
+            shipping_suburb:   suburb,
+            shipping_state:    state,
+            shipping_postcode: postcode,
+            items: JSON.stringify(items.map(i => ({
+              id: i.id, name: i.name, quantity: i.quantity, price: i.price, size: i.selectedSize,
+            }))),
+          },
+        }),
+      });
+    } catch {
+      // Non-fatal — continue with payment, webhook will have partial data
+    }
+
     const { error } = await stripe.confirmPayment({
       elements,
       confirmParams: {
         return_url: `${window.location.origin}/checkout/success`,
         payment_method_data: {
           billing_details: {
-            name,
-            email,
-            phone,
+            name, email, phone,
             address: {
               line1,
               line2: shipping_address.line2 || undefined,
-              city: suburb,
-              state,
+              city: suburb, state,
               postal_code: postcode,
               country: 'AU',
             },
@@ -89,17 +104,17 @@ function PaymentForm({
         <div className="checkout-field">
           <label htmlFor="co-name" className="checkout-label">Full name *</label>
           <input id="co-name" type="text" placeholder="Jane Smith" className="checkout-input" required
-            value={shipping_address.name} onChange={e => shipping_address.name = e.target.value} />
+            value={shipping_address.name} onChange={e => { shipping_address.name = e.target.value; }} />
         </div>
         <div className="checkout-field">
           <label htmlFor="co-email" className="checkout-label">Email address *</label>
           <input id="co-email" type="email" placeholder="jane@example.com.au" className="checkout-input" required
-            value={shipping_address.email} onChange={e => shipping_address.email = e.target.value} />
+            value={shipping_address.email} onChange={e => { shipping_address.email = e.target.value; }} />
         </div>
         <div className="checkout-field">
           <label htmlFor="co-phone" className="checkout-label">Mobile number *</label>
           <input id="co-phone" type="tel" placeholder="04XX XXX XXX" className="checkout-input" required
-            value={shipping_address.phone} onChange={e => shipping_address.phone = e.target.value} />
+            value={shipping_address.phone} onChange={e => { shipping_address.phone = e.target.value; }} />
         </div>
       </div>
 
@@ -108,22 +123,22 @@ function PaymentForm({
         <div className="checkout-field">
           <label htmlFor="co-addr1" className="checkout-label">Street address *</label>
           <input id="co-addr1" type="text" placeholder="12 Collins Street" className="checkout-input" required
-            value={shipping_address.line1} onChange={e => shipping_address.line1 = e.target.value} />
+            value={shipping_address.line1} onChange={e => { shipping_address.line1 = e.target.value; }} />
         </div>
         <div className="checkout-field">
           <label htmlFor="co-addr2" className="checkout-label">Apartment / unit (optional)</label>
           <input id="co-addr2" type="text" placeholder="Unit 4" className="checkout-input"
-            value={shipping_address.line2} onChange={e => shipping_address.line2 = e.target.value} />
+            value={shipping_address.line2} onChange={e => { shipping_address.line2 = e.target.value; }} />
         </div>
         <div className="checkout-field checkout-field--half">
           <label htmlFor="co-suburb" className="checkout-label">Suburb *</label>
           <input id="co-suburb" type="text" placeholder="Melbourne" className="checkout-input" required
-            value={shipping_address.suburb} onChange={e => shipping_address.suburb = e.target.value} />
+            value={shipping_address.suburb} onChange={e => { shipping_address.suburb = e.target.value; }} />
         </div>
         <div className="checkout-field checkout-field--half">
           <label htmlFor="co-state" className="checkout-label">State / Territory *</label>
           <select id="co-state" className="checkout-input" required
-            value={shipping_address.state} onChange={e => shipping_address.state = e.target.value}>
+            value={shipping_address.state} onChange={e => { shipping_address.state = e.target.value; }}>
             <option value="">Select state…</option>
             {AU_STATES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
@@ -131,7 +146,7 @@ function PaymentForm({
         <div className="checkout-field checkout-field--half">
           <label htmlFor="co-postcode" className="checkout-label">Postcode *</label>
           <input id="co-postcode" type="text" placeholder="3000" maxLength={4} pattern="[0-9]{4}" className="checkout-input" required
-            value={shipping_address.postcode} onChange={e => shipping_address.postcode = e.target.value} />
+            value={shipping_address.postcode} onChange={e => { shipping_address.postcode = e.target.value; }} />
         </div>
         <div className="checkout-field checkout-field--half">
           <label htmlFor="co-country" className="checkout-label">Country</label>
@@ -144,24 +159,17 @@ function PaymentForm({
       <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
         Card, Afterpay, Apple Pay and Google Pay accepted.
       </p>
-
       <div className="stripe-element-wrap">
         <PaymentElement options={{ layout: 'tabs' }} />
       </div>
 
-      {errorMsg && (
-        <div className="stripe-error" role="alert">{errorMsg}</div>
-      )}
+      {errorMsg && <div className="stripe-error" role="alert">{errorMsg}</div>}
 
-      <button
-        type="submit"
-        className="btn btn-primary"
+      <button type="submit" className="btn btn-primary"
         disabled={!stripe || loading}
-        style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-6)', minHeight: '52px', fontSize: 'var(--text-base)' }}
-      >
+        style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-6)', minHeight: '52px', fontSize: 'var(--text-base)' }}>
         {loading ? 'Processing…' : `Pay ${formatAUD(grandTotal)}`}
       </button>
-
       <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textAlign: 'center', marginTop: 'var(--space-3)' }}>
         🔒 Secured by Stripe · 256-bit SSL encryption
       </p>
@@ -172,87 +180,66 @@ function PaymentForm({
 export function CheckoutForm() {
   const { items, totalPrice, totalItems, clearCart, hydrated } = useCart();
   const [clientSecret, setClientSecret] = useState('');
+  const [paymentIntentId, setPaymentIntentId] = useState('');
   const [intentError, setIntentError] = useState('');
 
-  // ── Shipping address state ──────────────────────────────────────────
   const [addr, setAddr] = useState<ShippingAddress>({
     name: '', email: '', phone: '',
     line1: '', line2: '', suburb: '', state: '', postcode: '',
   });
-  const setField = (field: keyof ShippingAddress) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setAddr(prev => ({ ...prev, [field]: e.target.value }));
 
   const shipping = totalPrice >= 150 ? 0 : 12.95;
   const grandTotal = totalPrice + shipping;
 
   useEffect(() => {
     if (!hydrated || totalItems === 0) return;
+    // Create payment intent with minimal metadata — form data is sent in update-payment-intent just before confirm
     fetch('/api/create-payment-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        amount: grandTotal,
-        metadata: {
-          customer_name:  addr.name,
-          customer_email: addr.email,
-          customer_phone: addr.phone,
-          shipping_line1: addr.line1,
-          shipping_line2: addr.line2,
-          shipping_suburb: addr.suburb,
-          shipping_state:  addr.state,
-          shipping_postcode: addr.postcode,
-          items: JSON.stringify(items.map(i => ({ id: i.id, name: i.name, qty: i.quantity, price: i.price, size: i.selectedSize }))),
-        },
-      }),
+      body: JSON.stringify({ amount: grandTotal }),
     })
       .then(r => r.json())
       .then(data => {
-        if (data.clientSecret) setClientSecret(data.clientSecret);
-        else setIntentError(data.error ?? 'Could not initialise payment.');
+        if (data.clientSecret) {
+          setClientSecret(data.clientSecret);
+          // Extract payment intent ID from client secret (format: pi_xxx_secret_yyy)
+          setPaymentIntentId(data.clientSecret.split('_secret_')[0]);
+        } else {
+          setIntentError(data.error ?? 'Could not initialise payment.');
+        }
       })
       .catch(() => setIntentError('Network error — please refresh and try again.'));
   }, [hydrated, totalItems, grandTotal]);
 
-  if (!hydrated) {
-    return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Loading your bag…</div>;
-  }
-  if (totalItems === 0) {
-    return (
-      <div className="order-success">
-        <div className="order-success__icon">🛍️</div>
-        <h2>Your bag is empty</h2>
-        <p>Add some beautiful pieces before checking out.</p>
-        <a href="/collections" className="btn btn-primary" style={{ marginTop: 'var(--space-6)' }}>Shop collections</a>
-      </div>
-    );
-  }
-  if (intentError) {
-    return (
-      <div className="order-success">
-        <div className="order-success__icon">⚠️</div>
-        <h2>Payment setup failed</h2>
-        <p>{intentError}</p>
-        <button className="btn btn-primary" style={{ marginTop: 'var(--space-6)' }} onClick={() => window.location.reload()}>Try again</button>
-      </div>
-    );
-  }
-  if (!clientSecret) {
-    return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Preparing payment…</div>;
-  }
+  if (!hydrated) return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Loading your bag…</div>;
+  if (totalItems === 0) return (
+    <div className="order-success">
+      <div className="order-success__icon">🛍️</div>
+      <h2>Your bag is empty</h2>
+      <p>Add some beautiful pieces before checking out.</p>
+      <a href="/collections" className="btn btn-primary" style={{ marginTop: 'var(--space-6)' }}>Shop collections</a>
+    </div>
+  );
+  if (intentError) return (
+    <div className="order-success">
+      <div className="order-success__icon">⚠️</div>
+      <h2>Payment setup failed</h2>
+      <p>{intentError}</p>
+      <button className="btn btn-primary" style={{ marginTop: 'var(--space-6)' }} onClick={() => window.location.reload()}>Try again</button>
+    </div>
+  );
+  if (!clientSecret) return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Preparing payment…</div>;
 
   const stripeAppearance = {
     theme: 'stripe' as const,
     variables: {
-      colorPrimary: '#8b1a3a',
-      colorBackground: '#ffffff',
-      colorText: '#1a0a10',
-      borderRadius: '12px',
+      colorPrimary: '#8b1a3a', colorBackground: '#ffffff',
+      colorText: '#1a0a10', borderRadius: '12px',
       fontFamily: 'Satoshi, system-ui, sans-serif',
     },
   };
 
-  // Build a proxy object so PaymentForm can mutate fields via setField
   const addrProxy = new Proxy(addr, {
     get: (target, prop) => target[prop as keyof ShippingAddress],
     set: (target, prop, value) => {
@@ -267,12 +254,10 @@ export function CheckoutForm() {
         <PaymentForm
           grandTotal={grandTotal}
           items={items}
-          totalPrice={totalPrice}
-          shipping={shipping}
           clearCart={clearCart}
           shipping_address={addrProxy}
+          paymentIntentId={paymentIntentId}
         />
-
         <aside className="order-summary">
           <h2 className="checkout-section-title">Order summary</h2>
           <ul className="order-items">
@@ -295,10 +280,7 @@ export function CheckoutForm() {
             <div className="order-total-row"><span>Subtotal</span><span>{formatAUD(totalPrice)}</span></div>
             <div className="order-total-row">
               <span>Shipping</span>
-              <span>{shipping === 0
-                ? <span style={{ color: '#16a34a', fontWeight: 700 }}>Free</span>
-                : formatAUD(shipping)}
-              </span>
+              <span>{shipping === 0 ? <span style={{ color: '#16a34a', fontWeight: 700 }}>Free</span> : formatAUD(shipping)}</span>
             </div>
             {shipping > 0 && (
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '-.5rem' }}>
