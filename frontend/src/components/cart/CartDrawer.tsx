@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { formatAUD } from '../../lib/products';
 
 type Variant = { id: string; size: string; stock_count: number };
-type StockMap = Record<string, number>; // key: `productId__size`
+type StockMap = Record<string, number>;
 
 function variantKey(productId: string, size?: string) {
   return size ? `${productId}__${size}` : productId;
@@ -14,10 +14,9 @@ export function CartDrawer() {
   const { items, isOpen, closeCart, removeItem, updateQuantity, totalItems, totalPrice } = useCart();
   const [stockMap, setStockMap] = useState<StockMap>({});
 
-  // Fetch stock for every unique product in the cart whenever cart opens or items change
   useEffect(() => {
     if (!isOpen || items.length === 0) return;
-    const uniqueProductIds = [...new Set(items.map(i => i.id))];
+    const uniqueProductIds = Array.from(new Set(items.map(i => i.id)));
     Promise.all(
       uniqueProductIds.map(pid =>
         fetch(`/api/variants/${pid}`)
@@ -31,7 +30,6 @@ export function CartDrawer() {
         for (const v of variants) {
           map[variantKey(pid, v.size)] = v.stock_count;
         }
-        // Also store a no-size fallback (single-variant products)
         if (variants.length === 1) map[pid] = variants[0].stock_count;
       }
       setStockMap(map);
