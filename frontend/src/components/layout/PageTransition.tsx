@@ -1,24 +1,40 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 
 export function PageTransition({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  const [displayKey, setDisplayKey] = useState(pathname);
 
   useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    // Remove and re-add class to retrigger the animation on every route change
-    el.classList.remove('page-transition--enter');
-    // Force reflow so the browser registers the removal
-    void el.offsetHeight;
-    el.classList.add('page-transition--enter');
+    // Step 1: immediately hide
+    setVisible(false);
+
+    // Step 2: after a microtask, swap content key and start fade-in
+    const raf = requestAnimationFrame(() => {
+      setDisplayKey(pathname);
+      requestAnimationFrame(() => {
+        setVisible(true);
+      });
+    });
+
+    return () => cancelAnimationFrame(raf);
   }, [pathname]);
 
   return (
-    <div ref={ref} className="page-transition page-transition--enter">
+    <div
+      key={displayKey}
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateY(0) scale(1)' : 'translateY(14px) scale(0.994)',
+        transition: visible
+          ? 'opacity 650ms cubic-bezier(.16,1,.3,1), transform 650ms cubic-bezier(.16,1,.3,1)'
+          : 'none',
+        willChange: 'opacity, transform',
+      }}
+    >
       {children}
     </div>
   );
