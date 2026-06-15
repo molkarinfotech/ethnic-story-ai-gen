@@ -56,7 +56,10 @@ export async function POST(req: NextRequest) {
   let variantsUpserted = 0;
   const errors: string[] = [];
 
-  for (const [, { meta, variants }] of productMap) {
+  // Use Array.from to avoid --downlevelIteration requirement on Map iteration
+  const entries = Array.from(productMap.values());
+
+  for (const { meta, variants } of entries) {
     try {
       const slugBase = toSlug(meta.slug || meta.name);
 
