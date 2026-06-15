@@ -43,7 +43,6 @@ const MODEL_STYLES = [
   { id: 'editorial', label: '✨ Editorial', desc: 'Dramatic Vogue-style lighting' },
 ];
 
-// ── Styles ───────────────────────────────────────────────────────────────────
 const card: React.CSSProperties = {
   background: 'white', borderRadius: '1rem',
   boxShadow: '0 2px 12px rgba(0,0,0,.08)',
@@ -60,10 +59,10 @@ const inputStyle: React.CSSProperties = {
   width: '100%', padding: '.65rem .85rem', border: '1.5px solid #e5e7eb',
   borderRadius: '.65rem', fontSize: '.95rem', boxSizing: 'border-box', background: 'white',
 };
-const selectStyle = {
+const selectStyle: React.CSSProperties = {
   width: '100%', padding: '.65rem .85rem', border: '1.5px solid #e5e7eb',
   borderRadius: '.65rem', fontSize: '.95rem', background: 'white', cursor: 'pointer',
-} as React.CSSProperties;
+};
 const fieldLabel: React.CSSProperties = {
   fontSize: '.8rem', fontWeight: 700, color: '#6b7280',
   textTransform: 'uppercase', letterSpacing: '.05em', display: 'block', marginBottom: '.4rem',
@@ -80,8 +79,26 @@ const btnSecondary: React.CSSProperties = {
   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.4rem',
 };
 
+const stepBadge = (active: boolean, done: boolean): React.CSSProperties => ({
+  width: '1.6rem', height: '1.6rem', borderRadius: '50%', display: 'flex',
+  alignItems: 'center', justifyContent: 'center', fontSize: '.75rem', fontWeight: 700,
+  flexShrink: 0,
+  background: done ? '#16a34a' : active ? '#9d174d' : '#e5e7eb',
+  color: done || active ? 'white' : '#9ca3af',
+});
+
 function slugify(str: string) {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+function buildDefaultPrompt(visionResult: VisionResult | null, form: FormState): string {
+  const parts: string[] = [];
+  if (form.colour)                        parts.push(form.colour);
+  if (visionResult?.detectedCategory)     parts.push(visionResult.detectedCategory);
+  if (visionResult?.labels?.length)       parts.push(visionResult.labels.slice(0, 4).join(', '));
+  if (form.productName)                   parts.push(form.productName);
+  const garmentDesc = parts.filter(Boolean).join(' ') || 'ethnic Indian garment';
+  return `A South Asian female model wearing a ${garmentDesc}. Full-body portrait, professional fashion photography, sharp focus on the garment details.`;
 }
 
 export default function ScanPage() {
@@ -96,7 +113,6 @@ export default function ScanPage() {
   const [analysing,    setAnalysing]    = useState(false);
   const [visionResult, setVisionResult] = useState<VisionResult | null>(null);
 
-  // Product list
   const [allProducts,     setAllProducts]     = useState<SuggestedProduct[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [productSearch,   setProductSearch]   = useState('');
@@ -110,14 +126,16 @@ export default function ScanPage() {
     name: '', category: '', price: '', original_price: '', description: '',
   });
 
-  // ── AI Model Generation state ────────────────────────────────────────────
-  const [showModelGen,   setShowModelGen]   = useState(false);
-  const [modelStyle,     setModelStyle]     = useState('studio');
-  const [generatingModel,setGeneratingModel]= useState(false);
-  const [modelImages,    setModelImages]    = useState<ModelImage[]>([]);
-  const [modelError,     setModelError]     = useState<string | null>(null);
-  const [savedModelIdx,  setSavedModelIdx]  = useState<number | null>(null);
-  const [savingModelIdx, setSavingModelIdx] = useState<number | null>(null);
+  // Step 3 — AI Model Gen
+  const [showModelGen,    setShowModelGen]    = useState(false);
+  const [modelStyle,      setModelStyle]      = useState('studio');
+  const [modelPrompt,     setModelPrompt]     = useState('');
+  const [promptTouched,   setPromptTouched]   = useState(false);
+  const [generatingModel, setGeneratingModel] = useState(false);
+  const [modelImages,     setModelImages]     = useState<ModelImage[]>([]);
+  const [modelError,      setModelError]      = useState<string | null>(null);
+  const [savedModelIdxs,  setSavedModelIdxs]  = useState<Set<number>>(new Set());
+  const [savingModelIdx,  setSavingModelIdx]  = useState<number | null>(null);
 
   async function authFetch(url: string, init: RequestInit = {}) {
     const res = await fetch(url, { ...init, credentials: 'include' });
@@ -130,7 +148,8 @@ export default function ScanPage() {
 
   const handleFile = useCallback(async (file: File) => {
     setError(null); setSaved(false); setShowNewProduct(false); setVisionResult(null);
-    setModelImages([]); setModelError(null); setSavedModelIdx(null);
+    setModelImages([]); setModelError(null); setSavedModelIdxs(new Set());
+    setPromptTouched(false); setModelPrompt('');
     setImageFile(file);
     setPreview(URL.createObjectURL(file));
 
@@ -173,23 +192,58 @@ export default function ScanPage() {
     setAllProducts([]); setVisionResult(null);
     setForm({ productId: '', productName: '', colour: '', size: '', stockCount: 1 });
     setNewProduct({ name: '', category: '', price: '', original_price: '', description: '' });
-    setShowModelGen(false); setModelImages([]); setModelError(null); setSavedModelIdx(null);
+    setShowModelGen(false); setModelImages([]); setModelError(null);
+    setSavedModelIdxs(new Set()); setModelPrompt(''); setPromptTouched(false);
     if (fileRef.current) fileRef.current.value = '';
   }
 
-  // ── Generate model images ────────────────────────────────────────────────
+  // ── Step 2: Save to inventory (always saves scanned product photo) ────────
+  async function handleSave() {
+    if (!form.productId) { setError('Please select a product'); return; }
+    if (!form.size)      { setError('Please select a size');    return; }
+    if (!imageFile)      { setError('No image to upload');      return; }
+    setSaving(true); setError(null);
+    try {
+      // 1. Upload the scanned product photo as the product image
+      const fd = new FormData();
+      fd.append('image',      imageFile);
+      fd.append('product_id', form.productId);
+      fd.append('colour',     form.colour);
+      fd.append('sort_order', '0');
+      const uploadRes  = await authFetch('/api/admin/scan-upload', { method: 'POST', body: fd });
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok) throw new Error(uploadData.error ?? 'Upload failed');
+
+      // 2. Update stock
+      const stockRes  = await authFetch('/api/admin/stock', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id:  form.productId,
+          size:        form.size,
+          colour:      form.colour,
+          stock_count: form.stockCount,
+        }),
+      });
+      const stockData = await stockRes.json();
+      if (!stockRes.ok) throw new Error(stockData.error ?? 'Stock update failed');
+
+      setSaved(true);
+      // Don't auto-reset — let user proceed to Step 3 (model gen)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ── Step 3: Generate model images ────────────────────────────────────────
   async function handleGenerateModel() {
-    if (!imageFile) return;
-    setGeneratingModel(true); setModelError(null); setModelImages([]); setSavedModelIdx(null);
+    setGeneratingModel(true); setModelError(null); setModelImages([]); setSavedModelIdxs(new Set());
     try {
       const fd = new FormData();
-      fd.append('image',       imageFile);
-      fd.append('style',       modelStyle);
-      fd.append('description', [
-        visionResult?.detectedCategory ?? '',
-        form.colour ? `in ${form.colour}` : '',
-        form.productName ? `— ${form.productName}` : '',
-      ].filter(Boolean).join(' ').trim() || 'ethnic Indian garment');
+      fd.append('style',  modelStyle);
+      fd.append('prompt', promptTouched ? modelPrompt : buildDefaultPrompt(visionResult, form));
       const res  = await authFetch('/api/admin/scan-model-gen', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Generation failed');
@@ -201,10 +255,10 @@ export default function ScanPage() {
     }
   }
 
-  // ── Save a generated model image as product image ───────────────────────
+  // ── Save a generated model image alongside the product photo ─────────────
   async function handleSaveModelImage(idx: number) {
     if (!form.productId) {
-      setModelError('Select a product first (in the details form below) before saving a model image.');
+      setModelError('Select a product first before saving a model image.');
       return;
     }
     const img = modelImages[idx];
@@ -213,13 +267,11 @@ export default function ScanPage() {
 
     setSavingModelIdx(idx); setModelError(null);
     try {
-      // Fetch the image from the URL into a Blob (if it's a URL)
       let blob: Blob;
       if (img.url) {
         const r = await fetch(img.url);
         blob = await r.blob();
       } else {
-        // base64 → Blob
         const binary = atob(img.b64!);
         const arr = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
@@ -230,11 +282,11 @@ export default function ScanPage() {
       fd.append('image',      file);
       fd.append('product_id', form.productId);
       fd.append('colour',     form.colour || 'default');
-      fd.append('sort_order', '1');
+      fd.append('sort_order', String(idx + 1)); // product photo is sort_order 0
       const res  = await authFetch('/api/admin/scan-upload', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Upload failed');
-      setSavedModelIdx(idx);
+      setSavedModelIdxs(prev => new Set(prev).add(idx));
     } catch (e: unknown) {
       setModelError(e instanceof Error ? e.message : 'Save failed');
     } finally {
@@ -275,48 +327,21 @@ export default function ScanPage() {
     }
   }
 
-  async function handleSave() {
-    if (!form.productId) { setError('Please select a product'); return; }
-    if (!form.size)      { setError('Please select a size');    return; }
-    if (!imageFile)      { setError('No image to upload');      return; }
-    setSaving(true); setError(null);
-    try {
-      const fd = new FormData();
-      fd.append('image',      imageFile);
-      fd.append('product_id', form.productId);
-      fd.append('colour',     form.colour);
-      fd.append('sort_order', '0');
-      const uploadRes  = await authFetch('/api/admin/scan-upload', { method: 'POST', body: fd });
-      const uploadData = await uploadRes.json();
-      if (!uploadRes.ok) throw new Error(uploadData.error ?? 'Upload failed');
-      const stockRes  = await authFetch('/api/admin/stock', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          product_id:  form.productId,
-          size:        form.size,
-          colour:      form.colour,
-          stock_count: form.stockCount,
-        }),
-      });
-      const stockData = await stockRes.json();
-      if (!stockRes.ok) throw new Error(stockData.error ?? 'Stock update failed');
-      setSaved(true);
-      setTimeout(reset, 1800);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Save failed');
-    } finally {
-      setSaving(false);
-    }
-  }
-
   const filteredProds = productSearch.trim()
     ? allProducts.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()))
     : allProducts;
 
-  const showForm    = preview !== null;
+  const showForm    = preview !== null && !analysing;
   const suggestedProds: SuggestedProduct[] =
     visionResult && !visionResult.visionSkipped ? visionResult.suggestedProducts : [];
+
+  // Step completion flags
+  const step1Done = !!preview && !analysing;
+  const step2Done = saved;
+  const step3Active = saved;
+
+  // Prompt shown in textarea — auto-built unless user has edited it
+  const displayPrompt = promptTouched ? modelPrompt : buildDefaultPrompt(visionResult, form);
 
   return (
     <div style={{ minHeight: '100dvh', background: '#fdf2f8', fontFamily: 'system-ui, sans-serif' }}>
@@ -326,96 +351,263 @@ export default function ScanPage() {
           <button onClick={() => router.push('/admin')} style={{ background: 'none', border: 'none', color: 'white', fontSize: '1.2rem', cursor: 'pointer', padding: 0 }}>←</button>
           <span style={{ fontWeight: 700, fontSize: '1rem' }}>📷 Inventory Scanner</span>
         </div>
+        {preview && (
+          <button onClick={reset} style={{ background: 'rgba(255,255,255,.2)', border: 'none', color: 'white', borderRadius: '.5rem', padding: '.3rem .75rem', fontSize: '.8rem', cursor: 'pointer', fontWeight: 600 }}>↺ New Scan</button>
+        )}
       </div>
 
       <div style={{ maxWidth: '520px', margin: '0 auto', padding: '1rem' }}>
 
-        {/* Camera picker */}
-        {!preview && (
-          <div onClick={() => fileRef.current?.click()}
-            style={{ background: 'white', border: '2px dashed #e9a8c8', borderRadius: '1.25rem', padding: '3rem 1rem', textAlign: 'center', cursor: 'pointer', marginBottom: '1rem' }}>
-            <div style={{ fontSize: '3.5rem', marginBottom: '.5rem' }}>📷</div>
-            <div style={{ fontWeight: 700, fontSize: '1.05rem', color: '#9d174d' }}>Tap to photograph garment</div>
-            <div style={{ color: '#9ca3af', fontSize: '.85rem', marginTop: '.3rem' }}>Camera or choose from library</div>
-            <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onInputChange} style={{ display: 'none' }} />
+        {/* ── STEP 1: Photograph + Vision ─────────────────────────────── */}
+        <div style={{ ...card, border: step1Done ? '1.5px solid #bbf7d0' : '1.5px solid #e5e7eb' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem', marginBottom: preview ? '.85rem' : 0 }}>
+            <div style={stepBadge(true, step1Done)}>{step1Done ? '✓' : '1'}</div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '.95rem', color: step1Done ? '#15803d' : '#111827' }}>Photograph Garment</div>
+              <div style={{ fontSize: '.75rem', color: '#9ca3af' }}>Google Vision auto-detects colour, size &amp; category</div>
+            </div>
           </div>
-        )}
 
-        {/* Preview */}
-        {preview && (
-          <div style={{ ...card, padding: 0, overflow: 'hidden', position: 'relative', marginBottom: '1rem' }}>
-            <img src={preview} alt="Scanned" style={{ width: '100%', maxHeight: '300px', objectFit: 'cover', display: 'block' }} />
-            {saved && (
-              <div style={{ position: 'absolute', inset: 0, background: 'rgba(22,163,74,.88)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', gap: '.5rem' }}>
-                <div style={{ fontSize: '3rem' }}>✅</div>
-                <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>Saved to Inventory!</div>
+          {!preview && (
+            <div onClick={() => fileRef.current?.click()}
+              style={{ background: '#fdf2f8', border: '2px dashed #e9a8c8', borderRadius: '1rem', padding: '2.5rem 1rem', textAlign: 'center', cursor: 'pointer', marginTop: '.85rem' }}>
+              <div style={{ fontSize: '3rem', marginBottom: '.4rem' }}>📷</div>
+              <div style={{ fontWeight: 700, color: '#9d174d' }}>Tap to photograph</div>
+              <div style={{ color: '#9ca3af', fontSize: '.8rem', marginTop: '.25rem' }}>Camera or photo library</div>
+              <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onInputChange} style={{ display: 'none' }} />
+            </div>
+          )}
+
+          {preview && (
+            <div style={{ position: 'relative', borderRadius: '.75rem', overflow: 'hidden' }}>
+              <img src={preview} alt="Scanned" style={{ width: '100%', maxHeight: '260px', objectFit: 'cover', display: 'block' }} />
+              {!saved && (
+                <button onClick={() => fileRef.current?.click()}
+                  style={{ position: 'absolute', top: '.5rem', right: '.5rem', background: 'rgba(0,0,0,.5)', color: 'white', border: 'none', borderRadius: '2rem', padding: '.3rem .75rem', fontSize: '.75rem', cursor: 'pointer' }}>
+                  ↺ Retake
+                </button>
+              )}
+              <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onInputChange} style={{ display: 'none' }} />
+            </div>
+          )}
+
+          {analysing && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem', marginTop: '.75rem', padding: '.65rem .85rem', background: '#f0fdf4', borderRadius: '.65rem' }}>
+              <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>🔍</span>
+              <span style={{ fontSize: '.85rem', color: '#15803d', fontWeight: 600 }}>Analysing with Google Vision…</span>
+            </div>
+          )}
+
+          {visionResult && !analysing && (
+            <div style={{ marginTop: '.75rem', padding: '.75rem .85rem', background: visionResult.visionSkipped ? '#fffbeb' : '#f0fdf4', borderRadius: '.65rem', border: `1px solid ${visionResult.visionSkipped ? '#fde68a' : '#bbf7d0'}` }}>
+              {visionResult.visionSkipped ? (
+                <div style={{ fontSize: '.82rem', color: '#92400e' }}>⚠️ Vision skipped: {visionResult.visionError}</div>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 700, fontSize: '.8rem', color: '#15803d', marginBottom: '.4rem' }}>🤖 Detected:</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.3rem' }}>
+                    {visionResult.detectedColours.map(c => (
+                      <span key={c.name} style={{ background: '#dcfce7', color: '#166534', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem', fontWeight: 600 }}>🎨 {c.name}</span>
+                    ))}
+                    {visionResult.detectedCategory && (
+                      <span style={{ background: '#ede9fe', color: '#6d28d9', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem', fontWeight: 600 }}>📂 {visionResult.detectedCategory}</span>
+                    )}
+                    {visionResult.detectedSize && (
+                      <span style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem', fontWeight: 600 }}>📏 {visionResult.detectedSize}</span>
+                    )}
+                    {visionResult.labels.slice(0, 5).map(l => (
+                      <span key={l} style={{ background: '#f3f4f6', color: '#4b5563', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.72rem' }}>{l}</span>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── STEP 2: Details + Save (saves product photo) ────────────── */}
+        {showForm && (
+          <div style={{ ...card, border: step2Done ? '1.5px solid #bbf7d0' : '1.5px solid #e5e7eb', opacity: analysing ? .5 : 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem', marginBottom: '1rem' }}>
+              <div style={stepBadge(!step2Done, step2Done)}>{step2Done ? '✓' : '2'}</div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '.95rem', color: step2Done ? '#15803d' : '#111827' }}>Product Details &amp; Save</div>
+                <div style={{ fontSize: '.75rem', color: '#9ca3af' }}>Scanned photo saves automatically as product image</div>
               </div>
-            )}
-            {!saved && (
-              <button onClick={reset} style={{ position: 'absolute', top: '.6rem', right: '.6rem', background: 'rgba(0,0,0,.5)', color: 'white', border: 'none', borderRadius: '2rem', padding: '.3rem .75rem', fontSize: '.8rem', cursor: 'pointer' }}>↺ Retake</button>
-            )}
-          </div>
-        )}
+              {step2Done && (
+                <span style={{ marginLeft: 'auto', background: '#dcfce7', color: '#15803d', borderRadius: '2rem', padding: '.2rem .65rem', fontSize: '.75rem', fontWeight: 700 }}>✅ Saved</span>
+              )}
+            </div>
 
-        {/* Analysing spinner */}
-        {analysing && (
-          <div style={{ background: 'white', borderRadius: '.75rem', padding: '.85rem 1rem', display: 'flex', alignItems: 'center', gap: '.75rem', marginBottom: '1rem', boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
-            <span style={{ fontSize: '1.3rem', animation: 'spin 1s linear infinite', display: 'inline-block' }}>🔍</span>
-            <span style={{ fontSize: '.9rem', color: '#6b7280', fontWeight: 600 }}>Analysing image with Google Vision…</span>
-          </div>
-        )}
-
-        {/* Vision results */}
-        {visionResult && !analysing && (
-          <div style={{ ...card, marginBottom: '1rem', background: visionResult.visionSkipped ? '#fffbeb' : '#f0fdf4', border: `1px solid ${visionResult.visionSkipped ? '#fde68a' : '#bbf7d0'}` }}>
-            {visionResult.visionSkipped ? (
-              <div style={{ fontSize: '.82rem', color: '#92400e' }}>⚠️ <strong>Vision skipped:</strong> {visionResult.visionError}</div>
-            ) : (
+            {!step2Done && (
               <>
-                <div style={{ fontWeight: 700, fontSize: '.85rem', color: '#15803d', marginBottom: '.5rem' }}>🤖 Google Vision detected:</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', marginBottom: '.45rem' }}>
-                  {visionResult.detectedColours.map(c => (
-                    <span key={c.name} style={{ background: '#dcfce7', color: '#166534', borderRadius: '.4rem', padding: '.2rem .55rem', fontSize: '.75rem', fontWeight: 600 }}>🎨 {c.name}</span>
-                  ))}
-                  {visionResult.detectedCategory && (
-                    <span style={{ background: '#ede9fe', color: '#6d28d9', borderRadius: '.4rem', padding: '.2rem .55rem', fontSize: '.75rem', fontWeight: 600 }}>📂 {visionResult.detectedCategory}</span>
+                {/* Error */}
+                {error && (
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.65rem', padding: '.7rem .85rem', color: '#dc2626', fontSize: '.82rem', marginBottom: '.85rem' }}>❌ {error}</div>
+                )}
+
+                {/* Product picker */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={fieldLabel}>Product</label>
+                  {!showNewProduct && (
+                    <>
+                      {suggestedProds.length > 0 && !form.productId && (
+                        <div style={{ marginBottom: '.6rem' }}>
+                          <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#6b7280', marginBottom: '.3rem' }}>🤖 Suggested matches:</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '.3rem' }}>
+                            {suggestedProds.map(p => (
+                              <button key={p.id} onClick={() => setForm(f => ({ ...f, productId: p.id, productName: p.name }))}
+                                style={{ textAlign: 'left', padding: '.5rem .75rem', borderRadius: '.5rem', border: '1.5px solid #e9d5ff', background: '#faf5ff', color: '#4c1d95', fontSize: '.82rem', fontWeight: 600, cursor: 'pointer' }}>
+                                ✨ {p.name} <span style={{ fontWeight: 400, color: '#7c3aed' }}>({p.category})</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {loadingProducts ? (
+                        <div style={{ color: '#9ca3af', fontSize: '.85rem', padding: '.4rem 0' }}>Loading products…</div>
+                      ) : (
+                        <>
+                          <input value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search products…" style={{ ...inputStyle, marginBottom: '.4rem' }} />
+                          <select value={form.productId}
+                            onChange={e => {
+                              const id   = e.target.value;
+                              const name = filteredProds.find(p => p.id === id)?.name ?? '';
+                              setForm(f => ({ ...f, productId: id, productName: name }));
+                            }}
+                            style={selectStyle}>
+                            <option value="">— Select a product —</option>
+                            {filteredProds.map(p => <option key={p.id} value={p.id}>{p.name} ({p.category})</option>)}
+                          </select>
+                          {form.productId && (
+                            <div style={{ marginTop: '.35rem', fontSize: '.8rem', color: '#16a34a', fontWeight: 600 }}>✓ {form.productName}</div>
+                          )}
+                        </>
+                      )}
+                      <button onClick={() => { setShowNewProduct(true); setError(null); }} style={{ ...btnSecondary, marginTop: '.6rem' }}>+ Add New Product</button>
+                    </>
                   )}
-                  {visionResult.detectedSize && (
-                    <span style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: '.4rem', padding: '.2rem .55rem', fontSize: '.75rem', fontWeight: 600 }}>📏 {visionResult.detectedSize}</span>
+
+                  {showNewProduct && (
+                    <div style={{ background: '#fdf2f8', borderRadius: '.75rem', padding: '1rem', border: '1.5px solid #fbcfe8' }}>
+                      <div style={{ fontWeight: 700, marginBottom: '.75rem', color: '#9d174d', fontSize: '.9rem' }}>🆕 New Product</div>
+                      <div style={{ marginBottom: '.6rem' }}>
+                        <label style={fieldLabel}>Name *</label>
+                        <input value={newProduct.name} onChange={e => setNewProduct(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Red Bridal Lehenga" style={inputStyle} />
+                      </div>
+                      <div style={{ marginBottom: '.6rem' }}>
+                        <label style={fieldLabel}>Category *</label>
+                        <select value={newProduct.category} onChange={e => setNewProduct(p => ({ ...p, category: e.target.value }))} style={selectStyle}>
+                          <option value="">— Select —</option>
+                          {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.5rem', marginBottom: '.6rem' }}>
+                        <div>
+                          <label style={fieldLabel}>Price (₹) *</label>
+                          <input type="number" min="0" value={newProduct.price} onChange={e => setNewProduct(p => ({ ...p, price: e.target.value }))} placeholder="4999" style={inputStyle} />
+                        </div>
+                        <div>
+                          <label style={fieldLabel}>Original (₹)</label>
+                          <input type="number" min="0" value={newProduct.original_price} onChange={e => setNewProduct(p => ({ ...p, original_price: e.target.value }))} placeholder="6999" style={inputStyle} />
+                        </div>
+                      </div>
+                      <div style={{ marginBottom: '.75rem' }}>
+                        <label style={fieldLabel}>Description</label>
+                        <textarea value={newProduct.description} onChange={e => setNewProduct(p => ({ ...p, description: e.target.value }))} placeholder="Fabric, occasion, notes…" rows={2} style={{ ...inputStyle, resize: 'vertical' } as React.CSSProperties} />
+                      </div>
+                      <div style={{ display: 'flex', gap: '.5rem' }}>
+                        <button onClick={handleCreateProduct} disabled={creatingProduct} style={{ ...btnPrimary, flex: 1, padding: '.75rem', opacity: creatingProduct ? .7 : 1 }}>{creatingProduct ? '⏳ Creating…' : '✅ Create'}</button>
+                        <button onClick={() => { setShowNewProduct(false); setError(null); }} style={{ padding: '.75rem 1rem', borderRadius: '.75rem', border: '1.5px solid #e5e7eb', background: 'white', color: '#6b7280', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+                      </div>
+                    </div>
                   )}
                 </div>
-                {visionResult.labels.length > 0 && (
-                  <div style={{ fontSize: '.75rem', color: '#4b5563' }}>Labels: {visionResult.labels.slice(0, 8).join(', ')}</div>
-                )}
+
+                {/* Colour */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={fieldLabel}>Colour</label>
+                  <input value={form.colour} onChange={e => setForm(f => ({ ...f, colour: e.target.value }))} placeholder="e.g. Red, Royal Blue…" style={inputStyle} />
+                </div>
+
+                {/* Size */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={fieldLabel}>Size</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem', marginBottom: '.5rem' }}>
+                    {SIZES.map(s => <button key={s} onClick={() => setForm(f => ({ ...f, size: s }))} style={pill(form.size === s)}>{s}</button>)}
+                  </div>
+                  <input value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} placeholder="Or type a size…" style={inputStyle} />
+                </div>
+
+                {/* Stock qty */}
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={fieldLabel}>Stock qty</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <button onClick={() => setForm(f => ({ ...f, stockCount: Math.max(0, f.stockCount - 1) }))} style={{ width: '42px', height: '42px', borderRadius: '50%', border: '1.5px solid #e5e7eb', background: 'white', fontSize: '1.3rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                    <span style={{ fontSize: '1.6rem', fontWeight: 700, minWidth: '2.5rem', textAlign: 'center' }}>{form.stockCount}</span>
+                    <button onClick={() => setForm(f => ({ ...f, stockCount: f.stockCount + 1 }))} style={{ width: '42px', height: '42px', borderRadius: '50%', border: '1.5px solid #e5e7eb', background: 'white', fontSize: '1.3rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                  </div>
+                </div>
+
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '.65rem', padding: '.6rem .85rem', fontSize: '.8rem', color: '#15803d', marginBottom: '1rem', fontWeight: 600 }}>
+                  📸 The scanned photo will be saved as the product image automatically.
+                </div>
+
+                <button onClick={handleSave} disabled={saving} style={{ ...btnPrimary, opacity: saving ? .7 : 1 }}>
+                  {saving ? '⏳ Saving…' : '💾 Save to Inventory'}
+                </button>
               </>
             )}
           </div>
         )}
 
-        {/* ── AI MODEL GENERATION PANEL ─────────────────────────────────── */}
-        {showForm && !saved && (
-          <div style={{ ...card, background: 'linear-gradient(135deg,#fdf2f8,#fdf4ff)', border: '1.5px solid #f0abfc', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '.75rem' }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '1rem', color: '#7e22ce' }}>✨ AI Model Images</div>
-                <div style={{ fontSize: '.78rem', color: '#9ca3af', marginTop: '.15rem' }}>Generate a model wearing this garment</div>
+        {/* ── STEP 3: AI Model Images (optional) ──────────────────────── */}
+        {step3Active && (
+          <div style={{ ...card, background: 'linear-gradient(135deg,#fdf2f8,#fdf4ff)', border: `1.5px solid ${showModelGen ? '#d8b4fe' : '#e5e7eb'}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem' }}>
+              <div style={stepBadge(showModelGen, savedModelIdxs.size > 0)}>{savedModelIdxs.size > 0 ? '✓' : '3'}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: '.95rem', color: '#7e22ce' }}>✨ AI Model Images <span style={{ fontSize: '.75rem', fontWeight: 400, color: '#9ca3af' }}>(optional)</span></div>
+                <div style={{ fontSize: '.75rem', color: '#9ca3af' }}>Generate a model wearing this garment via Replicate</div>
               </div>
               <button
                 onClick={() => setShowModelGen(v => !v)}
-                style={{ padding: '.35rem .85rem', borderRadius: '2rem', border: '1.5px solid #d8b4fe', background: showModelGen ? '#7e22ce' : 'white', color: showModelGen ? 'white' : '#7e22ce', fontSize: '.8rem', fontWeight: 700, cursor: 'pointer' }}>
+                style={{ padding: '.35rem .85rem', borderRadius: '2rem', border: '1.5px solid #d8b4fe', background: showModelGen ? '#7e22ce' : 'white', color: showModelGen ? 'white' : '#7e22ce', fontSize: '.8rem', fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
                 {showModelGen ? '▲ Hide' : '▼ Open'}
               </button>
             </div>
 
             {showModelGen && (
-              <>
+              <div style={{ marginTop: '1rem' }}>
+
+                {/* Manual prompt */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ ...fieldLabel, color: '#7e22ce' }}>Garment Description for Replicate</label>
+                  <textarea
+                    value={displayPrompt}
+                    onChange={e => { setModelPrompt(e.target.value); setPromptTouched(true); }}
+                    rows={4}
+                    placeholder="Describe the garment so Replicate generates the right model image…"
+                    style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5, fontSize: '.88rem' } as React.CSSProperties}
+                  />
+                  {!promptTouched && (
+                    <div style={{ fontSize: '.72rem', color: '#9ca3af', marginTop: '.25rem' }}>✏️ Auto-filled from Vision results — edit freely</div>
+                  )}
+                  {promptTouched && (
+                    <button onClick={() => { setModelPrompt(''); setPromptTouched(false); }}
+                      style={{ fontSize: '.72rem', color: '#7e22ce', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: '.25rem' }}>
+                      ↺ Reset to auto
+                    </button>
+                  )}
+                </div>
+
                 {/* Style picker */}
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={{ ...fieldLabel, color: '#7e22ce' }}>Photography Style</label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '.4rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '.35rem' }}>
                     {MODEL_STYLES.map(s => (
                       <button key={s.id} onClick={() => setModelStyle(s.id)}
-                        style={{ textAlign: 'left', padding: '.55rem .85rem', borderRadius: '.6rem', cursor: 'pointer',
+                        style={{ textAlign: 'left', padding: '.5rem .85rem', borderRadius: '.6rem', cursor: 'pointer',
                           border: modelStyle === s.id ? '2px solid #7e22ce' : '1.5px solid #e5e7eb',
                           background: modelStyle === s.id ? '#faf5ff' : 'white',
                           color: modelStyle === s.id ? '#7e22ce' : '#374151',
@@ -433,41 +625,39 @@ export default function ScanPage() {
                   disabled={generatingModel}
                   style={{ width: '100%', padding: '.9rem', borderRadius: '.75rem', border: 'none',
                     background: generatingModel ? '#c084fc' : 'linear-gradient(135deg,#7e22ce,#9d174d)',
-                    color: 'white', fontSize: '.95rem', fontWeight: 700, cursor: generatingModel ? 'not-allowed' : 'pointer',
+                    color: 'white', fontSize: '.95rem', fontWeight: 700,
+                    cursor: generatingModel ? 'not-allowed' : 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.5rem',
-                    transition: 'opacity .2s', opacity: generatingModel ? .8 : 1 }}>
+                    opacity: generatingModel ? .85 : 1 }}>
                   {generatingModel
-                    ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⏳</span> Generating (10–30s)…</>)
+                    ? <><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⏳</span> Generating (15–30s)…</>
                     : '🪄 Generate Model Images'}
                 </button>
 
-                {/* Model error */}
                 {modelError && (
-                  <div style={{ marginTop: '.75rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.6rem', padding: '.65rem .85rem', color: '#dc2626', fontSize: '.82rem' }}>
-                    ❌ {modelError}
-                  </div>
+                  <div style={{ marginTop: '.75rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.6rem', padding: '.65rem .85rem', color: '#dc2626', fontSize: '.82rem' }}>❌ {modelError}</div>
                 )}
 
-                {/* Generated images */}
                 {modelImages.length > 0 && (
                   <div style={{ marginTop: '1rem' }}>
-                    <div style={{ fontWeight: 700, fontSize: '.85rem', color: '#7e22ce', marginBottom: '.5rem' }}>Generated images — tap to save as product photo:</div>
+                    <div style={{ fontWeight: 700, fontSize: '.82rem', color: '#7e22ce', marginBottom: '.5rem' }}>Tap 💾 to save alongside the product photo:</div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.6rem' }}>
                       {modelImages.map((img, idx) => {
-                        const src = img.url ?? (img.b64 ? `data:image/png;base64,${img.b64}` : null);
+                        const src      = img.url ?? (img.b64 ? `data:image/png;base64,${img.b64}` : null);
                         if (!src) return null;
-                        const isSaved  = savedModelIdx === idx;
+                        const isSaved  = savedModelIdxs.has(idx);
                         const isSaving = savingModelIdx === idx;
                         return (
                           <div key={idx} style={{ position: 'relative', borderRadius: '.75rem', overflow: 'hidden', border: isSaved ? '2.5px solid #16a34a' : '1.5px solid #e5e7eb', boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
-                            <img src={src} alt={`Generated model ${idx + 1}`} style={{ width: '100%', aspectRatio: '2/3', objectFit: 'cover', display: 'block' }} />
+                            <img src={src} alt={`Model ${idx + 1}`} style={{ width: '100%', aspectRatio: '2/3', objectFit: 'cover', display: 'block' }} />
                             <button
                               onClick={() => handleSaveModelImage(idx)}
                               disabled={isSaving || isSaved}
                               style={{ position: 'absolute', bottom: '.5rem', left: '.5rem', right: '.5rem',
                                 padding: '.45rem', borderRadius: '.5rem', border: 'none',
-                                background: isSaved ? 'rgba(22,163,74,.9)' : 'rgba(0,0,0,.65)',
-                                color: 'white', fontWeight: 700, fontSize: '.78rem', cursor: isSaved ? 'default' : 'pointer',
+                                background: isSaved ? 'rgba(22,163,74,.92)' : 'rgba(0,0,0,.65)',
+                                color: 'white', fontWeight: 700, fontSize: '.78rem',
+                                cursor: isSaved ? 'default' : 'pointer',
                                 backdropFilter: 'blur(4px)' }}>
                               {isSaving ? '⏳ Saving…' : isSaved ? '✅ Saved!' : '💾 Save as Product Photo'}
                             </button>
@@ -475,143 +665,36 @@ export default function ScanPage() {
                         );
                       })}
                     </div>
-                    <div style={{ marginTop: '.6rem', fontSize: '.75rem', color: '#9ca3af', textAlign: 'center' }}>
-                      ℹ️ Select a product below first, then save the image you prefer.
-                    </div>
+                    {savedModelIdxs.size > 0 && (
+                      <div style={{ marginTop: '.6rem', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '.65rem', padding: '.6rem .85rem', fontSize: '.8rem', color: '#15803d', fontWeight: 600 }}>
+                        ✅ {savedModelIdxs.size} model image{savedModelIdxs.size > 1 ? 's' : ''} saved alongside the product photo.
+                      </div>
+                    )}
                   </div>
                 )}
-              </>
+
+                <button onClick={reset} style={{ ...btnSecondary, marginTop: '1rem' }}>📷 Scan Another Product</button>
+              </div>
             )}
-          </div>
-        )}
-        {/* ─────────────────────────────────────────────────────────────── */}
 
-        {/* Error */}
-        {error && (
-          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.75rem', padding: '.85rem 1rem', color: '#dc2626', fontSize: '.875rem', marginBottom: '1rem' }}>❌ {error}</div>
-        )}
-
-        {/* Form */}
-        {showForm && !saved && (
-          <div style={card}>
-            <div style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1rem' }}>✏️ Fill in details</div>
-
-            {/* Product picker */}
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={fieldLabel}>Product</label>
-              {!showNewProduct && (
-                <>
-                  {loadingProducts ? (
-                    <div style={{ color: '#9ca3af', fontSize: '.85rem', padding: '.5rem 0' }}>Loading products…</div>
-                  ) : (
-                    <>
-                      {suggestedProds.length > 0 && !form.productId && (
-                        <div style={{ marginBottom: '.6rem' }}>
-                          <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#6b7280', marginBottom: '.3rem' }}>🤖 Suggested matches:</div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '.3rem' }}>
-                            {suggestedProds.map(p => (
-                              <button key={p.id} onClick={() => setForm(f => ({ ...f, productId: p.id, productName: p.name }))}
-                                style={{ textAlign: 'left', padding: '.5rem .75rem', borderRadius: '.5rem', border: '1.5px solid #e9d5ff', background: '#faf5ff', color: '#4c1d95', fontSize: '.82rem', fontWeight: 600, cursor: 'pointer' }}>
-                                ✨ {p.name} <span style={{ fontWeight: 400, color: '#7c3aed' }}>({p.category})</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      <input value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search products…" style={{ ...inputStyle, marginBottom: '.4rem' }} />
-                      <select value={form.productId}
-                        onChange={e => {
-                          const id = e.target.value;
-                          const name = filteredProds.find(p => p.id === id)?.name ?? '';
-                          setForm(f => ({ ...f, productId: id, productName: name }));
-                        }}
-                        style={selectStyle}>
-                        <option value="">— Select a product —</option>
-                        {filteredProds.map(p => <option key={p.id} value={p.id}>{p.name} ({p.category})</option>)}
-                      </select>
-                      {form.productId && (
-                        <div style={{ marginTop: '.4rem', fontSize: '.8rem', color: '#16a34a', fontWeight: 600 }}>✓ {form.productName}</div>
-                      )}
-                    </>
-                  )}
-                  <button onClick={() => { setShowNewProduct(true); setError(null); }} style={{ ...btnSecondary, marginTop: '.6rem' }}>+ Add New Product</button>
-                </>
-              )}
-
-              {showNewProduct && (
-                <div style={{ background: '#fdf2f8', borderRadius: '.75rem', padding: '1rem', border: '1.5px solid #fbcfe8' }}>
-                  <div style={{ fontWeight: 700, marginBottom: '.75rem', color: '#9d174d', fontSize: '.9rem' }}>🆕 New Product Details</div>
-                  <div style={{ marginBottom: '.65rem' }}>
-                    <label style={fieldLabel}>Product Name *</label>
-                    <input value={newProduct.name} onChange={e => setNewProduct(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Red Bridal Lehenga" style={inputStyle} />
-                  </div>
-                  <div style={{ marginBottom: '.65rem' }}>
-                    <label style={fieldLabel}>Category *</label>
-                    <select value={newProduct.category} onChange={e => setNewProduct(p => ({ ...p, category: e.target.value }))} style={selectStyle}>
-                      <option value="">— Select —</option>
-                      {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
-                    </select>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.5rem', marginBottom: '.65rem' }}>
-                    <div>
-                      <label style={fieldLabel}>Selling Price (₹) *</label>
-                      <input type="number" min="0" value={newProduct.price} onChange={e => setNewProduct(p => ({ ...p, price: e.target.value }))} placeholder="e.g. 4999" style={inputStyle} />
-                    </div>
-                    <div>
-                      <label style={fieldLabel}>Original Price (₹)</label>
-                      <input type="number" min="0" value={newProduct.original_price} onChange={e => setNewProduct(p => ({ ...p, original_price: e.target.value }))} placeholder="e.g. 6999" style={inputStyle} />
-                    </div>
-                  </div>
-                  <div style={{ marginBottom: '.75rem' }}>
-                    <label style={fieldLabel}>Description</label>
-                    <textarea value={newProduct.description} onChange={e => setNewProduct(p => ({ ...p, description: e.target.value }))} placeholder="Optional — fabric, occasion, notes…" rows={3} style={{ ...inputStyle, resize: 'vertical' } as React.CSSProperties} />
-                  </div>
-                  <div style={{ display: 'flex', gap: '.5rem' }}>
-                    <button onClick={handleCreateProduct} disabled={creatingProduct} style={{ ...btnPrimary, flex: 1, opacity: creatingProduct ? .7 : 1 }}>{creatingProduct ? '⏳ Creating…' : '✅ Create Product'}</button>
-                    <button onClick={() => { setShowNewProduct(false); setError(null); }} style={{ padding: '.75rem 1rem', borderRadius: '.75rem', border: '1.5px solid #e5e7eb', background: 'white', color: '#6b7280', cursor: 'pointer', fontWeight: 600, fontSize: '.85rem' }}>Cancel</button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Colour */}
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={fieldLabel}>Colour</label>
-              <input value={form.colour} onChange={e => setForm(f => ({ ...f, colour: e.target.value }))} placeholder="e.g. Red, Royal Blue…" style={inputStyle} />
-            </div>
-
-            {/* Size */}
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={fieldLabel}>Size</label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem', marginBottom: '.5rem' }}>
-                {SIZES.map(s => <button key={s} onClick={() => setForm(f => ({ ...f, size: s }))} style={pill(form.size === s)}>{s}</button>)}
+            {!showModelGen && step2Done && (
+              <div style={{ marginTop: '.75rem', display: 'flex', gap: '.5rem' }}>
+                <button onClick={() => setShowModelGen(true)} style={{ ...btnSecondary, flex: 1, borderColor: '#d8b4fe', color: '#7e22ce' }}>🪄 Generate Model Images</button>
+                <button onClick={reset} style={{ padding: '.75rem 1rem', borderRadius: '.75rem', border: '1.5px solid #e5e7eb', background: 'white', color: '#6b7280', cursor: 'pointer', fontWeight: 600, fontSize: '.85rem', whiteSpace: 'nowrap' }}>📷 New Scan</button>
               </div>
-              <input value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} placeholder="Or type a size…" style={inputStyle} />
-            </div>
-
-            {/* Stock qty */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={fieldLabel}>Stock qty</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <button onClick={() => setForm(f => ({ ...f, stockCount: Math.max(0, f.stockCount - 1) }))} style={{ width: '42px', height: '42px', borderRadius: '50%', border: '1.5px solid #e5e7eb', background: 'white', fontSize: '1.3rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                <span style={{ fontSize: '1.6rem', fontWeight: 700, minWidth: '2.5rem', textAlign: 'center' }}>{form.stockCount}</span>
-                <button onClick={() => setForm(f => ({ ...f, stockCount: f.stockCount + 1 }))} style={{ width: '42px', height: '42px', borderRadius: '50%', border: '1.5px solid #e5e7eb', background: 'white', fontSize: '1.3rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-              </div>
-            </div>
-
-            <button onClick={handleSave} disabled={saving} style={{ ...btnPrimary, opacity: saving ? .7 : 1 }}>
-              {saving ? '⏳ Saving…' : '💾 Save to Inventory'}
-            </button>
+            )}
           </div>
         )}
 
         {!preview && (
-          <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: '.85rem', marginTop: '1.5rem', lineHeight: 1.7 }}>
-            Photograph the garment, then fill in colour, size and stock.<br />
-            Google Vision will auto-detect colour, category and size.<br />
-            <span style={{ color: '#c084fc', fontWeight: 600 }}>✨ New: generate AI model images automatically!</span>
+          <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: '.85rem', marginTop: '1.5rem', lineHeight: 1.8 }}>
+            <strong style={{ color: '#9d174d' }}>3-step workflow:</strong><br />
+            📷 Photograph → 🤖 Vision scan → 💾 Save to inventory<br />
+            <span style={{ color: '#c084fc' }}>✨ Then optionally generate AI model images</span>
           </div>
         )}
+
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     </div>
   );

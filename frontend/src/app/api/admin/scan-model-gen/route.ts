@@ -11,15 +11,12 @@ async function isAdmin(): Promise<boolean> {
   }
 }
 
-function buildPrompt(style: string, description: string): string {
-  const base =
-    `High-quality professional fashion photograph of a South Asian female model wearing a ${description}. `;
-
+function buildAutoPrompt(style: string, description: string): string {
   const styles: Record<string, string> = {
     studio:
       'Clean white studio background, soft diffused lighting from both sides, full-body shot, ' +
       'model standing in a natural relaxed pose, luxury e-commerce product photography, ' +
-      'sharp focus on the garment showing all embroidery and fabric details, 4K quality.',
+      'sharp focus on the garment, 4K quality.',
     outdoor:
       'Beautiful outdoor setting with soft natural daylight, lush garden or Indian heritage ' +
       'palace architecture softly blurred in background, editorial fashion photography, ' +
@@ -29,30 +26,26 @@ function buildPrompt(style: string, description: string): string {
       'Vogue India editorial style, professional model pose, luxury fashion magazine aesthetic, ' +
       'cinematic colour grading, sharp focus on every garment detail.',
   };
-
-  return base + (styles[style] ?? styles.studio);
+  return `${description} ${styles[style] ?? styles.studio}`;
 }
 
 async function generateOne(
   replicate: Replicate,
   prompt: string
 ): Promise<string | null> {
-  // flux-1.1-pro: excellent quality for fashion photography, $0.04/image
   const output = await replicate.run(
     'black-forest-labs/flux-1.1-pro',
     {
       input: {
         prompt,
-        aspect_ratio: '9:16',      // portrait — ideal for fashion
-        output_format: 'webp',
-        output_quality: 90,
-        safety_tolerance: 2,
+        aspect_ratio:      '9:16',
+        output_format:     'webp',
+        output_quality:    90,
+        safety_tolerance:  2,
         prompt_upsampling: true,
       },
     }
   );
-
-  // Replicate returns a URL string or array of URL strings
   if (typeof output === 'string') return output;
   if (Array.isArray(output) && output.length > 0) return String(output[0]);
   return null;
@@ -64,9 +57,13 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const formData    = await req.formData();
-    const modelStyle  = (formData.get('style')       as string | null) ?? 'studio';
-    const garmentDesc = (formData.get('description') as string | null) ?? 'ethnic Indian garment';
+    const formData   = await req.formData();
+    const modelStyle = (formData.get('style')  as string | null) ?? 'studio';
+    // 'prompt' is the full manual/auto prompt from the UI
+    // 'description' is the legacy fallback if prompt is not provided
+    const rawPrompt  = (formData.get('prompt') as string | null)?.trim();
+    const description = (formData.get('description') as string | null)?.trim()
+      ?? 'A South Asian female model wearing an ethnic Indian garment.';
 
     const apiKey = process.env.REPLICATE_API_TOKEN;
     if (!apiKey) {
@@ -77,12 +74,16 @@ export async function POST(req: NextRequest) {
     }
 
     const replicate = new Replicate({ auth: apiKey });
-    const prompt    = buildPrompt(modelStyle, garmentDesc);
 
-    // Fire both generations in parallel
+    // If the UI sends a raw prompt (manual or auto-built), use it directly with style suffix.
+    // Otherwise fall back to the legacy auto-builder.
+    const basePrompt = rawPrompt ?? description;
+    const prompt1    = buildAutoPrompt(modelStyle, basePrompt);
+    const prompt2    = buildAutoPrompt(modelStyle, basePrompt + ' Slightly different pose and camera angle.');
+
     const [url1, url2] = await Promise.all([
-      generateOne(replicate, prompt),
-      generateOne(replicate, prompt + ' Slightly different pose and camera angle.'),
+      generateOne(replicate, prompt1),
+      generateOne(replicate, prompt2),
     ]);
 
     const images = [url1, url2]
