@@ -5,7 +5,8 @@ import { getServiceSupabase } from '../../../../lib/supabase';
 async function isAdmin(): Promise<boolean> {
   try {
     const cookieStore = await cookies();
-    return !!cookieStore.get('admin_session')?.value;
+    // Accept both cookie names for backward compatibility
+    return !!cookieStore.get('admin_session')?.value || !!cookieStore.get('admin_token')?.value;
   } catch {
     return false;
   }
