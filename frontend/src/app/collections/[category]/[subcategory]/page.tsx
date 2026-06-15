@@ -26,11 +26,17 @@ export default async function GenderSubcategoryPage({
   if (!genderMeta.subcategories.includes(params.subcategory)) notFound();
 
   const allProducts = await getProducts();
-  const products = allProducts.filter(
-    p =>
-      (p.gender === params.category || p.gender === 'unisex') &&
-      p.category === params.subcategory
-  );
+
+  // Women page: also include NULL-gender products (legacy items without gender set)
+  const products = params.category === 'women'
+    ? allProducts.filter(p =>
+        p.category === params.subcategory &&
+        (p.gender === 'women' || p.gender === 'unisex' || !p.gender)
+      )
+    : allProducts.filter(p =>
+        p.category === params.subcategory &&
+        (p.gender === params.category || p.gender === 'unisex')
+      );
 
   const label = params.subcategory.charAt(0).toUpperCase() + params.subcategory.slice(1);
 
@@ -42,7 +48,6 @@ export default async function GenderSubcategoryPage({
         <p>{genderMeta.label}&rsquo;s {label.toLowerCase()} — handcrafted in India.</p>
       </div>
 
-      {/* Subcategory sibling chips */}
       <div style={{ background: 'white', borderBottom: '1px solid var(--color-border)', padding: '.75rem 0' }}>
         <div className="container" style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <a href={`/collections/${params.category}`}

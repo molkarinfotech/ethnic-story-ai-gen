@@ -4,7 +4,6 @@ import { FilteredCollection } from '../../../components/shop/FilteredCollection'
 
 export const revalidate = 60;
 
-// Audience-first slugs
 const GENDER_META: Record<string, { label: string; desc: string; subcategories: string[] }> = {
   women: {
     label: 'Women',
@@ -23,7 +22,6 @@ const GENDER_META: Record<string, { label: string; desc: string; subcategories: 
   },
 };
 
-// Legacy garment-based slugs (backwards compatible)
 const CATEGORY_META: Record<string, { label: string; desc: string }> = {
   sarees:    { label: 'Sarees',     desc: 'Timeless drapes — handwoven silk, cotton, and georgette styles for every occasion.' },
   lehengas:  { label: 'Lehengas',  desc: 'From grand bridal sets to festive occasion wear, crafted in rich fabrics.' },
@@ -32,21 +30,28 @@ const CATEGORY_META: Record<string, { label: string; desc: string }> = {
 };
 
 export function generateStaticParams() {
-  const genderSlugs = Object.keys(GENDER_META).map(category => ({ category }));
-  const catSlugs    = Object.keys(CATEGORY_META).map(category => ({ category }));
-  return [...genderSlugs, ...catSlugs];
+  return [
+    ...Object.keys(GENDER_META).map(category => ({ category })),
+    ...Object.keys(CATEGORY_META).map(category => ({ category })),
+  ];
 }
 
 export default async function CollectionSlugPage({ params }: { params: { category: string } }) {
   const { category } = params;
   const allProducts  = await getProducts();
 
-  // ── Audience page (women / men / kids) ──────────────────────────────────────
+  // ── Audience page (women / men / kids) ────────────────────────────────
   const genderMeta = GENDER_META[category];
   if (genderMeta) {
     const products = allProducts.filter(
-      p => p.gender === category || p.gender === 'unisex'
+      p => p.gender === category || p.gender === 'unisex' || !p.gender
     );
+
+    // For men / kids, only show their own gender (not the null fallback that mostly holds women's items)
+    const filtered = category === 'women'
+      ? allProducts.filter(p => p.gender === 'women' || p.gender === 'unisex' || !p.gender)
+      : allProducts.filter(p => p.gender === category || p.gender === 'unisex');
+
     return (
       <main>
         <div className="page-header">
@@ -55,7 +60,6 @@ export default async function CollectionSlugPage({ params }: { params: { categor
           <p>{genderMeta.desc}</p>
         </div>
 
-        {/* Subcategory chips */}
         <div style={{ background: 'white', borderBottom: '1px solid var(--color-border)', padding: '.75rem 0' }}>
           <div className="container" style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <a href={`/collections/${category}`}
@@ -63,7 +67,7 @@ export default async function CollectionSlugPage({ params }: { params: { categor
               All
             </a>
             {genderMeta.subcategories.map(sub => {
-              const count = products.filter(p => p.category === sub).length;
+              const count = filtered.filter(p => p.category === sub).length;
               if (count === 0) return null;
               return (
                 <a key={sub} href={`/collections/${category}/${sub}`}
@@ -75,15 +79,16 @@ export default async function CollectionSlugPage({ params }: { params: { categor
           </div>
         </div>
 
-        <FilteredCollection products={products} category={genderMeta.label} />
+        <FilteredCollection products={filtered} category={genderMeta.label} />
       </main>
     );
   }
 
-  // ── Legacy garment page (sarees / lehengas / kurtas / sherwanis) ─────────────
+  // ── Legacy garment page (sarees / lehengas / kurtas / sherwanis) ───────────
   const catMeta = CATEGORY_META[category];
   if (!catMeta) notFound();
 
+  // Include products regardless of gender value (NULL-safe)
   const products = allProducts.filter(p => p.category === category);
 
   return (

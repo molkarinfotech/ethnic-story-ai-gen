@@ -7,7 +7,6 @@ const AUDIENCES = [
     slug: 'women',
     label: 'Women',
     desc: 'Sarees, lehengas, kurtas & more',
-    bg: 'one',
     emoji: '🥻',
     subcategories: ['sarees', 'lehengas', 'kurtas'],
   },
@@ -15,7 +14,6 @@ const AUDIENCES = [
     slug: 'men',
     label: 'Men',
     desc: 'Kurtas, sherwanis & festive sets',
-    bg: 'two',
     emoji: '🧣',
     subcategories: ['kurtas', 'sherwanis'],
   },
@@ -23,7 +21,6 @@ const AUDIENCES = [
     slug: 'kids',
     label: 'Kids',
     desc: 'Ethnic joy for little ones',
-    bg: 'four',
     emoji: '🎠',
     subcategories: ['lehengas', 'kurtas', 'sherwanis'],
   },
@@ -44,12 +41,12 @@ export default async function CollectionsPage() {
         <div className="container">
           <div className="collections-grid">
             {AUDIENCES.map(a => {
-              const count = products.filter(p =>
-                p.gender === a.slug || (a.slug === 'kids' && p.gender === 'kids')
-              ).length;
+              // Women: also count NULL-gender products (legacy items default to women)
+              const count = a.slug === 'women'
+                ? products.filter(p => p.gender === 'women' || p.gender === 'unisex' || !p.gender).length
+                : products.filter(p => p.gender === a.slug || p.gender === 'unisex').length;
               return (
                 <a key={a.slug} href={`/collections/${a.slug}`} className="collection-card">
-                  <div className={`bg ${a.bg}`}></div>
                   <div className="ornament"></div>
                   <div className="collection-content">
                     <span>{count} styles</span>
