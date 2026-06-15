@@ -6,6 +6,7 @@ import { CartDrawer } from '../components/cart/CartDrawer';
 import { CartIcon } from '../components/cart/CartIcon';
 import { AuthNav } from '../components/AuthNav';
 import { MobileNav } from '../components/layout/MobileNav';
+import { PageTransition } from '../components/layout/PageTransition';
 
 export const metadata: Metadata = {
   title: 'Ethnic Story — Indian Ethnic Wear in Australia',
@@ -55,7 +56,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
             </header>
 
-            {children}
+            <PageTransition>
+              {children}
+            </PageTransition>
 
             <CartDrawer />
 
@@ -82,7 +85,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   items.forEach(function(item){ item.classList.add('is-visible'); });
                 }
               })();
-            `}} />
+            ` }} />
           </CartProvider>
         </AuthProvider>
       </body>
