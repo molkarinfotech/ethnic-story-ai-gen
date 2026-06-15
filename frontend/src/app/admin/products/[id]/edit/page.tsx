@@ -11,7 +11,7 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
   const [error, setError] = useState('');
   const [form, setForm] = useState<Record<string, string>>({
     slug: '', name: '', subtitle: '', price: '', original_price: '',
-    category: 'sarees', badge: '', image: '',
+    category: 'sarees', gender: 'women', badge: '', image: '',
   });
 
   useEffect(() => {
@@ -20,14 +20,15 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
       .then((products: ProductRow[]) => {
         const p = products.find(x => x.id === params.id);
         if (p) setForm({
-          slug:           String(p.slug          ?? ''),
-          name:           String(p.name          ?? ''),
-          subtitle:       String(p.subtitle      ?? ''),
-          price:          String(p.price         ?? ''),
+          slug:           String(p.slug           ?? ''),
+          name:           String(p.name           ?? ''),
+          subtitle:       String(p.subtitle       ?? ''),
+          price:          String(p.price          ?? ''),
           original_price: String(p.original_price ?? ''),
-          category:       String(p.category      ?? 'sarees'),
-          badge:          String(p.badge         ?? ''),
-          image:          String(p.image         ?? ''),
+          category:       String(p.category       ?? 'sarees'),
+          gender:         String(p.gender         ?? 'women'),
+          badge:          String(p.badge          ?? ''),
+          image:          String(p.image          ?? ''),
         });
       });
   }, [params.id]);
@@ -42,11 +43,12 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
     setError('');
     const payload = {
       ...form,
-      price: parseFloat(form.price),
+      price:          parseFloat(form.price),
       original_price: form.original_price ? parseFloat(form.original_price) : null,
-      badge: form.badge || null,
-      subtitle: form.subtitle || null,
-      image: form.image || null,
+      badge:          form.badge    || null,
+      subtitle:       form.subtitle || null,
+      image:          form.image    || null,
+      gender:         form.gender   || 'women',
     };
     const res = await fetch(`/api/admin/products/${params.id}`, {
       method: 'PATCH',
