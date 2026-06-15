@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminAuthed } from '../../../../lib/admin-auth';
+import { cookies } from 'next/headers';
 import { getServiceSupabase } from '../../../../lib/supabase';
+
+async function isAdmin(): Promise<boolean> {
+  try {
+    const cookieStore = await cookies();
+    return !!cookieStore.get('admin_session')?.value;
+  } catch {
+    return false;
+  }
+}
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   sarees:   ['saree', 'sari', 'drape', 'silk', 'banarasi', 'chiffon', 'georgette'],
@@ -71,7 +80,9 @@ function extractSize(text: string): string | null {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await isAdmin())) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   const formData = await req.formData();
   const file = formData.get('image') as File | null;
