@@ -6,6 +6,7 @@ type ParsedRow = {
   name: string;
   subtitle: string;
   category: string;
+  gender: string;
   price: string;
   original_price: string;
   badge: string;
@@ -18,7 +19,8 @@ type ParsedRow = {
 };
 
 const REQUIRED = ['name','category','price','size','stock'] as const;
-const VALID_CATEGORIES = ['sarees','lehengas','kurtas','kids'];
+const VALID_CATEGORIES = ['sarees','lehengas','kurtas','sherwanis','kids'];
+const VALID_GENDERS    = ['women','men','kids','unisex'];
 
 function validateRow(row: ParsedRow): string[] {
   const errs: string[] = [];
@@ -26,20 +28,22 @@ function validateRow(row: ParsedRow): string[] {
   if (row.price && isNaN(Number(row.price))) errs.push('price must be a number');
   if (row.original_price && isNaN(Number(row.original_price))) errs.push('original_price must be a number');
   if (row.stock && isNaN(Number(row.stock))) errs.push('stock must be a number');
-  if (row.category && !VALID_CATEGORIES.includes(row.category.trim().toLowerCase())) errs.push(`category must be one of: ${VALID_CATEGORIES.join(', ')}`);
+  if (row.category && !VALID_CATEGORIES.includes(row.category.trim().toLowerCase()))
+    errs.push(`category must be one of: ${VALID_CATEGORIES.join(', ')}`);
+  if (row.gender && !VALID_GENDERS.includes(row.gender.trim().toLowerCase()))
+    errs.push(`gender must be one of: ${VALID_GENDERS.join(', ')}`);
   return errs;
 }
 
-// Download a pre-filled template .csv (no xlsx dep needed for the template)
 function downloadTemplate() {
-  const headers = ['name','subtitle','category','price','original_price','badge','slug','description','size','colour','stock'];
-  const example1 = ['Banarasi Silk Saree','Handwoven zari border','sarees','129','159','New','banarasi-silk','Luxurious silk saree','Free Size','Red','10'];
-  const example2 = ['Banarasi Silk Saree','','sarees','129','','','','','Free Size','Blue','6'];
-  const example3 = ['Anarkali Lehenga','Festive embroidered set','lehengas','89','','Sale','','','S','','8'];
-  const example4 = ['Anarkali Lehenga','','lehengas','89','','','','','M','','12'];
-  const csv = [headers, example1, example2, example3, example4]
-    .map(r => r.map(c => `"${c}"`).join(','))
-    .join('\n');
+  const headers = ['name','subtitle','category','gender','price','original_price','badge','slug','description','size','colour','stock'];
+  const rows = [
+    ['Banarasi Silk Saree','Handwoven zari border','sarees','women','129','159','New','banarasi-silk','Luxurious silk saree','Free Size','Red','10'],
+    ['Banarasi Silk Saree','','sarees','women','129','','','','','Free Size','Blue','6'],
+    ['Ivory Sherwani Set','Groom collection','sherwanis','men','349','','Premium','','','M','Ivory','8'],
+    ['Boys Kurta Pyjama','Soft cotton ages 1-8','kurtas','kids','19','25','Sale','','','S','White','15'],
+  ];
+  const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -73,7 +77,7 @@ export default function ImportPage() {
         if (lines.length < 2) throw new Error('File has no data rows');
         const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g,'').trim().toLowerCase());
         parsed = lines.slice(1).map(line => {
-          const vals = line.match(/(?:"([^"]*)"|([^,]*))/g)?.map(v=>v.replace(/^"|"$/g,'')) ?? [];
+          const vals = line.match(/(?:"([^"]*)"|([^,]*))/g)?.map(v => v.replace(/^"|"$/g,'')) ?? [];
           const obj: Record<string,string> = {};
           headers.forEach((h,i) => { obj[h] = (vals[i]??'').trim(); });
           const row = obj as unknown as ParsedRow;
@@ -81,7 +85,6 @@ export default function ImportPage() {
           return row;
         });
       } else {
-        // xlsx / xls — dynamically import SheetJS
         const XLSX = await import('xlsx');
         const buf  = await file.arrayBuffer();
         const wb   = XLSX.read(buf, { type: 'array' });
@@ -112,6 +115,7 @@ export default function ImportPage() {
       name:           r.name.trim(),
       subtitle:       r.subtitle?.trim() || undefined,
       category:       r.category.trim().toLowerCase(),
+      gender:         r.gender?.trim().toLowerCase() || 'women',
       price:          Number(r.price),
       original_price: r.original_price ? Number(r.original_price) : undefined,
       badge:          r.badge?.trim() || undefined,
@@ -137,7 +141,6 @@ export default function ImportPage() {
 
   return (
     <main style={{ minHeight:'100dvh', background:'#fdf2f8', fontFamily:'system-ui, sans-serif', paddingBottom:'4rem' }}>
-      {/* Top bar */}
       <div style={{ background:'#9d174d', color:'white', padding:'.85rem 1rem', display:'flex', alignItems:'center', gap:'.75rem', position:'sticky', top:0, zIndex:20 }}>
         <button onClick={()=>router.push('/admin')} style={{ background:'rgba(255,255,255,.2)', border:'none', color:'white', borderRadius:'.5rem', padding:'.3rem .7rem', fontSize:'.85rem', cursor:'pointer' }}>← Back</button>
         <span style={{ fontWeight:800 }}>📥 Bulk Import</span>
@@ -145,24 +148,21 @@ export default function ImportPage() {
 
       <div style={{ maxWidth:'680px', margin:'0 auto', padding:'1rem' }}>
 
-        {/* Instructions */}
         <div style={card}>
           <div style={{ fontWeight:700, fontSize:'.95rem', marginBottom:'.5rem' }}>How it works</div>
           <ol style={{ margin:0, paddingLeft:'1.2rem', fontSize:'.84rem', color:'#6b7280', lineHeight:1.7 }}>
-            <li>Download the template below and fill in your products</li>
+            <li>Download the template and fill in your products</li>
             <li>Each row = one size/colour variant; rows with the same <strong>name</strong> become one product</li>
+            <li>Set <strong>gender</strong> to: women, men, kids, or unisex</li>
             <li>Upload the completed file (CSV or Excel .xlsx/.xls)</li>
             <li>Review the preview, fix any errors, then tap <strong>Import</strong></li>
           </ol>
           <div style={{ display:'flex', gap:'.6rem', marginTop:'.85rem', flexWrap:'wrap' }}>
-            <button onClick={downloadTemplate} style={btn('#7e22ce')}>
-              📄 Download Template (.csv)
-            </button>
+            <button onClick={downloadTemplate} style={btn('#7e22ce')}>📄 Download Template (.csv)</button>
             <a href="/admin" style={{ ...btn('#f3f4f6','#374151'), textDecoration:'none', display:'inline-flex', alignItems:'center' }}>← Admin</a>
           </div>
         </div>
 
-        {/* File picker */}
         <div style={card}>
           <div style={{ fontWeight:700, fontSize:'.92rem', marginBottom:'.75rem' }}>1. Choose file</div>
           <label style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'.5rem', border:'2px dashed #fbcfe8', borderRadius:'.85rem', padding:'2rem 1rem', cursor:'pointer', background:'#fdf2f8', textAlign:'center' }}>
@@ -176,7 +176,6 @@ export default function ImportPage() {
           {parseError && <div style={{ marginTop:'.75rem', color:'#dc2626', fontSize:'.84rem', fontWeight:600 }}>❌ {parseError}</div>}
         </div>
 
-        {/* Preview */}
         {rows.length > 0 && (
           <div style={card}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'.75rem', flexWrap:'wrap', gap:'.5rem' }}>
@@ -186,8 +185,6 @@ export default function ImportPage() {
                 {errorRows.length > 0 && <span style={{ background:'#fef2f2', color:'#dc2626', borderRadius:'2rem', padding:'.2rem .7rem', fontSize:'.75rem', fontWeight:700 }}>{errorRows.length} errors</span>}
               </div>
             </div>
-
-            {/* Unique products summary */}
             {(() => {
               const names = Array.from(new Set(validRows.map(r=>r.name.trim())));
               return (
@@ -198,13 +195,11 @@ export default function ImportPage() {
                 </div>
               );
             })()}
-
-            {/* Scrollable table */}
             <div style={{ overflowX:'auto', borderRadius:'.6rem', border:'1.5px solid #f3f4f6' }}>
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'.75rem' }}>
                 <thead>
                   <tr style={{ background:'#fdf2f8' }}>
-                    {['#','Name','Cat','Price','Size','Colour','Stock','Badge','Errors'].map(h=>(
+                    {['#','Name','Gender','Cat','Price','Size','Colour','Stock','Errors'].map(h=>(
                       <th key={h} style={{ padding:'.4rem .6rem', textAlign:'left', fontWeight:700, color:'#6b7280', whiteSpace:'nowrap', borderBottom:'1.5px solid #f3f4f6' }}>{h}</th>
                     ))}
                   </tr>
@@ -213,20 +208,19 @@ export default function ImportPage() {
                   {rows.map((r,i) => (
                     <tr key={i} style={{ background:r._errors.length?'#fef2f2':'white', borderBottom:'1px solid #f9fafb' }}>
                       <td style={{ padding:'.35rem .6rem', color:'#9ca3af' }}>{i+1}</td>
-                      <td style={{ padding:'.35rem .6rem', fontWeight:600, maxWidth:'120px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.name}</td>
+                      <td style={{ padding:'.35rem .6rem', fontWeight:600, maxWidth:'110px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.name}</td>
+                      <td style={{ padding:'.35rem .6rem', color:'#7c3aed', textTransform:'capitalize' }}>{r.gender||'—'}</td>
                       <td style={{ padding:'.35rem .6rem' }}>{r.category}</td>
                       <td style={{ padding:'.35rem .6rem' }}>{r.price}</td>
                       <td style={{ padding:'.35rem .6rem' }}>{r.size}</td>
                       <td style={{ padding:'.35rem .6rem', color:'#7c3aed' }}>{r.colour}</td>
                       <td style={{ padding:'.35rem .6rem' }}>{r.stock}</td>
-                      <td style={{ padding:'.35rem .6rem' }}>{r.badge}</td>
                       <td style={{ padding:'.35rem .6rem', color:'#dc2626', fontSize:'.7rem' }}>{r._errors.join('; ')}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-
             {errorRows.length > 0 && (
               <div style={{ marginTop:'.65rem', background:'#fef2f2', borderRadius:'.6rem', padding:'.65rem .85rem', fontSize:'.78rem', color:'#dc2626' }}>
                 ⚠️ Rows with errors will be skipped. Fix them in your file and re-upload, or proceed to import only the valid rows.
@@ -235,13 +229,12 @@ export default function ImportPage() {
           </div>
         )}
 
-        {/* Import button */}
         {validRows.length > 0 && !result && (
           <div style={card}>
             <div style={{ fontWeight:700, fontSize:'.92rem', marginBottom:'.6rem' }}>3. Import</div>
             <p style={{ fontSize:'.84rem', color:'#6b7280', margin:'0 0 .85rem' }}>
               {validRows.length} variant row{validRows.length>1?'s':''} → {new Set(validRows.map(r=>r.name.trim())).size} product{new Set(validRows.map(r=>r.name.trim())).size>1?'s':''}.
-              Existing products (matched by slug/name) will be <strong>updated</strong>; new ones will be <strong>created</strong>.
+              Existing products will be <strong>updated</strong>; new ones will be <strong>created</strong>.
             </p>
             <button onClick={runImport} disabled={!canImport} style={{ ...btn(), width:'100%', padding:'.8rem', fontSize:'.95rem', opacity:canImport?1:.5 }}>
               {importing ? '⏳ Importing…' : `📥 Import ${new Set(validRows.map(r=>r.name.trim())).size} product${new Set(validRows.map(r=>r.name.trim())).size>1?'s':''}`}
@@ -249,7 +242,6 @@ export default function ImportPage() {
           </div>
         )}
 
-        {/* Result */}
         {result && (
           <div style={{ ...card, border:'2px solid #bbf7d0', background:'#f0fdf4' }}>
             <div style={{ fontWeight:800, fontSize:'1rem', color:'#15803d', marginBottom:'.6rem' }}>✅ Import complete!</div>

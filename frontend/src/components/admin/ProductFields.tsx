@@ -1,7 +1,8 @@
 'use client';
 
-const CATEGORIES = ['sarees', 'lehengas', 'kurtas', 'kids'];
-const BADGES = ['', 'Bestseller', 'New', 'Sale', 'Premium', 'Test'];
+const CATEGORIES = ['sarees', 'lehengas', 'kurtas', 'sherwanis', 'kids'];
+const GENDERS    = ['women', 'men', 'kids', 'unisex'];
+const BADGES     = ['', 'Bestseller', 'New', 'Sale', 'Premium', 'Test'];
 
 export function ProductFields({
   form,
@@ -33,18 +34,34 @@ export function ProductFields({
         </div>
       ))}
 
-      <div className="checkout-field">
-        <label className="checkout-label">Category *</label>
-        <select
-          className="checkout-input"
-          value={form.category}
-          onChange={e => set('category', e.target.value)}
-          required
-        >
-          {CATEGORIES.map(c => (
-            <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
-          ))}
-        </select>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.75rem' }}>
+        <div className="checkout-field">
+          <label className="checkout-label">Gender *</label>
+          <select
+            className="checkout-input"
+            value={form.gender ?? 'women'}
+            onChange={e => set('gender', e.target.value)}
+            required
+          >
+            {GENDERS.map(g => (
+              <option key={g} value={g}>{g.charAt(0).toUpperCase() + g.slice(1)}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="checkout-field">
+          <label className="checkout-label">Category *</label>
+          <select
+            className="checkout-input"
+            value={form.category}
+            onChange={e => set('category', e.target.value)}
+            required
+          >
+            {CATEGORIES.map(c => (
+              <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="checkout-field">

@@ -23,6 +23,7 @@ export interface ImportRow {
   name: string;
   subtitle?: string;
   category: string;
+  gender?: string;
   price: number;
   original_price?: number;
   badge?: string;
@@ -43,7 +44,6 @@ export async function POST(req: NextRequest) {
 
   const sb = getServiceSupabase();
 
-  // Group rows by product name
   const productMap = new Map<string, { meta: ImportRow; variants: ImportRow[] }>();
   for (const row of rows) {
     const key = row.name.trim().toLowerCase();
@@ -56,14 +56,12 @@ export async function POST(req: NextRequest) {
   let variantsUpserted = 0;
   const errors: string[] = [];
 
-  // Use Array.from to avoid --downlevelIteration requirement on Map iteration
   const entries = Array.from(productMap.values());
 
   for (const { meta, variants } of entries) {
     try {
       const slugBase = toSlug(meta.slug || meta.name);
 
-      // Check if product with this slug already exists
       const { data: existing } = await sb
         .from('products')
         .select('id, slug')
@@ -73,13 +71,13 @@ export async function POST(req: NextRequest) {
       let productId: string;
 
       if (existing) {
-        // Update existing product details
         productId = existing.id;
         const patch: Record<string, unknown> = {
-          name: meta.name.trim(),
+          name:     meta.name.trim(),
           category: meta.category.trim().toLowerCase(),
-          price: Number(meta.price),
+          price:    Number(meta.price),
         };
+        if (meta.gender)         patch.gender         = meta.gender.trim().toLowerCase();
         if (meta.subtitle)       patch.subtitle       = meta.subtitle.trim();
         if (meta.original_price) patch.original_price = Number(meta.original_price);
         if (meta.badge)          patch.badge          = meta.badge.trim();
@@ -87,19 +85,19 @@ export async function POST(req: NextRequest) {
         await sb.from('products').update(patch).eq('id', productId);
         updated++;
       } else {
-        // Insert new product
         productId = generateId();
         let slug = slugBase;
         const { data: slugCheck } = await sb.from('products').select('id').eq('slug', slug).maybeSingle();
         if (slugCheck) slug = `${slug}-${Date.now().toString(36)}`;
 
         const row: Record<string, unknown> = {
-          id: productId,
+          id:       productId,
           slug,
-          name: meta.name.trim(),
+          name:     meta.name.trim(),
           category: meta.category.trim().toLowerCase(),
-          price: Number(meta.price),
+          price:    Number(meta.price),
           in_stock: true,
+          gender:   meta.gender?.trim().toLowerCase() || 'women',
         };
         if (meta.subtitle)       row.subtitle       = meta.subtitle.trim();
         if (meta.original_price) row.original_price = Number(meta.original_price);
@@ -111,14 +109,12 @@ export async function POST(req: NextRequest) {
         created++;
       }
 
-      // Upsert variants
       for (const v of variants) {
         const size   = String(v.size  || '').trim();
         const colour = String(v.colour || '').trim();
         const stock  = Math.max(0, parseInt(String(v.stock)) || 0);
         if (!size) continue;
 
-        // Check if variant exists
         let query = sb.from('product_variants')
           .select('id')
           .eq('product_id', productId)

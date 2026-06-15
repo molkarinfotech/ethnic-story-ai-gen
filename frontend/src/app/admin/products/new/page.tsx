@@ -9,13 +9,12 @@ export default function NewProductPage() {
   const [error, setError] = useState('');
   const [form, setForm] = useState({
     slug: '', name: '', subtitle: '', price: '', original_price: '',
-    category: 'sarees', badge: '', image: '',
+    category: 'sarees', gender: 'women', badge: '', image: '',
   });
 
   function set(field: string, value: string) {
     setForm(f => {
       const next = { ...f, [field]: value };
-      // Auto-generate slug from name if slug is still empty
       if (field === 'name' && !f.slug) {
         next.slug = value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
       }
@@ -34,6 +33,7 @@ export default function NewProductPage() {
       badge: form.badge || null,
       subtitle: form.subtitle || null,
       image: form.image || null,
+      gender: form.gender || 'women',
     };
     const res = await fetch('/api/admin/products', {
       method: 'POST',

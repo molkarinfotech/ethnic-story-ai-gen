@@ -25,7 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <CartProvider>
             {/* Announcement Bar */}
             <div style={{ background: 'var(--color-primary)', color: 'var(--color-text-inverse)', textAlign: 'center', padding: '.5rem 1rem', fontSize: 'var(--text-xs)', letterSpacing: '.05em' }}>
-              Free shipping on orders over A$150  ·  Handcrafted in India  ·  Delivered Australia-wide
+              Free shipping on orders over A$150  ·  Handcrafted in India  ·  Delivered Australia-wide
             </div>
 
             {/* Header */}
@@ -41,10 +41,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   Ethnic Story
                 </a>
                 <nav className="site-header__nav" aria-label="Primary navigation">
-                  <a href="/collections">Collections</a>
-                  <a href="/collections/sarees">Sarees</a>
-                  <a href="/collections/lehengas">Lehengas</a>
-                  <a href="/collections/kurtas">Kurtas</a>
+                  <a href="/collections">All</a>
+                  <a href="/collections/women">Women</a>
+                  <a href="/collections/men">Men</a>
                   <a href="/collections/kids">Kids</a>
                 </nav>
                 <div className="site-header__actions">
