@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import OpenAI from 'openai';
+import Replicate from 'replicate';
 
 async function isAdmin(): Promise<boolean> {
   try {
@@ -11,9 +11,9 @@ async function isAdmin(): Promise<boolean> {
   }
 }
 
-// Build a rich fashion-photography prompt from available metadata
 function buildPrompt(style: string, description: string): string {
-  const base = `High-quality professional fashion photograph of a South Asian female model wearing a ${description}. `;
+  const base =
+    `High-quality professional fashion photograph of a South Asian female model wearing a ${description}. `;
 
   const styles: Record<string, string> = {
     studio:
@@ -33,6 +33,31 @@ function buildPrompt(style: string, description: string): string {
   return base + (styles[style] ?? styles.studio);
 }
 
+async function generateOne(
+  replicate: Replicate,
+  prompt: string
+): Promise<string | null> {
+  // flux-1.1-pro: excellent quality for fashion photography, $0.04/image
+  const output = await replicate.run(
+    'black-forest-labs/flux-1.1-pro',
+    {
+      input: {
+        prompt,
+        aspect_ratio: '9:16',      // portrait — ideal for fashion
+        output_format: 'webp',
+        output_quality: 90,
+        safety_tolerance: 2,
+        prompt_upsampling: true,
+      },
+    }
+  );
+
+  // Replicate returns a URL string or array of URL strings
+  if (typeof output === 'string') return output;
+  if (Array.isArray(output) && output.length > 0) return String(output[0]);
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 });
@@ -43,38 +68,26 @@ export async function POST(req: NextRequest) {
     const modelStyle  = (formData.get('style')       as string | null) ?? 'studio';
     const garmentDesc = (formData.get('description') as string | null) ?? 'ethnic Indian garment';
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.REPLICATE_API_TOKEN;
     if (!apiKey) {
-      return NextResponse.json({ error: 'OPENAI_API_KEY not configured on this server' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'REPLICATE_API_TOKEN not configured on this server' },
+        { status: 500 }
+      );
     }
 
-    const openai = new OpenAI({ apiKey });
-    const prompt  = buildPrompt(modelStyle, garmentDesc);
+    const replicate = new Replicate({ auth: apiKey });
+    const prompt    = buildPrompt(modelStyle, garmentDesc);
 
-    // Generate 2 images sequentially (dall-e-3 only supports n=1 per call)
-    const [r1, r2] = await Promise.all([
-      openai.images.generate({
-        model:   'dall-e-3',
-        prompt,
-        n:       1,
-        size:    '1024x1792',   // portrait — ideal for fashion
-        quality: 'standard',
-        style:   'natural',
-      }),
-      openai.images.generate({
-        model:   'dall-e-3',
-        prompt:  prompt + ' Slightly different pose and angle.',
-        n:       1,
-        size:    '1024x1792',
-        quality: 'standard',
-        style:   'natural',
-      }),
+    // Fire both generations in parallel
+    const [url1, url2] = await Promise.all([
+      generateOne(replicate, prompt),
+      generateOne(replicate, prompt + ' Slightly different pose and camera angle.'),
     ]);
 
-    const images = [
-      { url: r1.data[0]?.url ?? null, b64: null },
-      { url: r2.data[0]?.url ?? null, b64: null },
-    ].filter(img => img.url !== null);
+    const images = [url1, url2]
+      .filter(Boolean)
+      .map(url => ({ url, b64: null }));
 
     return NextResponse.json({ images });
   } catch (err: unknown) {
