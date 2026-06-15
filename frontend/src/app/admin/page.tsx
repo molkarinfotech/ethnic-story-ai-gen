@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatAUD } from '../../lib/products';
 
@@ -23,17 +23,17 @@ function StockBadge({ count, threshold }: { count: number; threshold: number }) 
   return <span style={{ background: out ? '#fef2f2' : low ? '#fefce8' : '#dcfce7', color: out ? '#dc2626' : low ? '#ca8a04' : '#16a34a', borderRadius: '2rem', padding: '.2rem .7rem', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{out ? 'Out of stock' : low ? `Low (${c})` : `In stock (${c})`}</span>;
 }
 
-// ─── Images tab sub-component ────────────────────────────────────────────────
+// ─── Images tab ──────────────────────────────────────────────────────────────
 function ImagesTab({ products }: { products: Product[] }) {
   const [expanded,    setExpanded]    = useState<Record<string, boolean>>({});
-  const [imgData,     setImgData]     = useState<Record<string, ImgRow[]>>({}); // productId → rows
+  const [imgData,     setImgData]     = useState<Record<string, ImgRow[]>>({});
   const [loadingImgs, setLoadingImgs] = useState<Record<string, boolean>>({});
-  const [newUrl,      setNewUrl]      = useState<Record<string, string>>({});      // productId → url
-  const [newColour,   setNewColour]   = useState<Record<string, string>>({});      // productId → colour
+  const [newUrl,      setNewUrl]      = useState<Record<string, string>>({});
+  const [newColour,   setNewColour]   = useState<Record<string, string>>({});
   const [saving,      setSaving]      = useState<Record<string, boolean>>({});
   const [deleting,    setDeleting]    = useState<Record<string, boolean>>({});
-  const [seedingColours, setSeedingColours] = useState(false);
-  const [seedMsg,     setSeedMsg]     = useState('');
+  const [uploadMode,  setUploadMode]  = useState<Record<string, 'url' | 'file'>>({});
+  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const fetchImgs = useCallback(async (productId: string) => {
     setLoadingImgs(l => ({ ...l, [productId]: true }));
@@ -49,9 +49,9 @@ function ImagesTab({ products }: { products: Product[] }) {
     if (next && !imgData[productId]) fetchImgs(productId);
   }
 
-  async function addImage(productId: string) {
+  async function addImageByUrl(productId: string) {
     const url    = (newUrl[productId]    ?? '').trim();
-    const colour = (newColour[productId] ?? '').trim();
+    const colour = (newColour[productId] ?? '').trim() || 'Unassigned';
     if (!url) return;
     setSaving(s => ({ ...s, [productId]: true }));
     const existing = imgData[productId] ?? [];
@@ -61,8 +61,25 @@ function ImagesTab({ products }: { products: Product[] }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url, colour, sort_order: maxOrder + 1 }),
     });
-    setNewUrl(n    => ({ ...n,    [productId]: '' }));
+    setNewUrl(n => ({ ...n, [productId]: '' }));
     setNewColour(n => ({ ...n, [productId]: '' }));
+    await fetchImgs(productId);
+    setSaving(s => ({ ...s, [productId]: false }));
+  }
+
+  async function addImageByFile(productId: string, file: File) {
+    const colour = (newColour[productId] ?? '').trim() || 'Unassigned';
+    setSaving(s => ({ ...s, [productId]: true }));
+    const fd = new FormData();
+    fd.append('image',      file);
+    fd.append('product_id', productId);
+    fd.append('colour',     colour);
+    const existing = imgData[productId] ?? [];
+    const maxOrder = existing.filter(r => r.colour === colour).reduce((m, r) => Math.max(m, r.sort_order), -1);
+    fd.append('sort_order', String(maxOrder + 1));
+    await fetch('/api/admin/scan-upload', { method: 'POST', body: fd, credentials: 'include' });
+    setNewColour(n => ({ ...n, [productId]: '' }));
+    if (fileRefs.current[productId]) fileRefs.current[productId]!.value = '';
     await fetchImgs(productId);
     setSaving(s => ({ ...s, [productId]: false }));
   }
@@ -83,8 +100,6 @@ function ImagesTab({ products }: { products: Product[] }) {
     const gIdx   = group.findIndex(r => r.id === imgId);
     const swapIdx = gIdx + direction;
     if (swapIdx < 0 || swapIdx >= group.length) return;
-
-    // Swap sort_order values via two PATCHes
     const a = group[gIdx]; const b = group[swapIdx];
     await Promise.all([
       fetch(`/api/product-images/${productId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, sort_order: b.sort_order }) }),
@@ -93,17 +108,6 @@ function ImagesTab({ products }: { products: Product[] }) {
     await fetchImgs(productId);
   }
 
-  async function handleSeedColours() {
-    setSeedingColours(true); setSeedMsg('');
-    const res  = await fetch('/api/admin/seed-colours', { method: 'POST' });
-    const data = await res.json();
-    setSeedMsg(data.error ? `❌ ${data.error}` : `✅ ${data.message}`);
-    setSeedingColours(false);
-    // Refresh any open product
-    for (const pid of Object.keys(expanded)) { if (expanded[pid]) fetchImgs(pid); }
-  }
-
-  // Group images by colour for display
   function groupByColour(rows: ImgRow[]): { colour: string; imgs: ImgRow[] }[] {
     const map = new Map<string, ImgRow[]>();
     for (const r of [...rows].sort((a, b) => a.sort_order - b.sort_order)) {
@@ -116,42 +120,29 @@ function ImagesTab({ products }: { products: Product[] }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '.75rem' }}>
         <h2 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>Product Images — by Colour</h2>
-        <div style={{ display: 'flex', gap: '.75rem', alignItems: 'center' }}>
-          {seedMsg && <span style={{ fontSize: '0.8rem', color: seedMsg.startsWith('✅') ? '#16a34a' : '#dc2626' }}>{seedMsg}</span>}
-          <button onClick={handleSeedColours} disabled={seedingColours}
-            style={{ padding: '.4rem .9rem', borderRadius: '.5rem', border: '1px solid #a855f7', background: '#faf5ff', color: '#7c3aed', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
-            {seedingColours ? 'Seeding…' : '🎨 Seed sample images'}
-          </button>
-        </div>
+        <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', margin: 0 }}>First image per colour is shown as the main product photo.</p>
       </div>
-
-      <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', margin: 0 }}>
-        Each colour can have multiple images. The first image is shown as the main photo when that colour is selected.
-      </p>
 
       {products.map(p => {
         const rows   = imgData[p.id] ?? [];
         const groups = groupByColour(rows);
         const total  = rows.length;
+        const mode   = uploadMode[p.id] ?? 'file';
 
         return (
           <div key={p.id} style={{ background: 'white', borderRadius: '.75rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', overflow: 'hidden' }}>
             {/* Accordion header */}
             <button onClick={() => toggle(p.id)}
               style={{ width: '100%', padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                {p.image && <img src={p.image} alt={p.name} style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '.375rem' }} />}
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{p.name}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>
-                    {p.category}
-                    {expanded[p.id] && !loadingImgs[p.id] && (
-                      <> &middot; {total} image{total !== 1 ? 's' : ''} across {groups.length} colour{groups.length !== 1 ? 's' : ''}</>
-                    )}
-                  </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{p.name}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>
+                  {p.category}
+                  {expanded[p.id] && !loadingImgs[p.id] && (
+                    <> &middot; {total} image{total !== 1 ? 's' : ''} across {groups.length} colour{groups.length !== 1 ? 's' : ''}</>
+                  )}
                 </div>
               </div>
               <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>{expanded[p.id] ? '▲' : '▼'}</span>
@@ -163,58 +154,32 @@ function ImagesTab({ products }: { products: Product[] }) {
                   <div style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>Loading…</div>
                 ) : (
                   <>
-                    {/* Colour groups */}
                     {groups.length === 0 && (
-                      <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>No images yet. Add one below.</p>
+                      <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>No images yet. Upload one below.</p>
                     )}
 
                     {groups.map(({ colour, imgs }) => (
                       <div key={colour} style={{ marginBottom: '1.25rem' }}>
-                        {/* Colour label */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', marginBottom: '.6rem' }}>
-                          <span style={{ background: colour ? 'var(--color-primary-highlight)' : 'var(--color-surface-offset)', color: colour ? 'var(--color-primary)' : 'var(--color-text-muted)', borderRadius: '2rem', padding: '.2rem .75rem', fontSize: '0.75rem', fontWeight: 700 }}>
-                            {colour || 'No colour (ungrouped)'}
+                          <span style={{ background: 'var(--color-primary-highlight)', color: 'var(--color-primary)', borderRadius: '2rem', padding: '.2rem .75rem', fontSize: '0.75rem', fontWeight: 700 }}>
+                            {colour || 'Unassigned'}
                           </span>
                           <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{imgs.length} image{imgs.length !== 1 ? 's' : ''}</span>
                         </div>
-
-                        {/* Image tiles */}
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.75rem' }}>
                           {imgs.map((img, gIdx) => (
                             <div key={img.id} style={{ position: 'relative', width: '120px' }}>
-                              {/* Thumbnail */}
                               <div style={{ width: '120px', height: '120px', borderRadius: '.5rem', overflow: 'hidden', border: '1px solid var(--color-border)', background: 'var(--color-surface-offset)' }}>
-                                <img
-                                  src={img.url}
-                                  alt={`${colour} ${gIdx + 1}`}
-                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                  onError={e => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/120?text=?'; }}
-                                />
+                                <img src={img.url} alt={`${colour} ${gIdx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  onError={e => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/120?text=?'; }} />
                               </div>
-                              {/* Sort order badge */}
-                              <div style={{ position: 'absolute', top: '4px', left: '4px', background: 'rgba(0,0,0,.55)', color: 'white', borderRadius: '2rem', fontSize: '0.65rem', fontWeight: 700, padding: '2px 6px' }}>
-                                #{gIdx + 1}
-                              </div>
-                              {/* URL tooltip */}
-                              <div style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', marginTop: '.3rem', wordBreak: 'break-all', lineHeight: 1.3, maxHeight: '2.6em', overflow: 'hidden' }} title={img.url}>
-                                {img.url.replace(/^https?:\/\//, '').slice(0, 48)}{img.url.length > 55 ? '…' : ''}
-                              </div>
-                              {/* Action buttons */}
+                              <div style={{ position: 'absolute', top: '4px', left: '4px', background: 'rgba(0,0,0,.55)', color: 'white', borderRadius: '2rem', fontSize: '0.65rem', fontWeight: 700, padding: '2px 6px' }}>#{gIdx + 1}</div>
                               <div style={{ display: 'flex', gap: '.25rem', marginTop: '.35rem' }}>
-                                <button
-                                  onClick={() => moveImage(p.id, img.id, -1)}
-                                  disabled={gIdx === 0}
-                                  title="Move left"
+                                <button onClick={() => moveImage(p.id, img.id, -1)} disabled={gIdx === 0} title="Move left"
                                   style={{ flex: 1, padding: '.2rem', borderRadius: '.3rem', border: '1px solid var(--color-border)', background: 'white', cursor: gIdx === 0 ? 'not-allowed' : 'pointer', opacity: gIdx === 0 ? 0.3 : 1, fontSize: '0.7rem' }}>◀</button>
-                                <button
-                                  onClick={() => moveImage(p.id, img.id, 1)}
-                                  disabled={gIdx === imgs.length - 1}
-                                  title="Move right"
+                                <button onClick={() => moveImage(p.id, img.id, 1)} disabled={gIdx === imgs.length - 1} title="Move right"
                                   style={{ flex: 1, padding: '.2rem', borderRadius: '.3rem', border: '1px solid var(--color-border)', background: 'white', cursor: gIdx === imgs.length - 1 ? 'not-allowed' : 'pointer', opacity: gIdx === imgs.length - 1 ? 0.3 : 1, fontSize: '0.7rem' }}>▶</button>
-                                <button
-                                  onClick={() => deleteImage(p.id, img.id)}
-                                  disabled={deleting[img.id]}
-                                  title="Delete"
+                                <button onClick={() => deleteImage(p.id, img.id)} disabled={deleting[img.id]} title="Delete"
                                   style={{ flex: 1, padding: '.2rem', borderRadius: '.3rem', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', cursor: 'pointer', fontSize: '0.7rem' }}>
                                   {deleting[img.id] ? '…' : '🗑️'}
                                 </button>
@@ -225,63 +190,83 @@ function ImagesTab({ products }: { products: Product[] }) {
                       </div>
                     ))}
 
-                    {/* Divider */}
+                    {/* ── Add image ── */}
                     <div style={{ borderTop: '1px dashed var(--color-border)', paddingTop: '1rem', marginTop: '.5rem' }}>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '.6rem' }}>Add image</div>
-                      <div style={{ display: 'flex', gap: '.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                        {/* URL input with live preview */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '.35rem' }}>
-                          <input
-                            value={newUrl[p.id] ?? ''}
-                            onChange={e => setNewUrl(n => ({ ...n, [p.id]: e.target.value }))}
-                            placeholder="Image URL…"
-                            style={{ padding: '.35rem .6rem', border: '1px solid var(--color-border)', borderRadius: '.375rem', fontSize: '0.8rem', width: '280px' }}
-                            onKeyDown={e => e.key === 'Enter' && addImage(p.id)}
-                          />
-                          {/* Live preview */}
-                          {(newUrl[p.id] ?? '').length > 10 && (
-                            <img
-                              src={newUrl[p.id]}
-                              alt="preview"
-                              style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '.375rem', border: '1px solid var(--color-border)' }}
-                              onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                              onLoad={e  => { (e.target as HTMLImageElement).style.display = 'block'; }}
-                            />
-                          )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', marginBottom: '.75rem' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)' }}>Add image</span>
+                        {/* Mode toggle */}
+                        <div style={{ display: 'flex', borderRadius: '.5rem', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+                          {(['file', 'url'] as const).map(m => (
+                            <button key={m} onClick={() => setUploadMode(u => ({ ...u, [p.id]: m }))}
+                              style={{ padding: '.25rem .65rem', fontSize: '0.75rem', fontWeight: 600, border: 'none', cursor: 'pointer',
+                                background: mode === m ? 'var(--color-primary)' : 'white',
+                                color: mode === m ? 'white' : 'var(--color-text-muted)' }}>
+                              {m === 'file' ? '📁 Upload' : '🔗 URL'}
+                            </button>
+                          ))}
                         </div>
+                      </div>
 
-                        {/* Colour input — autofills from existing colour groups */}
+                      <div style={{ display: 'flex', gap: '.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        {/* Colour input */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '.35rem' }}>
                           <input
                             value={newColour[p.id] ?? ''}
                             onChange={e => setNewColour(n => ({ ...n, [p.id]: e.target.value }))}
                             placeholder="Colour (e.g. Red)"
-                            style={{ padding: '.35rem .6rem', border: '1px solid var(--color-border)', borderRadius: '.375rem', fontSize: '0.8rem', width: '160px' }}
+                            style={{ padding: '.35rem .6rem', border: '1px solid var(--color-border)', borderRadius: '.375rem', fontSize: '0.8rem', width: '150px' }}
                             list={`colours-${p.id}`}
-                            onKeyDown={e => e.key === 'Enter' && addImage(p.id)}
                           />
-                          {/* Datalist for quick colour picks */}
                           <datalist id={`colours-${p.id}`}>
                             {groups.map(g => <option key={g.colour} value={g.colour} />)}
                           </datalist>
-                          {/* Existing colour quick-pick pills */}
                           {groups.length > 0 && (
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.25rem' }}>
                               {groups.map(g => (
-                                <button key={g.colour}
-                                  onClick={() => setNewColour(n => ({ ...n, [p.id]: g.colour }))}
+                                <button key={g.colour} onClick={() => setNewColour(n => ({ ...n, [p.id]: g.colour }))}
                                   style={{ padding: '.15rem .5rem', borderRadius: '2rem', border: `1px solid ${newColour[p.id] === g.colour ? 'var(--color-primary)' : 'var(--color-border)'}`, background: newColour[p.id] === g.colour ? 'var(--color-primary-highlight)' : 'white', color: newColour[p.id] === g.colour ? 'var(--color-primary)' : 'var(--color-text-muted)', fontSize: '0.7rem', cursor: 'pointer' }}>
-                                  {g.colour || 'ungrouped'}
+                                  {g.colour || 'Unassigned'}
                                 </button>
                               ))}
                             </div>
                           )}
                         </div>
 
-                        <button onClick={() => addImage(p.id)} disabled={saving[p.id] || !(newUrl[p.id] ?? '').trim()}
-                          style={{ padding: '.35rem .9rem', borderRadius: '.5rem', background: 'var(--color-primary)', color: 'white', border: 'none', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', opacity: (newUrl[p.id] ?? '').trim() ? 1 : 0.4, alignSelf: 'flex-start' }}>
-                          {saving[p.id] ? 'Adding…' : '+ Add'}
-                        </button>
+                        {mode === 'file' ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '.35rem' }}>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              ref={el => { fileRefs.current[p.id] = el; }}
+                              onChange={e => {
+                                const file = e.target.files?.[0];
+                                if (file) addImageByFile(p.id, file);
+                              }}
+                              style={{ fontSize: '0.8rem' }}
+                            />
+                            {saving[p.id] && <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>⏳ Uploading…</span>}
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '.35rem' }}>
+                            <input
+                              value={newUrl[p.id] ?? ''}
+                              onChange={e => setNewUrl(n => ({ ...n, [p.id]: e.target.value }))}
+                              placeholder="Image URL…"
+                              style={{ padding: '.35rem .6rem', border: '1px solid var(--color-border)', borderRadius: '.375rem', fontSize: '0.8rem', width: '280px' }}
+                              onKeyDown={e => e.key === 'Enter' && addImageByUrl(p.id)}
+                            />
+                            {(newUrl[p.id] ?? '').length > 10 && (
+                              <img src={newUrl[p.id]} alt="preview"
+                                style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '.375rem', border: '1px solid var(--color-border)' }}
+                                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                onLoad={e  => { (e.target as HTMLImageElement).style.display = 'block'; }} />
+                            )}
+                            <button onClick={() => addImageByUrl(p.id)} disabled={saving[p.id] || !(newUrl[p.id] ?? '').trim()}
+                              style={{ padding: '.35rem .9rem', borderRadius: '.5rem', background: 'var(--color-primary)', color: 'white', border: 'none', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', opacity: (newUrl[p.id] ?? '').trim() ? 1 : 0.4, alignSelf: 'flex-start' }}>
+                              {saving[p.id] ? 'Adding…' : '+ Add'}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </>
@@ -431,8 +416,8 @@ export default function AdminDashboard() {
             { label: 'Products', value: products.length, icon: '👗' },
             { label: 'Orders',   value: orders.length,   icon: '📦' },
             { label: 'Revenue',  value: formatAUD(orders.reduce((s, o) => s + (Number(o.amount_aud) || 0), 0)), icon: '💰' },
-            { label: 'Low Stock',     value: lowStockCount,   icon: '⚠️',  alert: lowStockCount > 0 },
-            { label: 'Out of Stock',  value: outOfStockCount, icon: '🚫', alert: outOfStockCount > 0 },
+            { label: 'Low Stock',    value: lowStockCount,   icon: '⚠️',  alert: lowStockCount > 0 },
+            { label: 'Out of Stock', value: outOfStockCount, icon: '🚫', alert: outOfStockCount > 0 },
           ].map(s => (
             <div key={s.label} style={{ background: 'white', borderRadius: '.75rem', padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', border: (s as any).alert && (s.value as number) > 0 ? '1px solid #fecaca' : '1px solid transparent' }}>
               <div style={{ fontSize: '1.75rem' }}>{s.icon}</div>
@@ -443,7 +428,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: '.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '.5rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {(['products', 'orders', 'inventory', 'images'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               style={{ padding: '.5rem 1.25rem', borderRadius: '2rem', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem', background: tab === t ? 'var(--color-primary)' : 'white', color: tab === t ? 'white' : 'var(--color-text-muted)' }}>
@@ -453,6 +438,11 @@ export default function AdminDashboard() {
               )}
             </button>
           ))}
+          {/* Scan — navigates to its own page */}
+          <a href="/admin/scan"
+            style={{ padding: '.5rem 1.25rem', borderRadius: '2rem', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem', background: '#fdf2f8', color: '#9d174d', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '.35rem' }}>
+            📷 Scan
+          </a>
         </div>
 
         {/* ── Products tab ── */}
@@ -472,7 +462,7 @@ export default function AdminDashboard() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--color-surface-offset)' }}>
-                    {['Image', 'Name', 'Category', 'Price', 'Badge', 'Actions'].map(h => (
+                    {['Name', 'Category', 'Price', 'Badge', 'Actions'].map(h => (
                       <th key={h} style={{ padding: '.75rem 1rem', textAlign: 'left', fontWeight: 600, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -480,9 +470,6 @@ export default function AdminDashboard() {
                 <tbody>
                   {products.map((p, i) => (
                     <tr key={p.id} style={{ borderTop: '1px solid var(--color-border)', background: i % 2 === 0 ? 'white' : 'var(--color-surface-offset)' }}>
-                      <td style={{ padding: '.75rem 1rem' }}>
-                        {p.image ? <img src={p.image} alt={p.name} style={{ width: '48px', height: '48px', objectFit: 'cover', borderRadius: '.375rem' }} /> : <span style={{ fontSize: '2rem' }}>🥻</span>}
-                      </td>
                       <td style={{ padding: '.75rem 1rem' }}>
                         <div style={{ fontWeight: 600 }}>{p.name}</div>
                         {p.subtitle && <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>{p.subtitle}</div>}
@@ -503,7 +490,7 @@ export default function AdminDashboard() {
                       </td>
                     </tr>
                   ))}
-                  {products.length === 0 && <tr><td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>No products yet.</td></tr>}
+                  {products.length === 0 && <tr><td colSpan={5} style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>No products yet.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -584,12 +571,9 @@ export default function AdminDashboard() {
               <div key={p.id} style={{ background: 'white', borderRadius: '.75rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', overflow: 'hidden' }}>
                 <button onClick={() => setExpanded(e => ({ ...e, [p.id]: !e[p.id] }))}
                   style={{ width: '100%', padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    {p.image && <img src={p.image} alt={p.name} style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '.375rem' }} />}
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{p.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>{p.category} · {(p.variants ?? []).length} variants</div>
-                    </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{p.name}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>{p.category} · {(p.variants ?? []).length} variants</div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem' }}>
                     {(p.variants ?? []).some(v => Number(v.stock_count) === 0) && (

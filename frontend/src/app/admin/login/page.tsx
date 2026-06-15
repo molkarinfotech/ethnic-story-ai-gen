@@ -1,7 +1,9 @@
 'use client';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 
-export default function AdminLoginPage() {
+function LoginForm() {
+  const searchParams = useSearchParams();
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -16,8 +18,9 @@ export default function AdminLoginPage() {
       body: JSON.stringify({ password }),
     });
     if (res.ok) {
-      // Full reload so the httpOnly cookie is present on the next server request
-      window.location.href = '/admin';
+      // Redirect back to the page that triggered login, or default to /admin
+      const redirect = searchParams.get('redirect') ?? '/admin';
+      window.location.href = redirect;
     } else {
       setError('Invalid password. Try again.');
       setLoading(false);
@@ -53,5 +56,13 @@ export default function AdminLoginPage() {
         </form>
       </div>
     </main>
+  );
+}
+
+export default function AdminLoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }
