@@ -11,32 +11,32 @@ function sortVariants(variants: Variant[]) {
   const other   = variants.filter(v => !LETTER_SIZE_ORDER.includes(v.size) && !/^\d/.test(v.size));
   return [...letter,...numeric,...other];
 }
-type Variant = { id:string; size:string; colour:string; stock_count:number };
-type ImgRow  = { id:string; colour:string; url:string; sort_order:number };
-type Product = { id:string; slug:string; name:string; subtitle?:string; price:number; original_price?:number; category:string; badge?:string; image?:string; created_at:string; stock_count:number; low_stock_threshold:number; variants:Variant[] };
-type Order   = { id:string; customer_name:string; customer_email:string; amount_aud:number; status:string; created_at:string; items:{name:string;quantity:number;price:number;size?:string;colour?:string}[]; shipping_address?:{line1?:string;suburb?:string;state?:string;postcode?:string} };
+type Variant  = { id:string; size:string; colour:string; stock_count:number };
+type ImgRow   = { id:string; colour:string; url:string; sort_order:number };
+type Product  = { id:string; slug:string; name:string; subtitle?:string; price:number; original_price?:number; category:string; badge?:string; image?:string; created_at:string; stock_count:number; low_stock_threshold:number; variants:Variant[] };
+type Order    = { id:string; customer_name:string; customer_email:string; amount_aud:number; status:string; created_at:string; items:{name:string;quantity:number;price:number;size?:string;colour?:string}[]; shipping_address?:{line1?:string;suburb?:string;state?:string;postcode?:string} };
+type Category = { id:string; slug:string; label:string; description?:string; genders:string[]; sort_order:number };
 
 function StockBadge({ count, threshold }:{count:number;threshold:number}) {
   const c=Number(count); const out=c===0; const low=c>0&&c<=threshold;
   return <span style={{background:out?'#fef2f2':low?'#fefce8':'#dcfce7',color:out?'#dc2626':low?'#ca8a04':'#16a34a',borderRadius:'2rem',padding:'.2rem .65rem',fontSize:'.72rem',fontWeight:700,whiteSpace:'nowrap'}}>{out?'Out of stock':low?`Low (${c})`:`In stock (${c})`}</span>;
 }
 
-const CATEGORIES = ['sarees','lehengas','kurtas','kids'];
 const SIZES = ['XS','S','M','L','XL','XXL','Free Size'];
 
 // ─── Product Card ─────────────────────────────────────────────────────────────
 function ProductCard({
-  product, selected, onSelect, onDeleted, onRefresh,
+  product, selected, onSelect, onDeleted, onRefresh, categories,
 }:{
   product:Product; selected:boolean;
   onSelect:(id:string,val:boolean)=>void;
   onDeleted:(id:string)=>void;
   onRefresh:()=>void;
+  categories:Category[];
 }) {
-  const [open, setOpen]             = useState(false);
+  const [open, setOpen]               = useState(false);
   const [activePanel, setActivePanel] = useState<'stock'|'images'|'edit'>('stock');
 
-  // Images
   const [imgs,         setImgs]        = useState<ImgRow[]|null>(null);
   const [loadingImgs,  setLoadingImgs] = useState(false);
   const [newImgColour, setNewImgColour]= useState('');
@@ -45,7 +45,6 @@ function ProductCard({
   const fileRef      = useRef<HTMLInputElement|null>(null);
   const extraFileRef = useRef<HTMLInputElement|null>(null);
 
-  // Stock
   const [stockEdits,  setStockEdits]  = useState<Record<string,number>>({});
   const [stockSaving, setStockSaving] = useState<Record<string,boolean>>({});
   const [deletingVar, setDeletingVar] = useState<Record<string,boolean>>({});
@@ -53,7 +52,6 @@ function ProductCard({
   const [newColour,   setNewColour]   = useState('');
   const [addingVar,   setAddingVar]   = useState(false);
 
-  // Edit details
   const [editForm, setEditForm] = useState({
     name:product.name, subtitle:product.subtitle||'',
     price:String(product.price), original_price:String(product.original_price||''),
@@ -176,18 +174,13 @@ function ProductCard({
 
   return (
     <div style={{ background:'white', borderRadius:'1rem', boxShadow:'0 2px 12px rgba(0,0,0,.07)', overflow:'hidden', border:selected?'2px solid #9d174d':open?'1.5px solid #fbcfe8':'1.5px solid transparent', transition:'border .1s' }}>
-
-      {/* Card header */}
       <div style={{ display:'flex', alignItems:'stretch' }}>
-        {/* Checkbox */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'0 .6rem 0 .85rem', flexShrink:0 }}
           onClick={e=>{e.stopPropagation();onSelect(product.id,!selected);}}>
           <div style={{ width:'20px',height:'20px',borderRadius:'.35rem',border:`2px solid ${selected?'#9d174d':'#d1d5db'}`,background:selected?'#9d174d':'white',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0 }}>
             {selected && <span style={{ color:'white',fontSize:'.75rem',lineHeight:1 }}>✓</span>}
           </div>
         </div>
-
-        {/* Thumbnail + info (tap to expand) */}
         <button onClick={handleOpen} style={{ flex:1, padding:0, border:'none', background:'none', cursor:'pointer', textAlign:'left', display:'flex', alignItems:'stretch', minWidth:0 }}>
           <div style={{ width:'82px',flexShrink:0,background:'#fdf2f8',position:'relative' }}>
             {product.image
@@ -215,7 +208,6 @@ function ProductCard({
         </button>
       </div>
 
-      {/* Expanded panel */}
       {open && (
         <div style={{ borderTop:'1.5px solid #fce7f3',padding:'1rem' }}>
           <div style={{ display:'flex',gap:'.4rem',marginBottom:'1rem',flexWrap:'wrap' }}>
@@ -304,12 +296,12 @@ function ProductCard({
               <div><label style={fieldLabel}>Name</label><input value={editForm.name} onChange={e=>setEditForm(f=>({...f,name:e.target.value}))} style={inputStyle} /></div>
               <div><label style={fieldLabel}>Subtitle</label><input value={editForm.subtitle} onChange={e=>setEditForm(f=>({...f,subtitle:e.target.value}))} placeholder="Optional tagline" style={inputStyle} /></div>
               <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:'.5rem' }}>
-                <div><label style={fieldLabel}>Price (₹)</label><input type="number" value={editForm.price} onChange={e=>setEditForm(f=>({...f,price:e.target.value}))} style={inputStyle} /></div>
-                <div><label style={fieldLabel}>Original (₹)</label><input type="number" value={editForm.original_price} onChange={e=>setEditForm(f=>({...f,original_price:e.target.value}))} style={inputStyle} /></div>
+                <div><label style={fieldLabel}>Price (AUD)</label><input type="number" value={editForm.price} onChange={e=>setEditForm(f=>({...f,price:e.target.value}))} style={inputStyle} /></div>
+                <div><label style={fieldLabel}>Original (AUD)</label><input type="number" value={editForm.original_price} onChange={e=>setEditForm(f=>({...f,original_price:e.target.value}))} style={inputStyle} /></div>
               </div>
               <div><label style={fieldLabel}>Category</label>
                 <select value={editForm.category} onChange={e=>setEditForm(f=>({...f,category:e.target.value}))} style={{ ...inputStyle,cursor:'pointer' }}>
-                  {CATEGORIES.map(c=><option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
+                  {categories.map(c=><option key={c.slug} value={c.slug}>{c.label}</option>)}
                 </select>
               </div>
               <div><label style={fieldLabel}>Badge</label><input value={editForm.badge} onChange={e=>setEditForm(f=>({...f,badge:e.target.value}))} placeholder="e.g. New, Sale" style={inputStyle} /></div>
@@ -367,11 +359,12 @@ function OrdersPanel({ orders }:{orders:Order[]}) {
 // ─── Bulk Action Bar ──────────────────────────────────────────────────────────
 type BulkAction = 'delete'|'category'|'badge'|'zero-stock'|'price-adjust';
 function BulkBar({
-  count, onClearAll, onAction,
+  count, onClearAll, onAction, categories,
 }:{
   count:number;
   onClearAll:()=>void;
   onAction:(action:BulkAction,payload?:string)=>Promise<void>;
+  categories:Category[];
 }) {
   const [active,   setActive]   = useState<BulkAction|null>(null);
   const [payload,  setPayload]  = useState('');
@@ -384,7 +377,7 @@ function BulkBar({
     setRunning(true); setResultMsg('');
     await onAction(active, payload.trim()||undefined);
     setRunning(false); setActive(null); setPayload('');
-    setResultMsg(`✅ Done`);
+    setResultMsg('✅ Done');
     setTimeout(()=>setResultMsg(''),3000);
   }
 
@@ -398,7 +391,6 @@ function BulkBar({
 
   return (
     <div style={{ position:'sticky',top:'52px',zIndex:15,background:'#1f1135',borderRadius:'1rem',padding:'.85rem 1rem',marginBottom:'1rem',boxShadow:'0 4px 20px rgba(0,0,0,.25)' }}>
-      {/* Header row */}
       <div style={{ display:'flex',alignItems:'center',gap:'.6rem',marginBottom:active?'.75rem':'0' }}>
         <div style={{ background:'#9d174d',color:'white',borderRadius:'2rem',padding:'.2rem .7rem',fontSize:'.78rem',fontWeight:700,flexShrink:0 }}>{count} selected</div>
         <div style={{ display:'flex',gap:'.35rem',flexWrap:'wrap',flex:1 }}>
@@ -413,15 +405,13 @@ function BulkBar({
         </div>
         <button onClick={onClearAll} style={{ background:'none',border:'none',color:'#9ca3af',fontSize:'1.1rem',cursor:'pointer',flexShrink:0,padding:'.2rem .4rem' }}>✕</button>
       </div>
-
-      {/* Input row for actions that need it */}
       {active && (
         <div style={{ display:'flex',gap:'.5rem',alignItems:'center',flexWrap:'wrap' }}>
           {active==='category' ? (
             <select value={payload} onChange={e=>setPayload(e.target.value)}
               style={{ flex:1,padding:'.45rem .75rem',borderRadius:'.6rem',border:'none',background:'#2d1b4e',color:'white',fontSize:'.85rem' }}>
               <option value="">— pick category —</option>
-              {CATEGORIES.map(c=><option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
+              {categories.map(c=><option key={c.slug} value={c.slug}>{c.label}</option>)}
             </select>
           ) : active==='zero-stock'||active==='delete' ? null : (
             <input value={payload} onChange={e=>setPayload(e.target.value)} type={actionDefs.find(a=>a.id===active)?.inputType||'text'}
@@ -443,19 +433,112 @@ function BulkBar({
   );
 }
 
+// ─── Categories Panel ─────────────────────────────────────────────────────────
+function CategoriesPanel({ categories, onRefresh }:{ categories:Category[]; onRefresh:()=>void }) {
+  const [newSlug,  setNewSlug]  = useState('');
+  const [newLabel, setNewLabel] = useState('');
+  const [newDesc,  setNewDesc]  = useState('');
+  const [saving,   setSaving]   = useState(false);
+  const [msg,      setMsg]      = useState('');
+  const [deleting, setDeleting] = useState<Record<string,boolean>>({});
+
+  const inputStyle:React.CSSProperties = { width:'100%',padding:'.55rem .75rem',border:'1.5px solid #e5e7eb',borderRadius:'.6rem',fontSize:'.88rem',boxSizing:'border-box',background:'white' };
+
+  async function addCategory(e:React.FormEvent) {
+    e.preventDefault();
+    if(!newSlug.trim()||!newLabel.trim()) return;
+    setSaving(true); setMsg('');
+    const res = await fetch('/api/admin/categories',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ slug:newSlug.trim().toLowerCase().replace(/\s+/g,'-'), label:newLabel.trim(), description:newDesc.trim()||undefined }),
+    });
+    const data = await res.json();
+    if(res.ok) { setMsg('✅ Category added!'); setNewSlug(''); setNewLabel(''); setNewDesc(''); onRefresh(); }
+    else setMsg(`❌ ${data.error}`);
+    setSaving(false);
+    setTimeout(()=>setMsg(''),4000);
+  }
+
+  async function deleteCategory(id:string, slug:string) {
+    if(!confirm(`Delete "${slug}"? Products with this category will keep the value but it won't appear in dropdowns.`)) return;
+    setDeleting(d=>({...d,[id]:true}));
+    await fetch('/api/admin/categories',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+    setDeleting(d=>({...d,[id]:false}));
+    onRefresh();
+  }
+
+  return (
+    <div>
+      {/* Existing categories */}
+      <div style={{ display:'flex',flexDirection:'column',gap:'.5rem',marginBottom:'1.25rem' }}>
+        {categories.length===0 && <p style={{ color:'#9ca3af',fontSize:'.85rem',textAlign:'center',padding:'1.5rem' }}>No categories yet.</p>}
+        {categories.map(c=>(
+          <div key={c.id} style={{ background:'white',borderRadius:'.85rem',padding:'.75rem 1rem',boxShadow:'0 1px 4px rgba(0,0,0,.06)',display:'flex',alignItems:'center',gap:'.75rem' }}>
+            <div style={{ flex:1,minWidth:0 }}>
+              <div style={{ display:'flex',alignItems:'center',gap:'.5rem',flexWrap:'wrap' }}>
+                <span style={{ fontWeight:700,fontSize:'.88rem' }}>{c.label}</span>
+                <span style={{ background:'#ede9fe',color:'#6d28d9',borderRadius:'.3rem',padding:'.1rem .4rem',fontSize:'.7rem',fontWeight:600 }}>{c.slug}</span>
+              </div>
+              {c.description && <div style={{ fontSize:'.75rem',color:'#9ca3af',marginTop:'.2rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{c.description}</div>}
+              <div style={{ display:'flex',gap:'.3rem',marginTop:'.3rem',flexWrap:'wrap' }}>
+                {c.genders.map(g=><span key={g} style={{ background:'#fce7f3',color:'#9d174d',borderRadius:'2rem',padding:'.1rem .45rem',fontSize:'.65rem',fontWeight:600 }}>{g}</span>)}
+              </div>
+            </div>
+            <button onClick={()=>deleteCategory(c.id,c.slug)} disabled={!!deleting[c.id]}
+              style={{ padding:'.35rem .6rem',borderRadius:'.5rem',background:'#fef2f2',border:'1px solid #fecaca',color:'#dc2626',fontSize:'.75rem',cursor:'pointer',flexShrink:0 }}>
+              {deleting[c.id]?'…':'🗑️'}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Add new */}
+      <div style={{ background:'white',borderRadius:'1rem',padding:'1rem',boxShadow:'0 1px 6px rgba(0,0,0,.07)',border:'1.5px dashed #c4b5fd' }}>
+        <div style={{ fontSize:'.8rem',fontWeight:700,color:'#6d28d9',marginBottom:'.75rem' }}>+ Add New Category</div>
+        <form onSubmit={addCategory} style={{ display:'flex',flexDirection:'column',gap:'.6rem' }}>
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:'.5rem' }}>
+            <div>
+              <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:'.25rem' }}>Label *</label>
+              <input value={newLabel} onChange={e=>{ setNewLabel(e.target.value); if(!newSlug) setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')); }} placeholder="e.g. Dupattas" required style={inputStyle} />
+            </div>
+            <div>
+              <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:'.25rem' }}>Slug *</label>
+              <input value={newSlug} onChange={e=>setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,''))} placeholder="e.g. dupattas" required style={inputStyle} />
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:'.25rem' }}>Description</label>
+            <input value={newDesc} onChange={e=>setNewDesc(e.target.value)} placeholder="Short description shown on collection page" style={inputStyle} />
+          </div>
+          {msg && <div style={{ padding:'.4rem .65rem',borderRadius:'.45rem',background:msg.startsWith('✅')?'#f0fdf4':'#fef2f2',color:msg.startsWith('✅')?'#15803d':'#dc2626',fontSize:'.8rem',fontWeight:600 }}>{msg}</div>}
+          <button type="submit" disabled={saving||!newSlug.trim()||!newLabel.trim()}
+            style={{ padding:'.65rem',borderRadius:'.65rem',border:'none',background:'#9d174d',color:'white',fontWeight:700,fontSize:'.88rem',cursor:'pointer',opacity:(saving||!newSlug.trim()||!newLabel.trim())?.5:1 }}>
+            {saving?'Saving…':'Save Category'}
+          </button>
+        </form>
+      </div>
+
+      <p style={{ fontSize:'.75rem',color:'#9ca3af',marginTop:'1rem',padding:'.6rem .8rem',background:'white',borderRadius:'.6rem',lineHeight:1.5 }}>
+        💡 New categories appear automatically in the <strong>Category</strong> dropdowns when adding/editing products, and will show up in <strong>/collections</strong> once you assign products to them.
+      </p>
+    </div>
+  );
+}
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const router = useRouter();
-  const [tab,      setTab]      = useState<'products'|'orders'>('products');
-  const [products, setProducts] = useState<Product[]>([]);
-  const [orders,   setOrders]   = useState<Order[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [apiError, setApiError] = useState('');
-  const [search,   setSearch]   = useState('');
-  const [seeding,  setSeeding]  = useState(false);
-  const [seedMsg,  setSeedMsg]  = useState('');
-  // Bulk selection
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [tab,        setTab]       = useState<'products'|'orders'|'categories'>('products');
+  const [products,   setProducts]  = useState<Product[]>([]);
+  const [orders,     setOrders]    = useState<Order[]>([]);
+  const [categories, setCategories]= useState<Category[]>([]);
+  const [loading,    setLoading]   = useState(true);
+  const [apiError,   setApiError]  = useState('');
+  const [search,     setSearch]    = useState('');
+  const [seeding,    setSeeding]   = useState(false);
+  const [seedMsg,    setSeedMsg]   = useState('');
+  const [selected,   setSelected]  = useState<Set<string>>(new Set());
 
   async function fetchProducts() {
     const res=await fetch('/api/admin/stock');
@@ -471,7 +554,13 @@ export default function AdminDashboard() {
     if(!res.ok){setApiError(p=>`${p} | Orders: ${data.error}`);return;}
     setOrders(Array.isArray(data)?data:[]);
   }
-  useEffect(()=>{Promise.all([fetchProducts(),fetchOrders()]).finally(()=>setLoading(false));},[]);
+  async function fetchCategories() {
+    const data = await fetch('/api/admin/categories').then(r=>r.json());
+    setCategories(Array.isArray(data)?data:[]);
+  }
+  useEffect(()=>{
+    Promise.all([fetchProducts(),fetchOrders(),fetchCategories()]).finally(()=>setLoading(false));
+  },[]);
 
   async function handleSeed() {
     setSeeding(true);setSeedMsg('');
@@ -491,7 +580,6 @@ export default function AdminDashboard() {
     router.push('/admin/login');
   }
 
-  // ── Bulk selection helpers ──
   function toggleSelect(id:string, val:boolean) {
     setSelected(s=>{const n=new Set(s);val?n.add(id):n.delete(id);return n;});
   }
@@ -504,65 +592,34 @@ export default function AdminDashboard() {
     else setSelected(s=>{const n=new Set(s);filteredProducts.forEach(p=>n.add(p.id));return n;});
   }
 
-  // ── Bulk action executor ──
   async function executeBulkAction(action:BulkAction, payload?:string) {
     const ids = Array.from(selected);
     if(ids.length===0) return;
-
     if(action==='delete') {
       await Promise.all(ids.map(id=>fetch(`/api/admin/products/${id}`,{method:'DELETE'})));
-      setProducts(p=>p.filter(x=>!ids.includes(x.id)));
-      setSelected(new Set());
-      return;
+      setProducts(p=>p.filter(x=>!ids.includes(x.id))); setSelected(new Set()); return;
     }
-
     if(action==='zero-stock') {
       const targets = products.filter(p=>ids.includes(p.id));
-      const ops = targets.flatMap(p=>(p.variants??[]).map(v=>
-        fetch('/api/admin/stock',{method:'PATCH',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({variant_id:v.id,stock_count:0})})
-      ));
-      await Promise.all(ops);
-      await fetchProducts();
-      setSelected(new Set());
-      return;
+      await Promise.all(targets.flatMap(p=>(p.variants??[]).map(v=>fetch('/api/admin/stock',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({variant_id:v.id,stock_count:0})}))));
+      await fetchProducts(); setSelected(new Set()); return;
     }
-
     if(action==='category' && payload) {
-      await Promise.all(ids.map(id=>
-        fetch(`/api/admin/products/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({category:payload})})
-      ));
-      await fetchProducts();
-      setSelected(new Set());
-      return;
+      await Promise.all(ids.map(id=>fetch(`/api/admin/products/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({category:payload})})));
+      await fetchProducts(); setSelected(new Set()); return;
     }
-
     if(action==='badge') {
-      await Promise.all(ids.map(id=>
-        fetch(`/api/admin/products/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({badge:payload||''})})
-      ));
-      await fetchProducts();
-      setSelected(new Set());
-      return;
+      await Promise.all(ids.map(id=>fetch(`/api/admin/products/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({badge:payload||''})})));
+      await fetchProducts(); setSelected(new Set()); return;
     }
-
     if(action==='price-adjust' && payload) {
-      const pct = parseFloat(payload);
-      if(isNaN(pct)) return;
-      const targets = products.filter(p=>ids.includes(p.id));
-      await Promise.all(targets.map(p=>{
-        const newPrice = Math.round(p.price*(1+pct/100)*100)/100;
-        return fetch(`/api/admin/products/${p.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({price:newPrice})});
-      }));
-      await fetchProducts();
-      setSelected(new Set());
+      const pct=parseFloat(payload); if(isNaN(pct)) return;
+      const targets=products.filter(p=>ids.includes(p.id));
+      await Promise.all(targets.map(p=>fetch(`/api/admin/products/${p.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({price:Math.round(p.price*(1+pct/100)*100)/100})})));
+      await fetchProducts(); setSelected(new Set());
     }
   }
 
-  // Derived stats
   const allVariants     = products.flatMap(p=>p.variants??[]);
   const outOfStockCount = allVariants.filter(v=>Number(v.stock_count)===0).length;
   const lowStockCount   = allVariants.filter(v=>Number(v.stock_count)>0&&Number(v.stock_count)<=5).length;
@@ -572,8 +629,6 @@ export default function AdminDashboard() {
 
   return (
     <main style={{ minHeight:'100dvh',background:'#fdf2f8',fontFamily:'system-ui, sans-serif',paddingBottom:'5rem' }}>
-
-      {/* Top bar */}
       <div style={{ background:'#9d174d',color:'white',padding:'.85rem 1rem',display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:20 }}>
         <div style={{ display:'flex',alignItems:'center',gap:'.6rem' }}>
           <a href="/" style={{ color:'white',textDecoration:'none',fontWeight:800,fontSize:'1rem' }}>Ethnic Story</a>
@@ -586,7 +641,6 @@ export default function AdminDashboard() {
       <div style={{ maxWidth:'560px',margin:'0 auto',padding:'1rem' }}>
         {apiError && <div style={{ background:'#fef2f2',border:'1px solid #fecaca',borderRadius:'.75rem',padding:'.85rem',marginBottom:'1rem',color:'#dc2626',fontSize:'.82rem' }}>⚠️ {apiError}</div>}
 
-        {/* Stats row */}
         <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'.5rem',marginBottom:'1rem' }}>
           {[
             { label:'Products',value:products.length,       icon:'👗',alert:false },
@@ -604,69 +658,47 @@ export default function AdminDashboard() {
 
         {tab==='products' && (
           <div>
-            {/* Search + New */}
             <div style={{ display:'flex',gap:'.5rem',marginBottom:'.85rem',alignItems:'center' }}>
               <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search products…"
                 style={{ flex:1,padding:'.6rem .85rem',border:'1.5px solid #e5e7eb',borderRadius:'.75rem',fontSize:'.88rem',background:'white' }} />
               <a href="/admin/products/new" style={{ padding:'.6rem .9rem',borderRadius:'.75rem',background:'#9d174d',color:'white',fontWeight:700,fontSize:'.82rem',textDecoration:'none',whiteSpace:'nowrap' }}>+ New</a>
             </div>
-
-            {/* Seed */}
             <div style={{ display:'flex',alignItems:'center',gap:'.6rem',marginBottom:'.85rem',flexWrap:'wrap' }}>
               <button onClick={handleSeed} disabled={seeding} style={{ padding:'.4rem .85rem',borderRadius:'.65rem',border:'1.5px solid #e5e7eb',background:'white',color:'#6b7280',fontSize:'.78rem',fontWeight:600,cursor:'pointer' }}>{seeding?'Seeding…':'🌱 Seed demo products'}</button>
               {seedMsg && <span style={{ fontSize:'.78rem',color:seedMsg.startsWith('✅')?'#16a34a':'#dc2626' }}>{seedMsg}</span>}
             </div>
-
-            {/* Select-all row */}
             {filteredProducts.length>0 && (
               <div style={{ display:'flex',alignItems:'center',gap:'.6rem',marginBottom:'.65rem',padding:'.4rem .6rem',background:'white',borderRadius:'.65rem',border:'1.5px solid #e5e7eb' }}>
                 <div onClick={toggleAll} style={{ width:'20px',height:'20px',borderRadius:'.35rem',border:`2px solid ${allSelected?'#9d174d':'#d1d5db'}`,background:allSelected?'#9d174d':'white',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0 }}>
                   {allSelected && <span style={{ color:'white',fontSize:'.75rem' }}>✓</span>}
                   {!allSelected && selected.size>0 && filteredProducts.some(p=>selected.has(p.id)) && <span style={{ color:'#9d174d',fontSize:'.75rem',fontWeight:900 }}>−</span>}
                 </div>
-                <span style={{ fontSize:'.8rem',color:'#6b7280',cursor:'pointer' }} onClick={toggleAll}>
-                  {allSelected ? 'Deselect all' : `Select all (${filteredProducts.length})`}
-                </span>
-                {selected.size>0 && (
-                  <span style={{ marginLeft:'auto',fontSize:'.75rem',color:'#9d174d',fontWeight:700 }}>{selected.size} selected</span>
-                )}
+                <span style={{ fontSize:'.8rem',color:'#6b7280',cursor:'pointer' }} onClick={toggleAll}>{allSelected?'Deselect all':`Select all (${filteredProducts.length})`}</span>
+                {selected.size>0 && <span style={{ marginLeft:'auto',fontSize:'.75rem',color:'#9d174d',fontWeight:700 }}>{selected.size} selected</span>}
               </div>
             )}
-
-            {/* Bulk action bar */}
-            {selected.size>0 && (
-              <BulkBar count={selected.size} onClearAll={()=>setSelected(new Set())} onAction={executeBulkAction} />
-            )}
-
-            {/* Product cards */}
+            {selected.size>0 && <BulkBar count={selected.size} onClearAll={()=>setSelected(new Set())} onAction={executeBulkAction} categories={categories} />}
             <div style={{ display:'flex',flexDirection:'column',gap:'.6rem' }}>
               {filteredProducts.length===0 && (
-                <div style={{ textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:'.9rem' }}>
-                  {search?`No products matching "${search}"` : 'No products yet.'}
-                </div>
+                <div style={{ textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:'.9rem' }}>{search?`No products matching "${search}"` : 'No products yet.'}</div>
               )}
               {filteredProducts.map(p=>(
-                <ProductCard
-                  key={p.id} product={p}
-                  selected={selected.has(p.id)}
-                  onSelect={toggleSelect}
-                  onDeleted={handleDelete}
-                  onRefresh={fetchProducts}
-                />
+                <ProductCard key={p.id} product={p} selected={selected.has(p.id)} onSelect={toggleSelect} onDeleted={handleDelete} onRefresh={fetchProducts} categories={categories} />
               ))}
             </div>
           </div>
         )}
 
-        {tab==='orders' && <OrdersPanel orders={orders} />}
+        {tab==='orders'     && <OrdersPanel orders={orders} />}
+        {tab==='categories' && <CategoriesPanel categories={categories} onRefresh={fetchCategories} />}
       </div>
 
-      {/* Bottom nav */}
       <nav style={{ position:'fixed',bottom:0,left:0,right:0,background:'white',borderTop:'1.5px solid #fce7f3',display:'flex',zIndex:20,boxShadow:'0 -2px 12px rgba(0,0,0,.07)' }}>
         {([
-          { id:'products',icon:'👗',label:'Products' },
-          { id:'orders',  icon:'📦',label:'Orders' },
-        ] as {id:'products'|'orders';icon:string;label:string}[]).map(n=>(
+          { id:'products',   icon:'👗', label:'Products' },
+          { id:'orders',     icon:'📦', label:'Orders' },
+          { id:'categories', icon:'🏷️', label:'Categories' },
+        ] as {id:'products'|'orders'|'categories';icon:string;label:string}[]).map(n=>(
           <button key={n.id} onClick={()=>setTab(n.id)} style={{ flex:1,padding:'.75rem .5rem .5rem',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:'.15rem',position:'relative' }}>
             <span style={{ fontSize:'1.3rem' }}>{n.icon}</span>
             <span style={{ fontSize:'.68rem',fontWeight:700,color:tab===n.id?'#9d174d':'#9ca3af' }}>{n.label}</span>
