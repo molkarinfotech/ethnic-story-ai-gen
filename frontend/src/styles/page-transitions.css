@@ -1,0 +1,30 @@
+/* ═══════════════════════════════════════════════
+   PAGE TRANSITIONS
+   Triggered by PageTransition.tsx on every route
+   change via usePathname + class re-add trick.
+═══════════════════════════════════════════════ */
+
+@keyframes pageEnter {
+  0%   { opacity: 0; transform: translateY(18px) scale(.993); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+.page-transition {
+  /* Ensure the wrapper never collapses / clips content */
+  min-height: 0;
+  will-change: opacity, transform;
+}
+
+.page-transition--enter {
+  animation: pageEnter 700ms cubic-bezier(.16, 1, .3, 1) both;
+}
+
+/* Respect reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .page-transition--enter {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
