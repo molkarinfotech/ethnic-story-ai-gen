@@ -137,7 +137,7 @@ function ProductCard({
     setStockSaving(s=>({...s,[key]:false})); onRefresh();
   }
   async function deleteVar(variantId:string,size:string,colour:string) {
-    if(!confirm(`Remove "${size}${colour?` / ${colour}`:''}"?`)) return;
+    if(!confirm(`Remove "${size}${colour?` / ${colour}`:''}"`)) return;
     setDeletingVar(d=>({...d,[variantId]:true}));
     await fetch('/api/admin/stock',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({variant_id:variantId})});
     setDeletingVar(d=>({...d,[variantId]:false})); onRefresh();
@@ -517,7 +517,6 @@ export default function AdminDashboard() {
     }
 
     if(action==='zero-stock') {
-      // Zero all variants for selected products
       const targets = products.filter(p=>ids.includes(p.id));
       const ops = targets.flatMap(p=>(p.variants??[]).map(v=>
         fetch('/api/admin/stock',{method:'PATCH',headers:{'Content-Type':'application/json'},
@@ -634,7 +633,7 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {/* Bulk action bar — appears when anything is selected */}
+            {/* Bulk action bar */}
             {selected.size>0 && (
               <BulkBar count={selected.size} onClearAll={()=>setSelected(new Set())} onAction={executeBulkAction} />
             )}
@@ -676,7 +675,11 @@ export default function AdminDashboard() {
         ))}
         <a href="/admin/scan" style={{ flex:1,padding:'.75rem .5rem .5rem',textDecoration:'none',display:'flex',flexDirection:'column',alignItems:'center',gap:'.15rem' }}>
           <span style={{ fontSize:'1.3rem' }}>📷</span>
-          <span style={{ fontSize:'.68rem',fontWeight:700,color:'#9d174d' }}>Scan</span>
+          <span style={{ fontSize:'.68rem',fontWeight:700,color:'#9ca3af' }}>Scan</span>
+        </a>
+        <a href="/admin/import" style={{ flex:1,padding:'.75rem .5rem .5rem',textDecoration:'none',display:'flex',flexDirection:'column',alignItems:'center',gap:'.15rem' }}>
+          <span style={{ fontSize:'1.3rem' }}>📥</span>
+          <span style={{ fontSize:'.68rem',fontWeight:700,color:'#9ca3af' }}>Import</span>
         </a>
       </nav>
     </main>
