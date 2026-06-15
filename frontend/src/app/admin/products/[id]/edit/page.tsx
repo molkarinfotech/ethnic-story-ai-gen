@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ProductFields } from '../../../../../components/admin/ProductFields';
+import { ProductFields, CategoryOption } from '../../../../../components/admin/ProductFields';
 
 type ProductRow = Record<string, string | number | null>;
 
@@ -9,28 +9,34 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [form, setForm] = useState<Record<string, string>>({
     slug: '', name: '', subtitle: '', price: '', original_price: '',
-    category: 'sarees', gender: 'women', badge: '', image: '',
+    category: '', gender: 'women', badge: '', image: '',
   });
 
   useEffect(() => {
-    fetch('/api/admin/products')
-      .then(r => r.json())
-      .then((products: ProductRow[]) => {
-        const p = products.find(x => x.id === params.id);
-        if (p) setForm({
+    // Load categories and product in parallel
+    Promise.all([
+      fetch('/api/admin/categories').then(r => r.json()),
+      fetch('/api/admin/products').then(r => r.json()),
+    ]).then(([cats, products]: [CategoryOption[], ProductRow[]]) => {
+      setCategories(cats);
+      const p = products.find(x => x.id === params.id);
+      if (p) {
+        setForm({
           slug:           String(p.slug           ?? ''),
           name:           String(p.name           ?? ''),
           subtitle:       String(p.subtitle       ?? ''),
           price:          String(p.price          ?? ''),
           original_price: String(p.original_price ?? ''),
-          category:       String(p.category       ?? 'sarees'),
+          category:       String(p.category       ?? (cats[0]?.slug ?? '')),
           gender:         String(p.gender         ?? 'women'),
           badge:          String(p.badge          ?? ''),
           image:          String(p.image          ?? ''),
         });
-      });
+      }
+    });
   }, [params.id]);
 
   function set(field: string, value: string) {
@@ -73,7 +79,7 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
         <div style={{ background: 'white', borderRadius: '.75rem', padding: '2rem', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
           <h1 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>Edit product</h1>
           <form onSubmit={handleSubmit}>
-            <ProductFields form={form} set={set} />
+            <ProductFields form={form} set={set} categories={categories} />
             {error && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '1rem' }}>{error}</p>}
             <div style={{ display: 'flex', gap: '.75rem', marginTop: '1.5rem' }}>
               <button type="submit" disabled={saving} className="btn btn-primary"

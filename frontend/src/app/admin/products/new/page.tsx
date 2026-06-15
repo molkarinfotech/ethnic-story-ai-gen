@@ -1,16 +1,26 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ProductFields } from '../../../../components/admin/ProductFields';
+import { ProductFields, CategoryOption } from '../../../../components/admin/ProductFields';
 
 export default function NewProductPage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [form, setForm] = useState({
     slug: '', name: '', subtitle: '', price: '', original_price: '',
-    category: 'sarees', gender: 'women', badge: '', image: '',
+    category: '', gender: 'women', badge: '', image: '',
   });
+
+  useEffect(() => {
+    fetch('/api/admin/categories')
+      .then(r => r.json())
+      .then((cats: CategoryOption[]) => {
+        setCategories(cats);
+        if (cats.length > 0) setForm(f => ({ ...f, category: f.category || cats[0].slug }));
+      });
+  }, []);
 
   function set(field: string, value: string) {
     setForm(f => {
@@ -58,7 +68,7 @@ export default function NewProductPage() {
         <div style={{ background: 'white', borderRadius: '.75rem', padding: '2rem', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
           <h1 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>Add new product</h1>
           <form onSubmit={handleSubmit}>
-            <ProductFields form={form} set={set} />
+            <ProductFields form={form} set={set} categories={categories} />
             {error && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '1rem' }}>{error}</p>}
             <div style={{ display: 'flex', gap: '.75rem', marginTop: '1.5rem' }}>
               <button type="submit" disabled={saving} className="btn btn-primary"

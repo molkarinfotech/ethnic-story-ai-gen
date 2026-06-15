@@ -1,15 +1,18 @@
 'use client';
 
-const CATEGORIES = ['sarees', 'lehengas', 'kurtas', 'sherwanis', 'kids'];
-const GENDERS    = ['women', 'men', 'kids', 'unisex'];
-const BADGES     = ['', 'Bestseller', 'New', 'Sale', 'Premium', 'Test'];
+const GENDERS = ['women', 'men', 'kids', 'unisex'];
+const BADGES  = ['', 'Bestseller', 'New', 'Sale', 'Premium', 'Test'];
+
+export type CategoryOption = { slug: string; label: string };
 
 export function ProductFields({
   form,
   set,
+  categories,
 }: {
   form: Record<string, string>;
   set: (field: string, value: string) => void;
+  categories: CategoryOption[];
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -57,8 +60,8 @@ export function ProductFields({
             onChange={e => set('category', e.target.value)}
             required
           >
-            {CATEGORIES.map(c => (
-              <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+            {categories.map(c => (
+              <option key={c.slug} value={c.slug}>{c.label}</option>
             ))}
           </select>
         </div>
