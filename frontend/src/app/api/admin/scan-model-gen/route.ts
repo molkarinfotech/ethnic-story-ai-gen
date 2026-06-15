@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import OpenAI from 'openai';
 
-// ── auth helper (same pattern used across admin routes) ──────────────────────
 async function isAdmin(): Promise<boolean> {
   try {
     const cookieStore = await cookies();
@@ -12,68 +11,70 @@ async function isAdmin(): Promise<boolean> {
   }
 }
 
+// Build a rich fashion-photography prompt from available metadata
+function buildPrompt(style: string, description: string): string {
+  const base = `High-quality professional fashion photograph of a South Asian female model wearing a ${description}. `;
+
+  const styles: Record<string, string> = {
+    studio:
+      'Clean white studio background, soft diffused lighting from both sides, full-body shot, ' +
+      'model standing in a natural relaxed pose, luxury e-commerce product photography, ' +
+      'sharp focus on the garment showing all embroidery and fabric details, 4K quality.',
+    outdoor:
+      'Beautiful outdoor setting with soft natural daylight, lush garden or Indian heritage ' +
+      'palace architecture softly blurred in background, editorial fashion photography, ' +
+      'golden hour lighting, full-body shot, sharp focus on the garment.',
+    editorial:
+      'Dramatic high-fashion studio lighting with deep shadows, minimalist dark gradient background, ' +
+      'Vogue India editorial style, professional model pose, luxury fashion magazine aesthetic, ' +
+      'cinematic colour grading, sharp focus on every garment detail.',
+  };
+
+  return base + (styles[style] ?? styles.studio);
+}
+
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 });
   }
 
   try {
-    const formData   = await req.formData();
-    const imageFile  = formData.get('image') as File | null;
-    const modelStyle = (formData.get('style') as string | null) ?? 'studio';
+    const formData    = await req.formData();
+    const modelStyle  = (formData.get('style')       as string | null) ?? 'studio';
     const garmentDesc = (formData.get('description') as string | null) ?? 'ethnic Indian garment';
-
-    if (!imageFile) {
-      return NextResponse.json({ error: 'No image provided' }, { status: 400 });
-    }
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: 'OPENAI_API_KEY not configured' }, { status: 500 });
+      return NextResponse.json({ error: 'OPENAI_API_KEY not configured on this server' }, { status: 500 });
     }
 
     const openai = new OpenAI({ apiKey });
+    const prompt  = buildPrompt(modelStyle, garmentDesc);
 
-    // Style → prompt map
-    const stylePrompts: Record<string, string> = {
-      studio:
-        'A professional studio fashion photograph of a female model wearing this exact ethnic Indian garment. ' +
-        'Clean white studio background, soft diffused lighting, full-body shot, model standing naturally. ' +
-        'High-end e-commerce product photography style. The garment details, embroidery, and colours must be preserved exactly.',
-      outdoor:
-        'A beautiful outdoor fashion photograph of a female model wearing this exact ethnic Indian garment. ' +
-        'Soft natural daylight, lush garden or heritage architecture background subtly blurred. ' +
-        'Editorial fashion photography style. The garment details, embroidery, and colours must be preserved exactly.',
-      editorial:
-        'A high-fashion editorial photograph of a South Asian female model wearing this exact ethnic Indian garment. ' +
-        'Dramatic studio lighting with shadows, minimalist dark background, Vogue-style composition. ' +
-        'Luxury fashion magazine aesthetic. The garment details, embroidery, and colours must be preserved exactly.',
-    };
+    // Generate 2 images sequentially (dall-e-3 only supports n=1 per call)
+    const [r1, r2] = await Promise.all([
+      openai.images.generate({
+        model:   'dall-e-3',
+        prompt,
+        n:       1,
+        size:    '1024x1792',   // portrait — ideal for fashion
+        quality: 'standard',
+        style:   'natural',
+      }),
+      openai.images.generate({
+        model:   'dall-e-3',
+        prompt:  prompt + ' Slightly different pose and angle.',
+        n:       1,
+        size:    '1024x1792',
+        quality: 'standard',
+        style:   'natural',
+      }),
+    ]);
 
-    const prompt = `${stylePrompts[modelStyle] ?? stylePrompts.studio} The clothing is described as: ${garmentDesc}.`;
-
-    // Convert File → base64 data URL (required by OpenAI SDK)
-    const arrayBuffer = await imageFile.arrayBuffer();
-    const base64      = Buffer.from(arrayBuffer).toString('base64');
-    const mimeType    = imageFile.type || 'image/jpeg';
-    const dataUrl     = `data:${mimeType};base64,${base64}`;
-
-    // Call OpenAI gpt-image-1 (supports image input natively)
-    const response = await openai.images.generate({
-      model:           'gpt-image-1',
-      prompt,
-      // @ts-ignore — gpt-image-1 accepts image input via extra body
-      image:           dataUrl,
-      n:               2,
-      size:            '1024x1536',   // portrait — ideal for fashion
-      quality:         'standard',
-      output_format:   'url',
-    });
-
-    const images = (response.data ?? []).map((d: { url?: string; b64_json?: string }) => ({
-      url:     d.url     ?? null,
-      b64:     d.b64_json ?? null,
-    }));
+    const images = [
+      { url: r1.data[0]?.url ?? null, b64: null },
+      { url: r2.data[0]?.url ?? null, b64: null },
+    ].filter(img => img.url !== null);
 
     return NextResponse.json({ images });
   } catch (err: unknown) {
