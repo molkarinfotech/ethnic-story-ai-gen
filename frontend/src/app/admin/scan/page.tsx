@@ -35,6 +35,14 @@ type NewProductForm = {
 
 type ModelImage = { url: string | null; b64: string | null };
 
+type ExtraImageItem = {
+  file: File;
+  preview: string;
+  colour: string;
+  status: 'pending' | 'uploading' | 'done' | 'error';
+  error?: string;
+};
+
 const SIZES      = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
 const CATEGORIES = ['sarees', 'lehengas', 'kurtas', 'kids'];
 const MODEL_STYLES = [
@@ -104,6 +112,7 @@ function buildDefaultPrompt(visionResult: VisionResult | null, form: FormState):
 export default function ScanPage() {
   const router  = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+  const extraFileRef = useRef<HTMLInputElement>(null);
 
   const [preview,      setPreview]      = useState<string | null>(null);
   const [imageFile,    setImageFile]    = useState<File | null>(null);
@@ -125,6 +134,11 @@ export default function ScanPage() {
   const [newProduct, setNewProduct] = useState<NewProductForm>({
     name: '', category: '', price: '', original_price: '', description: '',
   });
+
+  // Step 2b — extra images
+  const [extraImages,        setExtraImages]        = useState<ExtraImageItem[]>([]);
+  const [uploadingExtras,    setUploadingExtras]    = useState(false);
+  const [extraUploadDone,    setExtraUploadDone]    = useState(false);
 
   // Step 3 — AI Model Gen
   const [showModelGen,    setShowModelGen]    = useState(false);
@@ -150,6 +164,7 @@ export default function ScanPage() {
     setError(null); setSaved(false); setShowNewProduct(false); setVisionResult(null);
     setModelImages([]); setModelError(null); setSavedModelIdxs(new Set());
     setPromptTouched(false); setModelPrompt('');
+    setExtraImages([]); setExtraUploadDone(false);
     setImageFile(file);
     setPreview(URL.createObjectURL(file));
 
@@ -186,6 +201,59 @@ export default function ScanPage() {
     if (file) handleFile(file);
   }
 
+  // ── Extra images picker ───────────────────────────────────────────────────
+  function onExtraFilesChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    const items: ExtraImageItem[] = files.map(f => ({
+      file: f,
+      preview: URL.createObjectURL(f),
+      colour: form.colour || '',
+      status: 'pending',
+    }));
+    setExtraImages(prev => [...prev, ...items]);
+    setExtraUploadDone(false);
+    // reset file input so same file can be picked again
+    if (extraFileRef.current) extraFileRef.current.value = '';
+  }
+
+  function removeExtraImage(idx: number) {
+    setExtraImages(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function setExtraColour(idx: number, colour: string) {
+    setExtraImages(prev => prev.map((item, i) => i === idx ? { ...item, colour } : item));
+  }
+
+  async function handleUploadExtras() {
+    if (!extraImages.length) return;
+    setUploadingExtras(true);
+    // sort_order starts at 1 (0 is reserved for the main scanned photo)
+    let sortOrder = 1;
+    for (let i = 0; i < extraImages.length; i++) {
+      const item = extraImages[i];
+      if (item.status === 'done') { sortOrder++; continue; }
+      setExtraImages(prev => prev.map((x, idx) => idx === i ? { ...x, status: 'uploading' } : x));
+      try {
+        const fd = new FormData();
+        fd.append('image',      item.file);
+        fd.append('product_id', form.productId);
+        fd.append('colour',     item.colour || form.colour || 'Unassigned');
+        fd.append('sort_order', String(sortOrder));
+        const res  = await authFetch('/api/admin/scan-upload', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? 'Upload failed');
+        setExtraImages(prev => prev.map((x, idx) => idx === i ? { ...x, status: 'done' } : x));
+        sortOrder++;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Upload failed';
+        setExtraImages(prev => prev.map((x, idx) => idx === i ? { ...x, status: 'error', error: msg } : x));
+      }
+    }
+    setUploadingExtras(false);
+    setExtraUploadDone(true);
+  }
+
   function reset() {
     setPreview(null); setImageFile(null);
     setSaved(false); setError(null); setShowNewProduct(false); setProductSearch('');
@@ -194,17 +262,18 @@ export default function ScanPage() {
     setNewProduct({ name: '', category: '', price: '', original_price: '', description: '' });
     setShowModelGen(false); setModelImages([]); setModelError(null);
     setSavedModelIdxs(new Set()); setModelPrompt(''); setPromptTouched(false);
+    setExtraImages([]); setExtraUploadDone(false);
     if (fileRef.current) fileRef.current.value = '';
+    if (extraFileRef.current) extraFileRef.current.value = '';
   }
 
-  // ── Step 2: Save to inventory (always saves scanned product photo) ────────
+  // ── Step 2: Save to inventory ─────────────────────────────────────────────
   async function handleSave() {
     if (!form.productId) { setError('Please select a product'); return; }
     if (!form.size)      { setError('Please select a size');    return; }
     if (!imageFile)      { setError('No image to upload');      return; }
     setSaving(true); setError(null);
     try {
-      // 1. Upload the scanned product photo as the product image
       const fd = new FormData();
       fd.append('image',      imageFile);
       fd.append('product_id', form.productId);
@@ -214,7 +283,6 @@ export default function ScanPage() {
       const uploadData = await uploadRes.json();
       if (!uploadRes.ok) throw new Error(uploadData.error ?? 'Upload failed');
 
-      // 2. Update stock
       const stockRes  = await authFetch('/api/admin/stock', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -229,7 +297,6 @@ export default function ScanPage() {
       if (!stockRes.ok) throw new Error(stockData.error ?? 'Stock update failed');
 
       setSaved(true);
-      // Don't auto-reset — let user proceed to Step 3 (model gen)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Save failed');
     } finally {
@@ -237,7 +304,7 @@ export default function ScanPage() {
     }
   }
 
-  // ── Step 3: Generate model images ────────────────────────────────────────
+  // ── Step 3: Generate model images ─────────────────────────────────────────
   async function handleGenerateModel() {
     setGeneratingModel(true); setModelError(null); setModelImages([]); setSavedModelIdxs(new Set());
     try {
@@ -255,7 +322,6 @@ export default function ScanPage() {
     }
   }
 
-  // ── Save a generated model image alongside the product photo ─────────────
   async function handleSaveModelImage(idx: number) {
     if (!form.productId) {
       setModelError('Select a product first before saving a model image.');
@@ -282,7 +348,7 @@ export default function ScanPage() {
       fd.append('image',      file);
       fd.append('product_id', form.productId);
       fd.append('colour',     form.colour || 'default');
-      fd.append('sort_order', String(idx + 1)); // product photo is sort_order 0
+      fd.append('sort_order', String(idx + 1));
       const res  = await authFetch('/api/admin/scan-upload', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Upload failed');
@@ -335,13 +401,13 @@ export default function ScanPage() {
   const suggestedProds: SuggestedProduct[] =
     visionResult && !visionResult.visionSkipped ? visionResult.suggestedProducts : [];
 
-  // Step completion flags
-  const step1Done = !!preview && !analysing;
-  const step2Done = saved;
+  const step1Done   = !!preview && !analysing;
+  const step2Done   = saved;
   const step3Active = saved;
 
-  // Prompt shown in textarea — auto-built unless user has edited it
   const displayPrompt = promptTouched ? modelPrompt : buildDefaultPrompt(visionResult, form);
+
+  const allExtrasDone = extraImages.length > 0 && extraImages.every(x => x.status === 'done');
 
   return (
     <div style={{ minHeight: '100dvh', background: '#fdf2f8', fontFamily: 'system-ui, sans-serif' }}>
@@ -358,7 +424,7 @@ export default function ScanPage() {
 
       <div style={{ maxWidth: '520px', margin: '0 auto', padding: '1rem' }}>
 
-        {/* ── STEP 1: Photograph + Vision ─────────────────────────────── */}
+        {/* ── STEP 1 ──────────────────────────────────────────────────── */}
         <div style={{ ...card, border: step1Done ? '1.5px solid #bbf7d0' : '1.5px solid #e5e7eb' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem', marginBottom: preview ? '.85rem' : 0 }}>
             <div style={stepBadge(true, step1Done)}>{step1Done ? '✓' : '1'}</div>
@@ -425,7 +491,7 @@ export default function ScanPage() {
           )}
         </div>
 
-        {/* ── STEP 2: Details + Save (saves product photo) ────────────── */}
+        {/* ── STEP 2 ──────────────────────────────────────────────────── */}
         {showForm && (
           <div style={{ ...card, border: step2Done ? '1.5px solid #bbf7d0' : '1.5px solid #e5e7eb', opacity: analysing ? .5 : 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem', marginBottom: '1rem' }}>
@@ -441,12 +507,10 @@ export default function ScanPage() {
 
             {!step2Done && (
               <>
-                {/* Error */}
                 {error && (
                   <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.65rem', padding: '.7rem .85rem', color: '#dc2626', fontSize: '.82rem', marginBottom: '.85rem' }}>❌ {error}</div>
                 )}
 
-                {/* Product picker */}
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={fieldLabel}>Product</label>
                   {!showNewProduct && (
@@ -524,13 +588,11 @@ export default function ScanPage() {
                   )}
                 </div>
 
-                {/* Colour */}
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={fieldLabel}>Colour</label>
                   <input value={form.colour} onChange={e => setForm(f => ({ ...f, colour: e.target.value }))} placeholder="e.g. Red, Royal Blue…" style={inputStyle} />
                 </div>
 
-                {/* Size */}
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={fieldLabel}>Size</label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem', marginBottom: '.5rem' }}>
@@ -539,7 +601,6 @@ export default function ScanPage() {
                   <input value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} placeholder="Or type a size…" style={inputStyle} />
                 </div>
 
-                {/* Stock qty */}
                 <div style={{ marginBottom: '1.25rem' }}>
                   <label style={fieldLabel}>Stock qty</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -561,7 +622,121 @@ export default function ScanPage() {
           </div>
         )}
 
-        {/* ── STEP 3: AI Model Images (optional) ──────────────────────── */}
+        {/* ── STEP 2b: Extra Images ────────────────────────────────────── */}
+        {step2Done && (
+          <div style={{ ...card, border: allExtrasDone ? '1.5px solid #bbf7d0' : '1.5px solid #e0e7ff', background: 'white' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem', marginBottom: extraImages.length > 0 ? '1rem' : 0 }}>
+              <div style={stepBadge(true, allExtrasDone)}>
+                {allExtrasDone ? '✓' : <span style={{ fontSize: '.7rem' }}>2b</span>}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: '.95rem', color: allExtrasDone ? '#15803d' : '#111827' }}>Extra Images <span style={{ fontSize: '.75rem', fontWeight: 400, color: '#9ca3af' }}>(optional)</span></div>
+                <div style={{ fontSize: '.75rem', color: '#9ca3af' }}>Upload additional angles, details or colour variants</div>
+              </div>
+              <button
+                onClick={() => extraFileRef.current?.click()}
+                style={{ padding: '.35rem .85rem', borderRadius: '2rem', border: '1.5px solid #6366f1', background: '#eef2ff', color: '#4338ca', fontSize: '.8rem', fontWeight: 700, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                + Add Photos
+              </button>
+              <input
+                ref={extraFileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={onExtraFilesChange}
+                style={{ display: 'none' }}
+              />
+            </div>
+
+            {extraImages.length > 0 && (
+              <>
+                {/* Image grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '.5rem', marginBottom: '1rem' }}>
+                  {extraImages.map((item, idx) => (
+                    <div key={idx} style={{ position: 'relative', borderRadius: '.6rem', overflow: 'hidden', border: item.status === 'done' ? '2px solid #16a34a' : item.status === 'error' ? '2px solid #dc2626' : '1.5px solid #e5e7eb' }}>
+                      <img src={item.preview} alt={`Extra ${idx + 1}`} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
+
+                      {/* Status overlay */}
+                      {item.status === 'uploading' && (
+                        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite', fontSize: '1.3rem' }}>⏳</span>
+                        </div>
+                      )}
+                      {item.status === 'done' && (
+                        <div style={{ position: 'absolute', top: '.3rem', right: '.3rem', background: '#16a34a', borderRadius: '50%', width: '1.4rem', height: '1.4rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.75rem', color: 'white', fontWeight: 700 }}>✓</div>
+                      )}
+                      {item.status === 'error' && (
+                        <div style={{ position: 'absolute', inset: 0, background: 'rgba(220,38,38,.15)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: '.3rem' }}>
+                          <span style={{ fontSize: '.6rem', color: '#dc2626', fontWeight: 700, background: 'white', borderRadius: '.3rem', padding: '0 .3rem' }}>Error</span>
+                        </div>
+                      )}
+
+                      {/* Remove button — only when pending/error */}
+                      {(item.status === 'pending' || item.status === 'error') && (
+                        <button
+                          onClick={() => removeExtraImage(idx)}
+                          style={{ position: 'absolute', top: '.25rem', right: '.25rem', background: 'rgba(0,0,0,.55)', border: 'none', color: 'white', borderRadius: '50%', width: '1.3rem', height: '1.3rem', fontSize: '.65rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                          title="Remove"
+                        >✕</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Per-image colour — editable inline */}
+                <div style={{ marginBottom: '.85rem' }}>
+                  <label style={fieldLabel}>Colour per image (tap to edit)</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '.35rem' }}>
+                    {extraImages.map((item, idx) => (
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
+                        <img src={item.preview} alt="" style={{ width: '2.2rem', height: '2.2rem', borderRadius: '.4rem', objectFit: 'cover', flexShrink: 0 }} />
+                        <input
+                          value={item.colour}
+                          onChange={e => setExtraColour(idx, e.target.value)}
+                          placeholder={form.colour || 'e.g. Red'}
+                          disabled={item.status === 'done' || item.status === 'uploading'}
+                          style={{ ...inputStyle, flex: 1, fontSize: '.85rem', padding: '.45rem .7rem',
+                            opacity: (item.status === 'done' || item.status === 'uploading') ? .6 : 1 }}
+                        />
+                        <span style={{ fontSize: '.75rem', color: item.status === 'done' ? '#16a34a' : item.status === 'error' ? '#dc2626' : '#9ca3af', flexShrink: 0, minWidth: '3rem', textAlign: 'right' }}>
+                          {item.status === 'done' ? '✅ Done' : item.status === 'error' ? '❌ Fail' : item.status === 'uploading' ? '⏳…' : 'Pending'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {!allExtrasDone && (
+                  <button
+                    onClick={handleUploadExtras}
+                    disabled={uploadingExtras}
+                    style={{ ...btnPrimary, background: '#4338ca', opacity: uploadingExtras ? .7 : 1 }}>
+                    {uploadingExtras
+                      ? <><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⏳</span> Uploading…</>
+                      : `📤 Upload ${extraImages.filter(x => x.status !== 'done').length} Image${extraImages.filter(x => x.status !== 'done').length !== 1 ? 's' : ''}`
+                    }
+                  </button>
+                )}
+
+                {allExtrasDone && (
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '.65rem', padding: '.6rem .85rem', fontSize: '.82rem', color: '#15803d', fontWeight: 600 }}>
+                    ✅ All {extraImages.length} extra image{extraImages.length !== 1 ? 's' : ''} uploaded successfully!
+                  </div>
+                )}
+              </>
+            )}
+
+            {extraImages.length === 0 && (
+              <div style={{ marginTop: '.75rem', textAlign: 'center', padding: '.75rem', background: '#f5f3ff', borderRadius: '.65rem', border: '1.5px dashed #c4b5fd' }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '.2rem' }}>🖼️</div>
+                <div style={{ fontSize: '.8rem', color: '#6d28d9', fontWeight: 600 }}>Add more angles, close-ups or colour variants</div>
+                <div style={{ fontSize: '.72rem', color: '#9ca3af', marginTop: '.15rem' }}>Tap "+ Add Photos" above — select multiple at once</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── STEP 3: AI Model Images ──────────────────────────────────── */}
         {step3Active && (
           <div style={{ ...card, background: 'linear-gradient(135deg,#fdf2f8,#fdf4ff)', border: `1.5px solid ${showModelGen ? '#d8b4fe' : '#e5e7eb'}` }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem' }}>
@@ -579,8 +754,6 @@ export default function ScanPage() {
 
             {showModelGen && (
               <div style={{ marginTop: '1rem' }}>
-
-                {/* Manual prompt */}
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={{ ...fieldLabel, color: '#7e22ce' }}>Garment Description for Replicate</label>
                   <textarea
@@ -601,7 +774,6 @@ export default function ScanPage() {
                   )}
                 </div>
 
-                {/* Style picker */}
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={{ ...fieldLabel, color: '#7e22ce' }}>Photography Style</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '.35rem' }}>
@@ -619,7 +791,6 @@ export default function ScanPage() {
                   </div>
                 </div>
 
-                {/* Generate button */}
                 <button
                   onClick={handleGenerateModel}
                   disabled={generatingModel}
