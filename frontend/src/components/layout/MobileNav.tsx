@@ -132,12 +132,8 @@ export function MobileNav() {
 
 // ─── Floating bottom tab bar (always visible on mobile) ──────────────────────
 export function BottomTabBar() {
-  const { cartCount, openCart } = useCart();
+  const { totalItems, openCart } = useCart();
   const pathname = usePathname();
-
-  // On product pages, the sticky ATC bar also sits at the bottom.
-  // We push it above the tab bar using bottom offset.
-  const isProductPage = pathname.startsWith('/products/');
 
   const tabs = [
     {
@@ -218,7 +214,7 @@ export function BottomTabBar() {
           <>
             <span style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ color: active ? 'var(--color-primary)' : '#9ca3af', transition: 'color .15s' }}>{tab.icon}</span>
-              {tab.id === 'cart' && cartCount > 0 && (
+              {tab.id === 'cart' && totalItems > 0 && (
                 <span style={{
                   position: 'absolute',
                   top: '-6px',
@@ -237,7 +233,7 @@ export function BottomTabBar() {
                   lineHeight: 1,
                   border: '1.5px solid white',
                 }}>
-                  {cartCount > 99 ? '99+' : cartCount}
+                  {totalItems > 99 ? '99+' : totalItems}
                 </span>
               )}
             </span>
