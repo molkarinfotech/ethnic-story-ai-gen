@@ -182,7 +182,7 @@ export function buildRestockEmail(data: RestockEmailData): EmailPayload {
 export function buildRestockSubscribedEmail(productName: string, email: string): EmailPayload {
   const content = `
     <h1 style="font-family:Georgia,serif;color:#9d174d;font-size:24px;margin:0 0 8px;">You're on the list ✓</h1>
-    <p style="color:#6b7280;margin:0 0 28px;font-size:15px;">We'll send you an email at <strong>${email}</strong> as soon as <strong>${data.productName}</strong> is back in stock.</p>
+    <p style="color:#6b7280;margin:0 0 28px;font-size:15px;">We'll send you an email at <strong>${email}</strong> as soon as <strong>${productName}</strong> is back in stock.</p>
 
     <div style="background:#fdf2f8;border:1px solid #fbcfe8;border-radius:10px;padding:20px;text-align:center;margin-bottom:28px;">
       <span style="font-size:2rem;">🔔</span>
