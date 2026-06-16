@@ -1,11 +1,13 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useCart } from '../../context/CartContext';
+import { usePathname } from 'next/navigation';
 
-const NAV = [
+const SECTIONS = [
   {
     href: '/collections/women',
     label: 'Women',
-    emoji: '🥻',
+    emoji: '🥕',
     children: [
       { href: '/collections/women/sarees',   label: 'Sarees' },
       { href: '/collections/women/lehengas', label: 'Lehengas' },
@@ -34,9 +36,10 @@ const NAV = [
   { href: '/collections', label: 'All Collections', emoji: '✨', children: [] },
 ];
 
+// ─── Hamburger drawer (desktop / fallback) ──────────────────────────────
 export function MobileNav() {
-  const [open, setOpen]             = useState(false);
-  const [expanded, setExpanded]     = useState<string | null>(null);
+  const [open, setOpen]         = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : '';
@@ -80,8 +83,8 @@ export function MobileNav() {
           <button className="mobile-nav-drawer__close" aria-label="Close menu" onClick={close}>✕</button>
         </div>
 
-        <ul className="mobile-nav-drawer__links" style={{ paddingBottom: '1rem' }}>
-          {NAV.map(item => (
+        <ul className="mobile-nav-drawer__links" style={{ paddingBottom: '6rem' }}>
+          {SECTIONS.map(item => (
             <li key={item.href}>
               {item.children.length > 0 ? (
                 <>
@@ -124,5 +127,170 @@ export function MobileNav() {
         </div>
       </nav>
     </>
+  );
+}
+
+// ─── Floating bottom tab bar (mobile) ──────────────────────────────────
+export function BottomTabBar() {
+  const { cartCount, openCart } = useCart();
+  const pathname = usePathname();
+
+  const tabs = [
+    {
+      id: 'home',
+      label: 'Home',
+      href: '/',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/>
+          <path d="M9 21V12h6v9"/>
+        </svg>
+      ),
+    },
+    {
+      id: 'shop',
+      label: 'Shop',
+      href: '/collections',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+        </svg>
+      ),
+    },
+    {
+      id: 'cart',
+      label: 'Bag',
+      href: null,
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <path d="M16 10a4 4 0 0 1-8 0"/>
+        </svg>
+      ),
+    },
+    {
+      id: 'account',
+      label: 'Account',
+      href: '/account',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+      ),
+    },
+  ];
+
+  function isActive(href: string | null) {
+    if (!href) return false;
+    if (href === '/') return pathname === '/';
+    return pathname.startsWith(href);
+  }
+
+  return (
+    <nav
+      aria-label="Bottom navigation"
+      style={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 100,
+        background: 'rgba(255,255,255,0.96)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        borderTop: '1px solid rgba(157,23,77,0.12)',
+        boxShadow: '0 -4px 24px rgba(0,0,0,0.08)',
+        display: 'flex',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}
+      className="bottom-tab-bar"
+    >
+      {tabs.map(tab => {
+        const active = isActive(tab.href);
+        const content = (
+          <>
+            <span style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ color: active ? 'var(--color-primary)' : '#9ca3af', transition: 'color .15s' }}>{tab.icon}</span>
+              {tab.id === 'cart' && cartCount > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '-6px',
+                  right: '-8px',
+                  background: 'var(--color-primary)',
+                  color: 'white',
+                  borderRadius: '2rem',
+                  fontSize: '.58rem',
+                  fontWeight: 800,
+                  minWidth: '16px',
+                  height: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 4px',
+                  lineHeight: 1,
+                  border: '1.5px solid white',
+                }}>
+                  {cartCount > 99 ? '99+' : cartCount}
+                </span>
+              )}
+            </span>
+            <span style={{
+              fontSize: '.62rem',
+              fontWeight: active ? 700 : 500,
+              color: active ? 'var(--color-primary)' : '#9ca3af',
+              marginTop: '.18rem',
+              letterSpacing: '.02em',
+              transition: 'color .15s',
+            }}>
+              {tab.label}
+            </span>
+            {active && (
+              <span style={{
+                position: 'absolute',
+                top: 0,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: '2rem',
+                height: '2.5px',
+                background: 'var(--color-primary)',
+                borderRadius: '0 0 4px 4px',
+              }} />
+            )}
+          </>
+        );
+
+        const sharedStyle: React.CSSProperties = {
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '.65rem .25rem .55rem',
+          position: 'relative',
+          border: 'none',
+          background: 'none',
+          cursor: 'pointer',
+          textDecoration: 'none',
+          WebkitTapHighlightColor: 'transparent',
+          minHeight: '56px',
+        };
+
+        if (tab.id === 'cart') {
+          return (
+            <button key={tab.id} onClick={openCart} style={sharedStyle} aria-label="Open bag">
+              {content}
+            </button>
+          );
+        }
+        return (
+          <a key={tab.id} href={tab.href!} style={sharedStyle}>
+            {content}
+          </a>
+        );
+      })}
+    </nav>
   );
 }
