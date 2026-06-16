@@ -66,13 +66,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Database insert failed', detail: insertError.message }, { status: 500 });
     }
 
-    console.log('[stripe-webhook] Order saved. user_id:', m.user_id || 'guest', '| row:', orderData?.[0]?.id);
+    const orderId = orderData?.[0]?.id ?? pi.id;
+    console.log('[stripe-webhook] Order saved. user_id:', m.user_id || 'guest', '| row:', orderId);
 
     // ── 2. Decrement stock per variant (product_id + size) ─────────────────────
     for (const item of items) {
       if (!item.id || !item.quantity) continue;
 
-      // Build query — must materialise separately so .eq() chains work correctly
       let variantQuery = sb
         .from('product_variants')
         .select('id, stock_count')
@@ -106,6 +106,37 @@ export async function POST(req: NextRequest) {
       } else {
         console.log(`[stripe-webhook] ✓ Stock: product=${item.id} size=${item.size ?? 'N/A'} | ${variant.stock_count} → ${newStock}`);
       }
+    }
+
+    // ── 3. Send order confirmation email ──────────────────────────────────────
+    if (m.customer_email) {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+        await fetch(`${baseUrl}/api/send-order-confirmation`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerName:    m.customer_name  || 'Valued Customer',
+            customerEmail:   m.customer_email,
+            orderId,
+            items,
+            totalAud:        pi.amount / 100,
+            shippingAddress: {
+              line1:    m.shipping_line1    || null,
+              line2:    m.shipping_line2    || null,
+              suburb:   m.shipping_suburb   || null,
+              state:    m.shipping_state    || null,
+              postcode: m.shipping_postcode || null,
+            },
+          }),
+        });
+        console.log('[stripe-webhook] Order confirmation email dispatched to', m.customer_email);
+      } catch (emailErr) {
+        // Don't fail the webhook if email fails
+        console.error('[stripe-webhook] Email dispatch error:', emailErr);
+      }
+    } else {
+      console.warn('[stripe-webhook] No customer_email in metadata — skipping confirmation email');
     }
   }
 

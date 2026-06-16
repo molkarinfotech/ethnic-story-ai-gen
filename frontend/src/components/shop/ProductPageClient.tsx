@@ -19,7 +19,6 @@ interface Props {
   origPrice?: number | null;
 }
 
-// Height of the bottom tab bar (56px) + safe area
 const TAB_BAR_HEIGHT = 'calc(64px + env(safe-area-inset-bottom))';
 
 export function ProductPageClient({ product, colourImages, badge, discount, origPrice }: Props) {
@@ -36,7 +35,6 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
   const [added, setAdded]             = useState(false);
   const [stickyAdded, setStickyAdded] = useState(false);
 
-  // Sticky bar visibility — show when inline ATC scrolls out of view
   const atcRef          = useRef<HTMLDivElement>(null);
   const [showSticky, setShowSticky] = useState(false);
 
@@ -51,7 +49,6 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     return () => obs.disconnect();
   }, []);
 
-  // Global OOS state
   const [globalOOS,    setGlobalOOS]    = useState(false);
   const [stockChecked, setStockChecked] = useState(false);
 
@@ -210,7 +207,13 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
               </a>
             )}
 
-            {stockChecked && globalOOS && <NotifyMe productName={product.name} />}
+            {stockChecked && globalOOS && (
+              <NotifyMe
+                productId={product.id}
+                productName={product.name}
+                productSlug={product.slug}
+              />
+            )}
           </div>
 
           {/* Trust grid */}
@@ -251,15 +254,15 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
         </div>
       </div>
 
-      {/* ── Sticky Add-to-Bag bar ── sits above the bottom tab bar */}
+      {/* ── Sticky Add-to-Bag bar ── */}
       <div
         className="pdp-sticky-atc"
         style={{
           position: 'fixed',
-          bottom: TAB_BAR_HEIGHT,   // ← sits on top of the tab bar
+          bottom: TAB_BAR_HEIGHT,
           left: 0,
           right: 0,
-          zIndex: 101,              // ← above tab bar (z-index 100)
+          zIndex: 101,
           background: 'rgba(255,255,255,0.97)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
@@ -317,30 +320,42 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
   );
 }
 
-// ── Notify Me widget ─────────────────────────────────────────────────────────
-function NotifyMe({ productName }: { productName: string }) {
+// ── Notify Me widget — wired to /api/notify-restock ──────────────────────────
+function NotifyMe({ productId, productName, productSlug }: { productId: string; productName: string; productSlug: string }) {
   const [email, setEmail] = useState('');
   const [sent, setSent]   = useState(false);
   const [busy, setBusy]   = useState(false);
+  const [err,  setErr]    = useState('');
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!email) return;
     setBusy(true);
-    await new Promise(r => setTimeout(r, 600));
-    setSent(true);
-    setBusy(false);
+    setErr('');
+    try {
+      const res = await fetch('/api/notify-restock', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ email, productId, productName, productSlug }),
+      });
+      if (!res.ok) throw new Error('Request failed');
+      setSent(true);
+    } catch {
+      setErr('Something went wrong. Please try again.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (sent) return (
     <div style={{ marginTop: 'var(--space-4)', padding: 'var(--space-4)', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 'var(--radius-lg)', textAlign: 'center', fontSize: 'var(--text-sm)', color: '#15803d', fontWeight: 600 }}>
-      ✅ We'll email you when {productName} is back in stock!
+      ✅ We'll email you when <strong>{productName}</strong> is back in stock!
     </div>
   );
 
   return (
     <form onSubmit={submit} style={{ marginTop: 'var(--space-4)' }}>
-      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em' }}>Notify me when back in stock</p>
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em' }}>🔔 Notify me when back in stock</p>
       <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
         <input
           type="email" value={email} onChange={e => setEmail(e.target.value)}
@@ -352,6 +367,7 @@ function NotifyMe({ productName }: { productName: string }) {
           {busy ? '…' : 'Notify me'}
         </button>
       </div>
+      {err && <p style={{ color: '#dc2626', fontSize: 'var(--text-xs)', marginTop: 'var(--space-2)' }}>{err}</p>}
     </form>
   );
 }
