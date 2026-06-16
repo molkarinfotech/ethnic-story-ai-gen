@@ -36,7 +36,7 @@ const SECTIONS = [
   { href: '/collections', label: 'All Collections', emoji: '✨', children: [] },
 ];
 
-// ─── Hamburger drawer (desktop / fallback) ──────────────────────────────
+// ─── Hamburger drawer ──────────────────────────────────────────────────────
 export function MobileNav() {
   const [open, setOpen]         = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -130,10 +130,14 @@ export function MobileNav() {
   );
 }
 
-// ─── Floating bottom tab bar (mobile) ──────────────────────────────────
+// ─── Floating bottom tab bar (always visible on mobile) ──────────────────────
 export function BottomTabBar() {
   const { cartCount, openCart } = useCart();
   const pathname = usePathname();
+
+  // On product pages, the sticky ATC bar also sits at the bottom.
+  // We push it above the tab bar using bottom offset.
+  const isProductPage = pathname.startsWith('/products/');
 
   const tabs = [
     {
@@ -198,11 +202,11 @@ export function BottomTabBar() {
         left: 0,
         right: 0,
         zIndex: 100,
-        background: 'rgba(255,255,255,0.96)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
+        background: 'rgba(255,255,255,0.97)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
         borderTop: '1px solid rgba(157,23,77,0.12)',
-        boxShadow: '0 -4px 24px rgba(0,0,0,0.08)',
+        boxShadow: '0 -4px 24px rgba(0,0,0,0.09)',
         display: 'flex',
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}

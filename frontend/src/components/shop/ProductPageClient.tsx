@@ -19,6 +19,9 @@ interface Props {
   origPrice?: number | null;
 }
 
+// Height of the bottom tab bar (56px) + safe area
+const TAB_BAR_HEIGHT = 'calc(64px + env(safe-area-inset-bottom))';
+
 export function ProductPageClient({ product, colourImages, badge, discount, origPrice }: Props) {
   const { addItem, openCart } = useCart();
 
@@ -33,7 +36,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
   const [added, setAdded]             = useState(false);
   const [stickyAdded, setStickyAdded] = useState(false);
 
-  // Sticky bar visibility
+  // Sticky bar visibility — show when inline ATC scrolls out of view
   const atcRef          = useRef<HTMLDivElement>(null);
   const [showSticky, setShowSticky] = useState(false);
 
@@ -159,7 +162,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
             </div>
           )}
 
-          {/* Variant selector + inline ATC — observe this div for sticky trigger */}
+          {/* Variant selector + inline ATC */}
           <div ref={atcRef} className="pdp-atc">
             {!globalOOS && (
               <>
@@ -248,22 +251,21 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
         </div>
       </div>
 
-      {/* ── Sticky Add-to-Bag bar ── */}
+      {/* ── Sticky Add-to-Bag bar ── sits above the bottom tab bar */}
       <div
         className="pdp-sticky-atc"
         style={{
           position: 'fixed',
-          bottom: 0,
+          bottom: TAB_BAR_HEIGHT,   // ← sits on top of the tab bar
           left: 0,
           right: 0,
-          zIndex: 99,
+          zIndex: 101,              // ← above tab bar (z-index 100)
           background: 'rgba(255,255,255,0.97)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           borderTop: '1px solid var(--color-divider)',
           boxShadow: '0 -4px 24px rgba(0,0,0,0.1)',
           padding: '.75rem 1rem',
-          paddingBottom: 'calc(.75rem + env(safe-area-inset-bottom))',
           display: 'flex',
           alignItems: 'center',
           gap: '1rem',
@@ -272,7 +274,6 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
           pointerEvents: showSticky ? 'auto' : 'none',
         }}
       >
-        {/* Thumbnail + name */}
         {product.image && (
           <img
             src={product.image}

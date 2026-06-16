@@ -5,7 +5,7 @@ import { AuthProvider } from '../context/AuthContext';
 import { CartDrawer } from '../components/cart/CartDrawer';
 import { CartIcon } from '../components/cart/CartIcon';
 import { AuthNav } from '../components/AuthNav';
-import { MobileNav } from '../components/layout/MobileNav';
+import { MobileNav, BottomTabBar } from '../components/layout/MobileNav';
 import { PageTransition } from '../components/layout/PageTransition';
 
 export const metadata: Metadata = {
@@ -17,7 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <link rel="preconnect" href="https://api.fontshare.com" />
         <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&f[]=boska@400,500,700&display=swap" rel="stylesheet" />
       </head>
@@ -62,7 +62,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
             <CartDrawer />
 
-            <footer className="site-footer">
+            {/* Floating bottom tab bar — always visible on mobile */}
+            <BottomTabBar />
+
+            <footer className="site-footer" style={{ marginBottom: 0 }}>
               <div className="container">
                 <div className="site-footer__inner">
                   <p>© 2026 Ethnic Story. All rights reserved.</p>
