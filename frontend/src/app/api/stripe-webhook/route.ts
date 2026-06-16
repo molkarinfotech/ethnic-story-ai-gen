@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getServiceSupabase } from '../../../lib/supabase';
+import { sendEmail, buildOrderConfirmationEmail } from '../../../lib/resend';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
     const orderId = orderData?.[0]?.id ?? pi.id;
     console.log('[stripe-webhook] Order saved. user_id:', m.user_id || 'guest', '| row:', orderId);
 
-    // ── 2. Decrement stock per variant (product_id + size) ─────────────────────
+    // ── 2. Decrement stock per variant ─────────────────────────────────────────
     for (const item of items) {
       if (!item.id || !item.quantity) continue;
 
@@ -78,9 +79,7 @@ export async function POST(req: NextRequest) {
         .select('id, stock_count')
         .eq('product_id', item.id);
 
-      if (item.size) {
-        variantQuery = variantQuery.eq('size', item.size);
-      }
+      if (item.size) variantQuery = variantQuery.eq('size', item.size);
 
       const { data: variant, error: fetchErr } = await variantQuery.maybeSingle();
 
@@ -88,18 +87,13 @@ export async function POST(req: NextRequest) {
         console.error(`[stripe-webhook] Variant fetch error for ${item.id}/${item.size ?? 'no-size'}:`, fetchErr.message);
         continue;
       }
-
       if (!variant) {
-        console.warn(`[stripe-webhook] No variant found: product_id=${item.id} size=${item.size ?? 'none'} — skipping stock deduct`);
+        console.warn(`[stripe-webhook] No variant found: product_id=${item.id} size=${item.size ?? 'none'} — skipping`);
         continue;
       }
 
       const newStock = Math.max(0, (variant.stock_count ?? 0) - item.quantity);
-
-      const { error: updateErr } = await sb
-        .from('product_variants')
-        .update({ stock_count: newStock })
-        .eq('id', variant.id);
+      const { error: updateErr } = await sb.from('product_variants').update({ stock_count: newStock }).eq('id', variant.id);
 
       if (updateErr) {
         console.error(`[stripe-webhook] Stock update error for variant ${variant.id}:`, updateErr.message);
@@ -108,31 +102,30 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── 3. Send order confirmation email ──────────────────────────────────────
+    // ── 3. Send order confirmation email (direct — no internal fetch) ──────────
     if (m.customer_email) {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
-        await fetch(`${baseUrl}/api/send-order-confirmation`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            customerName:    m.customer_name  || 'Valued Customer',
-            customerEmail:   m.customer_email,
-            orderId,
-            items,
-            totalAud:        pi.amount / 100,
-            shippingAddress: {
-              line1:    m.shipping_line1    || null,
-              line2:    m.shipping_line2    || null,
-              suburb:   m.shipping_suburb   || null,
-              state:    m.shipping_state    || null,
-              postcode: m.shipping_postcode || null,
-            },
-          }),
+        const emailPayload = buildOrderConfirmationEmail({
+          customerName:    m.customer_name || 'Valued Customer',
+          customerEmail:   m.customer_email,
+          orderId,
+          items,
+          totalAud:        pi.amount / 100,
+          shippingAddress: {
+            line1:    m.shipping_line1    || undefined,
+            line2:    m.shipping_line2    || undefined,
+            suburb:   m.shipping_suburb   || undefined,
+            state:    m.shipping_state    || undefined,
+            postcode: m.shipping_postcode || undefined,
+          },
         });
-        console.log('[stripe-webhook] Order confirmation email dispatched to', m.customer_email);
+        const result = await sendEmail(emailPayload);
+        if (result.ok) {
+          console.log('[stripe-webhook] ✓ Confirmation email sent to', m.customer_email);
+        } else {
+          console.error('[stripe-webhook] Email failed:', result.error);
+        }
       } catch (emailErr) {
-        // Don't fail the webhook if email fails
         console.error('[stripe-webhook] Email dispatch error:', emailErr);
       }
     } else {
