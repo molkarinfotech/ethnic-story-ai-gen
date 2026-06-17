@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '../../../../lib/supabase';
-import { cookies } from 'next/headers';
-
-async function isAuthed() {
-  const cookieStore = cookies();
-  const token = cookieStore.get('admin_token')?.value;
-  return token === process.env.ADMIN_SECRET;
-}
+import { isAdminAuthed } from '../../../../lib/admin-auth';
 
 // GET: all products with their size+colour variants
-export async function GET() {
-  if (!await isAuthed()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+export async function GET(req: NextRequest) {
+  if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const sb = getServiceSupabase();
   const { data: products, error } = await sb
     .from('products')
@@ -35,7 +29,7 @@ export async function GET() {
 
 // PATCH: upsert a variant stock count
 export async function PATCH(req: NextRequest) {
-  if (!await isAuthed()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json();
   const sb = getServiceSupabase();
 
@@ -63,7 +57,7 @@ export async function PATCH(req: NextRequest) {
 
 // DELETE: remove a size variant entirely
 export async function DELETE(req: NextRequest) {
-  if (!await isAuthed()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { variant_id } = await req.json();
   if (!variant_id) return NextResponse.json({ error: 'variant_id required' }, { status: 400 });
   const sb = getServiceSupabase();

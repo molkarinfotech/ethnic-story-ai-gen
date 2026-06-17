@@ -78,9 +78,9 @@ export interface OrderEmailData {
   customerName: string;
   customerEmail: string;
   orderId: string;
-  items: { name: string; quantity: number; price: number; size?: string }[];
-  subtotalAud?: number;   // if omitted, derived from items
-  shippingCost?: number;  // 0 = free; undefined = not shown
+  items: { name: string; quantity: number; price: number; size?: string; colour?: string }[];
+  subtotalAud?: number;
+  shippingCost?: number;
   totalAud: number;
   paymentMethod?: 'card' | 'cash' | 'eftpos' | 'payid';
   shippingAddress: {
@@ -91,8 +91,8 @@ export interface OrderEmailData {
 
 const PAYMENT_LABELS: Record<string, string> = {
   card:   '💳 Card (Stripe)',
-  cash:   '💵 Cash on Delivery',
-  eftpos: '🏧 EFTPOS (Pay in store / on pickup)',
+  cash:   '💵 Cash',
+  eftpos: '🏧 EFTPOS',
   payid:  '📲 PayID / Bank Transfer',
 };
 
@@ -103,20 +103,22 @@ const PAYMENT_INSTRUCTIONS: Record<string, string> = {
 };
 
 export function buildOrderConfirmationEmail(data: OrderEmailData): EmailPayload {
-  // Derive subtotal from items if not supplied
   const subtotal = data.subtotalAud ?? data.items.reduce((s, i) => s + i.price * i.quantity, 0);
   const shippingCost = data.shippingCost ?? 0;
   const method = data.paymentMethod ?? 'card';
 
-  const itemRows = data.items.map(i => `
+  const itemRows = data.items.map(i => {
+    const variantParts = [i.size, i.colour].filter(Boolean).join(' / ');
+    return `
     <tr>
       <td style="padding:12px 0;border-bottom:1px solid #f3f4f6;">
         <div style="font-weight:600;color:#1a1a1a;">${i.name}</div>
-        ${i.size ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">Size: ${i.size}</div>` : ''}
+        ${variantParts ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">${variantParts}</div>` : ''}
       </td>
       <td style="padding:12px 0;border-bottom:1px solid #f3f4f6;text-align:center;color:#6b7280;">${i.quantity}</td>
       <td style="padding:12px 0;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:#9d174d;">A$${(i.price * i.quantity).toFixed(2)}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   const addr = data.shippingAddress;
   const addrStr = [addr.line1, addr.line2, addr.suburb, addr.state, addr.postcode].filter(Boolean).join(', ');
@@ -137,7 +139,6 @@ export function buildOrderConfirmationEmail(data: OrderEmailData): EmailPayload 
       <div style="font-weight:700;font-size:15px;color:#1a1a1a;margin-top:4px;font-family:monospace;">${data.orderId.toUpperCase().slice(0,16)}</div>
     </div>
 
-    <!-- ── Invoice table ── -->
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
       <thead>
         <tr style="background:#fdf8f4;">
@@ -148,26 +149,21 @@ export function buildOrderConfirmationEmail(data: OrderEmailData): EmailPayload 
       </thead>
       <tbody>${itemRows}</tbody>
       <tfoot>
-        <!-- Subtotal -->
         <tr>
           <td colspan="2" style="padding:14px 0 4px;font-size:14px;color:#6b7280;">Subtotal</td>
           <td style="padding:14px 0 4px;text-align:right;font-size:14px;color:#6b7280;">A$${subtotal.toFixed(2)}</td>
         </tr>
-        <!-- Shipping -->
         <tr>
           <td colspan="2" style="padding:4px 0;font-size:14px;color:#6b7280;">Shipping</td>
           <td style="padding:4px 0;text-align:right;font-size:14px;color:${shippingCost === 0 ? '#16a34a' : '#6b7280'};">
             ${shippingCost === 0 ? '<strong>FREE</strong>' : `A$${shippingCost.toFixed(2)}`}
           </td>
         </tr>
-        <!-- Divider -->
         <tr><td colspan="3" style="padding:0;border-top:2px solid #f3f4f6;"></td></tr>
-        <!-- Grand total -->
         <tr>
           <td colspan="2" style="padding:14px 0 0;font-weight:700;font-size:15px;">Total (AUD)</td>
           <td style="padding:14px 0 0;text-align:right;font-weight:800;font-size:18px;color:#9d174d;">A$${data.totalAud.toFixed(2)}</td>
         </tr>
-        <!-- Payment method -->
         <tr>
           <td colspan="2" style="padding:8px 0 0;font-size:12px;color:#9ca3af;">Payment method</td>
           <td style="padding:8px 0 0;text-align:right;font-size:12px;color:#6b7280;">${PAYMENT_LABELS[method] ?? method}</td>

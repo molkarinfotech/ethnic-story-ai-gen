@@ -1,17 +1,10 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-type Variant = { id: string; size: string; colour?: string; stock_count: number; price?: number };
-type Product = {
-  id: string; name: string; price: number; category: string;
-  image?: string; stock_count?: number;
-  variants: Variant[];
-};
-type CartItem = {
-  productId: string; name: string; price: number; quantity: number;
-  variantId?: string; variantLabel?: string; size?: string; colour?: string; image?: string;
-};
+// ─── Types ────────────────────────────────────────────────────────────────────
+type Variant  = { id: string; size: string; colour?: string; stock_count: number; price?: number };
+type Product  = { id: string; name: string; price: number; category: string; image?: string; stock_count?: number; variants: Variant[] };
+type CartItem = { productId: string; name: string; price: number; quantity: number; variantId?: string; variantLabel?: string; size?: string; colour?: string; image?: string };
 type PaymentMethod = 'cash' | 'eftpos' | 'payid';
 
 const AU_STATES = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
@@ -20,94 +13,59 @@ const PAYMENT_OPTIONS: { value: PaymentMethod; icon: string; label: string; colo
   { value: 'eftpos', icon: '🏧', label: 'EFTPOS',       colour: '#2563eb' },
   { value: 'payid',  icon: '📲', label: 'PayID / Bank', colour: '#7c3aed' },
 ];
-const GENDERS = [
-  { slug: 'women', label: 'Women', emoji: '🧕' },
-  { slug: 'men',   label: 'Men',   emoji: '🧔' },
-  { slug: 'kids',  label: 'Kids',  emoji: '👦' },
-];
 
 function fmt(n: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(n);
 }
-const labelSm: React.CSSProperties = {
-  display: 'block', fontSize: '.72rem', fontWeight: 700,
-  color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 3,
-};
-const inputSm: React.CSSProperties = {
-  width: '100%', padding: '8px 10px', border: '1px solid #e5e7eb',
-  borderRadius: 7, fontSize: '.88rem', boxSizing: 'border-box',
-};
+const labelSm: React.CSSProperties = { display: 'block', fontSize: '.72rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 3 };
+const inputSm: React.CSSProperties = { width: '100%', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: '.88rem', boxSizing: 'border-box' };
+
+function pill(active: boolean, disabled = false): React.CSSProperties {
+  return {
+    padding: '5px 13px', borderRadius: 20,
+    border: `2px solid ${active ? '#9d174d' : disabled ? '#f3f4f6' : '#e5e7eb'}`,
+    background: active ? '#9d174d' : disabled ? '#f9fafb' : '#fff',
+    color: active ? '#fff' : disabled ? '#d1d5db' : '#1a1a1a',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    fontWeight: active ? 700 : 500, fontSize: '.82rem', transition: 'all .12s',
+  };
+}
 
 // ─── Product Picker ───────────────────────────────────────────────────────────
 function ProductPicker({ allProducts, onAdd }: { allProducts: Product[]; onAdd: (item: CartItem) => void }) {
-  const [mode, setMode]                   = useState<'browse'|'search'>('browse');
-  const [query, setQuery]                 = useState('');
-  // browse state
-  const [gender, setGender]               = useState<string|null>(null);
-  const [category, setCategory]           = useState<string|null>(null);
-  // product + variant selection
-  const [selected, setSelected]           = useState<Product|null>(null);
-  const [selectedVariant, setSelectedVariant] = useState<string>('');
-  const [qty, setQty]                     = useState(1);
+  const [mode, setMode]           = useState<'browse' | 'search'>('browse');
+  const [query, setQuery]         = useState('');
+  const [category, setCategory]   = useState<string | null>(null);
+  const [selected, setSelected]   = useState<Product | null>(null);
+  const [selVariant, setSelVariant] = useState('');
+  const [qty, setQty]             = useState(1);
 
-  // Derived data
-  const categories = Array.from(new Set(allProducts.map(p => p.category))).sort();
+  // All unique categories derived from loaded products
+  const allCategories = Array.from(new Set(allProducts.map(p => p.category).filter(Boolean))).sort();
 
-  // Products filtered for current browse path
-  const browseProducts = allProducts.filter(p => {
-    if (gender && p.category !== gender) return false; // gender used as top-level slug filter
-    if (category && p.category !== category) return false;
-    return true;
-  });
-
-  // Search results
-  const searchResults = query.trim().length > 0
-    ? allProducts.filter(p => p.name.toLowerCase().includes(query.toLowerCase()) || p.category.toLowerCase().includes(query.toLowerCase()))
-    : [];
-
-  const displayProducts = mode === 'search' ? searchResults : browseProducts;
+  // Products visible in the current browse category (or search)
+  const visibleProducts: Product[] = mode === 'search'
+    ? (query.trim() ? allProducts.filter(p => p.name.toLowerCase().includes(query.toLowerCase()) || p.category.toLowerCase().includes(query.toLowerCase())) : [])
+    : (category ? allProducts.filter(p => p.category === category) : []);
 
   function selectProduct(p: Product) {
     setSelected(p);
-    const firstAvailable = p.variants.find(v => v.stock_count > 0) ?? p.variants[0] ?? null;
-    setSelectedVariant(firstAvailable?.id ?? '');
+    const first = p.variants.find(v => v.stock_count > 0) ?? p.variants[0];
+    setSelVariant(first?.id ?? '');
     setQty(1);
   }
 
   function addToCart() {
     if (!selected) return;
-    const v = selected.variants.find(vv => vv.id === selectedVariant);
+    const v = selected.variants.find(vv => vv.id === selVariant);
     const price = v?.price ?? selected.price;
     const label = v ? [v.size, v.colour].filter(Boolean).join(' / ') : undefined;
-    onAdd({
-      productId:    selected.id,
-      name:         selected.name,
-      price,
-      quantity:     qty,
-      variantId:    v?.id,
-      size:         v?.size,
-      colour:       v?.colour,
-      variantLabel: label,
-      image:        selected.image,
-    });
-    setSelected(null);
-    setSelectedVariant('');
-    setQty(1);
+    onAdd({ productId: selected.id, name: selected.name, price, quantity: qty, variantId: v?.id, size: v?.size, colour: v?.colour, variantLabel: label, image: selected.image });
+    setSelected(null); setSelVariant(''); setQty(1);
   }
 
-  const chosenVariant = selected?.variants.find(v => v.id === selectedVariant);
-  const stock = chosenVariant?.stock_count ?? (selected?.variants.length === 0 ? (selected?.stock_count ?? 0) : 0);
-
-  // pill style helper
-  function pill(active: boolean, disabled = false): React.CSSProperties {
-    return {
-      padding: '5px 13px', borderRadius: 20, border: `2px solid ${active ? '#9d174d' : disabled ? '#f3f4f6' : '#e5e7eb'}`,
-      background: active ? '#9d174d' : disabled ? '#f9fafb' : '#fff',
-      color: active ? '#fff' : disabled ? '#d1d5db' : '#1a1a1a',
-      cursor: disabled ? 'not-allowed' : 'pointer',
-      fontWeight: active ? 700 : 500, fontSize: '.82rem', transition: 'all .12s',
-    };
-  }
+  const chosenVariant = selected?.variants.find(v => v.id === selVariant);
+  const stock = chosenVariant?.stock_count ?? (selected && selected.variants.length === 0 ? (selected.stock_count ?? 0) : 0);
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: '1rem' }}>
@@ -115,141 +73,69 @@ function ProductPicker({ allProducts, onAdd }: { allProducts: Product[]; onAdd: 
 
       {/* Mode toggle */}
       <div style={{ display: 'flex', gap: '.4rem', marginBottom: '.85rem' }}>
-        <button type="button" onClick={() => { setMode('browse'); setQuery(''); }}
-          style={{ ...pill(mode === 'browse'), padding: '5px 14px' }}>
-          🗂️ Browse
-        </button>
-        <button type="button" onClick={() => setMode('search')}
-          style={{ ...pill(mode === 'search'), padding: '5px 14px' }}>
-          🔍 Search
-        </button>
-        {allProducts.length === 0 && (
-          <span style={{ marginLeft: 'auto', fontSize: '.75rem', color: '#9ca3af', alignSelf: 'center' }}>Loading products…</span>
-        )}
+        <button type="button" onClick={() => { setMode('browse'); setQuery(''); setSelected(null); }} style={{ ...pill(mode === 'browse'), padding: '5px 14px' }}>🗂️ Browse</button>
+        <button type="button" onClick={() => { setMode('search'); setSelected(null); }} style={{ ...pill(mode === 'search'), padding: '5px 14px' }}>🔍 Search</button>
+        {allProducts.length === 0 && <span style={{ marginLeft: 'auto', fontSize: '.75rem', color: '#9ca3af', alignSelf: 'center' }}>Loading…</span>}
       </div>
 
-      {/* ── SEARCH mode ── */}
-      {mode === 'search' && (
+      {/* ── Search mode ── */}
+      {mode === 'search' && !selected && (
         <div style={{ marginBottom: '.75rem' }}>
-          <input
-            value={query} onChange={e => { setQuery(e.target.value); setSelected(null); }}
-            placeholder="Search by name or category…" autoFocus
-            style={{ width: '100%', padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: '.9rem', boxSizing: 'border-box' }}
-          />
-          {query.trim().length > 0 && searchResults.length === 0 && (
-            <div style={{ color: '#9ca3af', fontSize: '.82rem', padding: '.5rem 0' }}>No products found.</div>
-          )}
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name or category…" autoFocus
+            style={{ width: '100%', padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: '.9rem', boxSizing: 'border-box' }} />
+          {query.trim() && visibleProducts.length === 0 && <div style={{ color: '#9ca3af', fontSize: '.82rem', padding: '.5rem 0' }}>No products found.</div>}
         </div>
       )}
 
-      {/* ── BROWSE mode ── */}
+      {/* ── Browse mode: category pills ── */}
       {mode === 'browse' && !selected && (
         <div style={{ marginBottom: '.75rem' }}>
-          {/* Breadcrumb */}
-          {(gender || category) && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '.3rem', fontSize: '.75rem', color: '#9ca3af', marginBottom: '.6rem', flexWrap: 'wrap' }}>
-              <button type="button" onClick={() => { setGender(null); setCategory(null); }}
-                style={{ background: 'none', border: 'none', color: '#9d174d', cursor: 'pointer', fontWeight: 700, fontSize: '.75rem', padding: 0 }}>Collections</button>
-              {gender && (
-                <>
-                  <span>›</span>
-                  <button type="button" onClick={() => { setCategory(null); }}
-                    style={{ background: 'none', border: 'none', color: category ? '#9d174d' : '#374151', cursor: 'pointer', fontWeight: 700, fontSize: '.75rem', padding: 0 }}>
-                    {GENDERS.find(g => g.slug === gender)?.label ?? gender}
-                  </button>
-                </>
-              )}
-              {category && (
-                <>
-                  <span>›</span>
-                  <span style={{ color: '#374151', fontWeight: 600, textTransform: 'capitalize' }}>{category}</span>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Level 1: Gender / collection */}
-          {!gender && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '.5rem' }}>
-              {GENDERS.map(g => {
-                const count = allProducts.filter(p => p.category === g.slug ||
-                  (g.slug === 'women' && !['men','kids'].includes(p.category))).length;
-                return (
-                  <button type="button" key={g.slug} onClick={() => setGender(g.slug)}
-                    style={{ padding: '.75rem .5rem', borderRadius: 10, border: '1.5px solid #fce7f3', background: '#fdf8f4', cursor: 'pointer', textAlign: 'center' }}>
-                    <div style={{ fontSize: '1.5rem' }}>{g.emoji}</div>
-                    <div style={{ fontWeight: 700, fontSize: '.85rem', marginTop: '.2rem' }}>{g.label}</div>
-                    <div style={{ fontSize: '.7rem', color: '#9ca3af' }}>{count} items</div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Level 2: Category within gender */}
-          {gender && !category && (() => {
-            const genderProducts = allProducts.filter(p => {
-              if (gender === 'women') return !['men','kids'].includes(p.category);
-              return p.category === gender || p.category.startsWith(gender);
-            });
-            const cats = Array.from(new Set(genderProducts.map(p => p.category))).sort();
-            return (
+          {allCategories.length === 0
+            ? <div style={{ fontSize: '.82rem', color: '#9ca3af' }}>Loading categories…</div>
+            : (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem' }}>
-                <button type="button" onClick={() => setCategory('__all__')}
-                  style={pill(category === '__all__')}>
-                  All ({genderProducts.length})
-                </button>
-                {cats.map(c => (
-                  <button type="button" key={c} onClick={() => setCategory(c)}
-                    style={pill(category === c)}>
-                    <span style={{ textTransform: 'capitalize' }}>{c}</span>
-                    <span style={{ marginLeft: '.3rem', opacity: .65 }}>({genderProducts.filter(p => p.category === c).length})</span>
+                {allCategories.map(c => (
+                  <button type="button" key={c} onClick={() => { setCategory(c); setSelected(null); }}
+                    style={{ ...pill(category === c), textTransform: 'capitalize' }}>
+                    {c}
+                    <span style={{ marginLeft: '.3rem', opacity: .6, fontSize: '.75rem' }}>
+                      ({allProducts.filter(p => p.category === c).length})
+                    </span>
                   </button>
                 ))}
               </div>
-            );
-          })()}
+            )
+          }
         </div>
       )}
 
-      {/* ── Product list ── */}
-      {!selected && (mode === 'search' ? searchResults.length > 0 : (gender !== null)) && (
+      {/* ── Product list (browse or search) ── */}
+      {!selected && visibleProducts.length > 0 && (
         <div style={{ border: '1px solid #f3f4f6', borderRadius: 8, overflow: 'hidden', maxHeight: 300, overflowY: 'auto' }}>
-          {displayProducts
-            .filter(p => {
-              if (mode === 'browse' && gender && category && category !== '__all__') return p.category === category;
-              if (mode === 'browse' && gender && !category) return false; // still choosing category
-              if (mode === 'browse' && gender && category === '__all__') {
-                if (gender === 'women') return !['men','kids'].includes(p.category);
-                return p.category === gender;
-              }
-              return true;
-            })
-            .map(p => {
-              const totalStock = p.variants.reduce((s, v) => s + v.stock_count, 0);
-              const oos = totalStock === 0 && p.variants.length > 0;
-              return (
-                <div key={p.id}
-                  onClick={() => !oos && selectProduct(p)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '.75rem', padding: '10px 12px', cursor: oos ? 'not-allowed' : 'pointer', borderBottom: '1px solid #f9fafb', background: '#fff', opacity: oos ? .55 : 1, transition: 'background .1s' }}
-                  onMouseEnter={e => { if (!oos) (e.currentTarget as HTMLElement).style.background = '#fdf8f4'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-                >
-                  {p.image
-                    ? <img src={p.image} alt={p.name} style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
-                    : <div style={{ width: 40, height: 40, borderRadius: 6, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '1.1rem' }}>🧵</div>
-                  }
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: '.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                    <div style={{ fontSize: '.72rem', color: '#9ca3af', textTransform: 'capitalize' }}>{p.category} · {fmt(p.price)}</div>
-                  </div>
-                  {oos
-                    ? <span style={{ fontSize: '.68rem', background: '#fee2e2', color: '#991b1b', borderRadius: 4, padding: '2px 7px', fontWeight: 700, flexShrink: 0 }}>OOS</span>
-                    : <span style={{ fontSize: '.68rem', color: '#16a34a', fontWeight: 700, flexShrink: 0 }}>{totalStock} in stock</span>
-                  }
+          {visibleProducts.map(p => {
+            const totalStock = p.variants.length > 0 ? p.variants.reduce((s, v) => s + v.stock_count, 0) : (p.stock_count ?? 0);
+            const oos = totalStock === 0;
+            return (
+              <div key={p.id}
+                onClick={() => !oos && selectProduct(p)}
+                onMouseEnter={e => { if (!oos) (e.currentTarget as HTMLElement).style.background = '#fdf8f4'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+                style={{ display: 'flex', alignItems: 'center', gap: '.75rem', padding: '10px 12px', cursor: oos ? 'not-allowed' : 'pointer', borderBottom: '1px solid #f9fafb', background: '#fff', opacity: oos ? .5 : 1 }}>
+                {p.image
+                  ? <img src={p.image} alt={p.name} style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+                  : <div style={{ width: 40, height: 40, borderRadius: 6, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🧵</div>
+                }
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: '.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                  <div style={{ fontSize: '.72rem', color: '#9ca3af', textTransform: 'capitalize' }}>{p.category} · {fmt(p.price)}</div>
                 </div>
-              );
-            })}
+                {oos
+                  ? <span style={{ fontSize: '.68rem', background: '#fee2e2', color: '#991b1b', borderRadius: 4, padding: '2px 7px', fontWeight: 700, flexShrink: 0 }}>OOS</span>
+                  : <span style={{ fontSize: '.68rem', color: '#16a34a', fontWeight: 700, flexShrink: 0 }}>{totalStock} in stock</span>
+                }
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -265,7 +151,7 @@ function ProductPicker({ allProducts, onAdd }: { allProducts: Product[]; onAdd: 
               <div style={{ fontWeight: 700, fontSize: '.95rem' }}>{selected.name}</div>
               <div style={{ fontSize: '.8rem', color: '#9d174d', fontWeight: 700 }}>{fmt(chosenVariant?.price ?? selected.price)}</div>
             </div>
-            <button type="button" onClick={() => { setSelected(null); setSelectedVariant(''); }}
+            <button type="button" onClick={() => { setSelected(null); setSelVariant(''); }}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '1.25rem', lineHeight: 1, padding: '2px 6px' }}>×</button>
           </div>
 
@@ -275,29 +161,26 @@ function ProductPicker({ allProducts, onAdd }: { allProducts: Product[]; onAdd: 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem' }}>
                 {selected.variants.map(v => {
                   const oos = v.stock_count <= 0;
-                  const isActive = v.id === selectedVariant;
                   const label = [v.size, v.colour].filter(Boolean).join(' / ');
                   return (
-                    <button type="button" key={v.id} disabled={oos} onClick={() => { setSelectedVariant(v.id); setQty(1); }}
-                      style={pill(isActive, oos)}>
-                      {label}
+                    <button type="button" key={v.id} disabled={oos} onClick={() => { setSelVariant(v.id); setQty(1); }} style={pill(v.id === selVariant, oos)}>
+                      {label || v.size}
                       {oos && <span style={{ fontSize: '.68rem', marginLeft: 4, opacity: .6 }}>(sold out)</span>}
                     </button>
                   );
                 })}
               </div>
-              {chosenVariant && stock > 0 && (
-                <div style={{ fontSize: '.72rem', color: '#16a34a', marginTop: 5, fontWeight: 600 }}>✓ {stock} in stock</div>
-              )}
-              {chosenVariant && stock === 0 && (
-                <div style={{ fontSize: '.72rem', color: '#dc2626', marginTop: 5, fontWeight: 600 }}>⚠️ Out of stock</div>
+              {chosenVariant && (
+                <div style={{ fontSize: '.72rem', marginTop: 5, fontWeight: 600, color: stock > 0 ? '#16a34a' : '#dc2626' }}>
+                  {stock > 0 ? `✓ ${stock} in stock` : '⚠️ Out of stock'}
+                </div>
               )}
             </div>
           )}
 
           {selected.variants.length === 0 && (
-            <div style={{ fontSize: '.78rem', marginBottom: '.75rem', fontWeight: 600, color: (selected.stock_count ?? 0) > 0 ? '#16a34a' : '#dc2626' }}>
-              {(selected.stock_count ?? 0) > 0 ? `✓ ${selected.stock_count} in stock` : '⚠️ Out of stock'}
+            <div style={{ fontSize: '.78rem', marginBottom: '.75rem', fontWeight: 600, color: stock > 0 ? '#16a34a' : '#dc2626' }}>
+              {stock > 0 ? `✓ ${stock} in stock` : '⚠️ Out of stock'}
             </div>
           )}
 
@@ -309,12 +192,8 @@ function ProductPicker({ allProducts, onAdd }: { allProducts: Product[]; onAdd: 
                 style={inputSm} />
             </div>
             <button type="button" onClick={addToCart}
-              disabled={selected.variants.length > 0 && !selectedVariant}
-              style={{
-                flex: 1, padding: '9px 0', background: '#9d174d', color: '#fff',
-                border: 'none', borderRadius: 8, cursor: 'pointer',
-                fontWeight: 700, fontSize: '.9rem', opacity: (selected.variants.length > 0 && !selectedVariant) ? .5 : 1,
-              }}>
+              disabled={selected.variants.length > 0 && !selVariant}
+              style={{ flex: 1, padding: '9px 0', background: '#9d174d', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '.9rem', opacity: (selected.variants.length > 0 && !selVariant) ? .5 : 1 }}>
               + Add to order
             </button>
           </div>
@@ -324,10 +203,8 @@ function ProductPicker({ allProducts, onAdd }: { allProducts: Product[]; onAdd: 
   );
 }
 
-// ─── Cart ─────────────────────────────────────────────────────────────────────────
-function Cart({ items, onQtyChange, onRemove }: {
-  items: CartItem[]; onQtyChange: (idx: number, qty: number) => void; onRemove: (idx: number) => void;
-}) {
+// ─── Cart ─────────────────────────────────────────────────────────────────────
+function Cart({ items, onQtyChange, onRemove }: { items: CartItem[]; onQtyChange: (i: number, q: number) => void; onRemove: (i: number) => void }) {
   if (items.length === 0) {
     return (
       <div style={{ background: '#fff', borderRadius: 12, padding: '2rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', textAlign: 'center', color: '#9ca3af', marginBottom: '1rem' }}>
@@ -342,34 +219,27 @@ function Cart({ items, onQtyChange, onRemove }: {
       <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#9ca3af', marginBottom: '.75rem' }}>Order items</div>
       {items.map((item, idx) => (
         <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '.75rem', padding: '10px 0', borderBottom: '1px solid #f9fafb' }}>
-          {item.image
-            ? <img src={item.image} alt={item.name} style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
-            : <div style={{ width: 40, height: 40, borderRadius: 6, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🧵</div>
-          }
+          {item.image ? <img src={item.image} alt={item.name} style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} /> : <div style={{ width: 40, height: 40, borderRadius: 6, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🧵</div>}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: '.88rem' }}>{item.name}</div>
             {item.variantLabel && <div style={{ fontSize: '.72rem', color: '#6b7280', marginTop: 2 }}>{item.variantLabel}</div>}
           </div>
-          <input type="number" min={1} max={99} value={item.quantity}
-            onChange={e => onQtyChange(idx, Math.max(1, parseInt(e.target.value) || 1))}
+          <input type="number" min={1} max={99} value={item.quantity} onChange={e => onQtyChange(idx, Math.max(1, parseInt(e.target.value) || 1))}
             style={{ width: 54, padding: '6px 8px', border: '1px solid #e5e7eb', borderRadius: 6, textAlign: 'center', fontSize: '.88rem', flexShrink: 0 }} />
           <div style={{ fontWeight: 700, color: '#9d174d', fontSize: '.9rem', flexShrink: 0, minWidth: 64, textAlign: 'right' }}>{fmt(item.price * item.quantity)}</div>
-          <button onClick={() => onRemove(idx)}
-            style={{ background: '#fee2e2', border: 'none', color: '#991b1b', borderRadius: 6, padding: '5px 9px', cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>×</button>
+          <button onClick={() => onRemove(idx)} style={{ background: '#fee2e2', border: 'none', color: '#991b1b', borderRadius: 6, padding: '5px 9px', cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>×</button>
         </div>
       ))}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem', fontWeight: 800, fontSize: '1.05rem' }}>
-        <span>Subtotal</span>
-        <span style={{ color: '#9d174d' }}>{fmt(subtotal)}</span>
+        <span>Subtotal</span><span style={{ color: '#9d174d' }}>{fmt(subtotal)}</span>
       </div>
     </div>
   );
 }
 
-// ─── Success screen ───────────────────────────────────────────────────────────────
+// ─── Success screen ───────────────────────────────────────────────────────────
 function SuccessScreen({ orderId, customerName, customerEmail, total, paymentMethod, onNewOrder }: {
-  orderId: string; customerName: string; customerEmail: string;
-  total: number; paymentMethod: PaymentMethod; onNewOrder: () => void;
+  orderId: string; customerName: string; customerEmail: string; total: number; paymentMethod: PaymentMethod; onNewOrder: () => void;
 }) {
   const pm = PAYMENT_OPTIONS.find(o => o.value === paymentMethod);
   return (
@@ -378,22 +248,10 @@ function SuccessScreen({ orderId, customerName, customerEmail, total, paymentMet
       <h2 style={{ fontFamily: 'Georgia, serif', color: '#9d174d', margin: '0 0 .5rem' }}>Order placed!</h2>
       <p style={{ color: '#6b7280', margin: '0 0 1.5rem' }}>Confirmation sent to <strong>{customerEmail}</strong></p>
       <div style={{ background: '#fdf8f4', borderRadius: 10, padding: '1rem 1.5rem', marginBottom: '1.5rem', textAlign: 'left' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem' }}>
-          <span style={{ color: '#9ca3af', fontSize: '.85rem' }}>Order ID</span>
-          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '.85rem' }}>#{orderId.slice(0, 8).toUpperCase()}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem' }}>
-          <span style={{ color: '#9ca3af', fontSize: '.85rem' }}>Customer</span>
-          <span style={{ fontWeight: 600, fontSize: '.85rem' }}>{customerName}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem' }}>
-          <span style={{ color: '#9ca3af', fontSize: '.85rem' }}>Total</span>
-          <span style={{ fontWeight: 800, fontSize: '1rem', color: '#9d174d' }}>{fmt(total)}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: '#9ca3af', fontSize: '.85rem' }}>Payment</span>
-          <span style={{ fontWeight: 700, fontSize: '.85rem', color: pm?.colour }}>{pm?.icon} {pm?.label}</span>
-        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem' }}><span style={{ color: '#9ca3af', fontSize: '.85rem' }}>Order ID</span><span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '.85rem' }}>#{orderId.slice(0,8).toUpperCase()}</span></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem' }}><span style={{ color: '#9ca3af', fontSize: '.85rem' }}>Customer</span><span style={{ fontWeight: 600, fontSize: '.85rem' }}>{customerName}</span></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem' }}><span style={{ color: '#9ca3af', fontSize: '.85rem' }}>Total</span><span style={{ fontWeight: 800, fontSize: '1rem', color: '#9d174d' }}>{fmt(total)}</span></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#9ca3af', fontSize: '.85rem' }}>Payment</span><span style={{ fontWeight: 700, fontSize: '.85rem', color: pm?.colour }}>{pm?.icon} {pm?.label}</span></div>
       </div>
       <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
         <a href="/admin/orders" style={{ padding: '10px 24px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, fontWeight: 700, fontSize: '.88rem', textDecoration: 'none', color: '#1a1a1a' }}>View in orders →</a>
@@ -403,12 +261,12 @@ function SuccessScreen({ orderId, customerName, customerEmail, total, paymentMet
   );
 }
 
-// ─── Main page ───────────────────────────────────────────────────────────────────────
+// ─── Main page ────────────────────────────────────────────────────────────────
 export default function AdminCheckoutPage() {
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [cartItems,   setCartItems]   = useState<CartItem[]>([]);
   const [paymentMethod, setPayment]   = useState<PaymentMethod>('cash');
-  const [shippingCost, setShipping]   = useState<number>(0);
+  const [shippingCost, setShipping]   = useState(0);
   const [shippingEnabled, setShipEn]  = useState(false);
   const [notes, setNotes]             = useState('');
   const [name,  setName]              = useState('');
@@ -421,14 +279,14 @@ export default function AdminCheckoutPage() {
   const [postcode, setPost]           = useState('');
   const [submitting, setSubmitting]   = useState(false);
   const [error,  setError]            = useState('');
-  const [success, setSuccess]         = useState<{ orderId: string }|null>(null);
+  const [success, setSuccess]         = useState<{ orderId: string } | null>(null);
 
-  // Load all products + variants once on mount via /api/admin/stock
+  // Load all products + variants once via /api/admin/stock (uses admin_session cookie)
   useEffect(() => {
     fetch('/api/admin/stock', { credentials: 'include' })
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(data => { if (Array.isArray(data)) setAllProducts(data); })
-      .catch(() => {});
+      .catch(err => console.error('[checkout] failed to load products:', err));
   }, []);
 
   const subtotal   = cartItems.reduce((s, i) => s + i.price * i.quantity, 0);
@@ -437,8 +295,8 @@ export default function AdminCheckoutPage() {
   function addItem(item: CartItem) {
     setCartItems(prev => {
       const key = `${item.productId}__${item.size ?? ''}__${item.colour ?? ''}`;
-      const existingIdx = prev.findIndex(i => `${i.productId}__${i.size ?? ''}__${i.colour ?? ''}` === key);
-      if (existingIdx >= 0) return prev.map((i, idx) => idx === existingIdx ? { ...i, quantity: i.quantity + item.quantity } : i);
+      const ei  = prev.findIndex(i => `${i.productId}__${i.size ?? ''}__${i.colour ?? ''}` === key);
+      if (ei >= 0) return prev.map((i, idx) => idx === ei ? { ...i, quantity: i.quantity + item.quantity } : i);
       return [...prev, item];
     });
   }
@@ -455,15 +313,11 @@ export default function AdminCheckoutPage() {
     if (cartItems.length === 0) { setError('Add at least one product.'); return; }
     if (!name || !email) { setError('Customer name and email are required.'); return; }
     setSubmitting(true); setError('');
-    const orderItems = cartItems.map(i => ({
-      id: i.productId, name: i.name, quantity: i.quantity, price: i.price,
-      ...(i.size   ? { size:   i.size   } : {}),
-      ...(i.colour ? { colour: i.colour } : {}),
-    }));
     const res = await fetch('/api/create-manual-order', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        payment_method: paymentMethod, items: orderItems,
+        payment_method: paymentMethod,
+        items: cartItems.map(i => ({ id: i.productId, name: i.name, quantity: i.quantity, price: i.price, ...(i.size ? { size: i.size } : {}), ...(i.colour ? { colour: i.colour } : {}) })),
         customer_name: name, customer_email: email, customer_phone: phone || undefined,
         shipping_line1: line1 || undefined, shipping_line2: line2 || undefined,
         shipping_suburb: suburb || undefined, shipping_state: state || undefined,
@@ -478,9 +332,7 @@ export default function AdminCheckoutPage() {
     setSubmitting(false);
   }
 
-  if (success) {
-    return <SuccessScreen orderId={success.orderId} customerName={name} customerEmail={email} total={grandTotal} paymentMethod={paymentMethod} onNewOrder={resetForm} />;
-  }
+  if (success) return <SuccessScreen orderId={success.orderId} customerName={name} customerEmail={email} total={grandTotal} paymentMethod={paymentMethod} onNewOrder={resetForm} />;
 
   return (
     <div style={{ padding: '2rem', maxWidth: 1100, margin: '0 auto', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
@@ -496,9 +348,8 @@ export default function AdminCheckoutPage() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '1.5rem', alignItems: 'start' }}>
           <div>
             <ProductPicker allProducts={allProducts} onAdd={addItem} />
-            <Cart items={cartItems} onQtyChange={(idx, qty) => setCartItems(prev => prev.map((i, n) => n === idx ? { ...i, quantity: qty } : i))} onRemove={idx => setCartItems(prev => prev.filter((_, n) => n !== idx))} />
+            <Cart items={cartItems} onQtyChange={(idx, q) => setCartItems(prev => prev.map((i, n) => n === idx ? { ...i, quantity: q } : i))} onRemove={idx => setCartItems(prev => prev.filter((_, n) => n !== idx))} />
 
-            {/* Customer details */}
             <div style={{ background: '#fff', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: '1rem' }}>
               <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#9ca3af', marginBottom: '.75rem' }}>Customer details</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -509,8 +360,8 @@ export default function AdminCheckoutPage() {
               <details style={{ marginTop: '1rem' }}>
                 <summary style={{ cursor: 'pointer', fontSize: '.82rem', fontWeight: 600, color: '#6b7280', userSelect: 'none' }}>+ Shipping address (optional)</summary>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
-                  <div style={{ gridColumn: '1 / -1' }}><label style={labelSm}>Street</label><input value={line1} onChange={e => setLine1(e.target.value)} placeholder="12 Collins St" style={inputSm} /></div>
-                  <div style={{ gridColumn: '1 / -1' }}><label style={labelSm}>Unit / Apartment</label><input value={line2} onChange={e => setLine2(e.target.value)} placeholder="Unit 4" style={inputSm} /></div>
+                  <div style={{ gridColumn: '1/-1' }}><label style={labelSm}>Street</label><input value={line1} onChange={e => setLine1(e.target.value)} placeholder="12 Collins St" style={inputSm} /></div>
+                  <div style={{ gridColumn: '1/-1' }}><label style={labelSm}>Unit / Apartment</label><input value={line2} onChange={e => setLine2(e.target.value)} placeholder="Unit 4" style={inputSm} /></div>
                   <div><label style={labelSm}>Suburb</label><input value={suburb} onChange={e => setSuburb(e.target.value)} placeholder="Melbourne" style={inputSm} /></div>
                   <div><label style={labelSm}>State</label>
                     <select value={state} onChange={e => setState(e.target.value)} style={inputSm}>
@@ -523,14 +374,11 @@ export default function AdminCheckoutPage() {
               </details>
               <div style={{ marginTop: '1rem' }}>
                 <label style={labelSm}>Internal notes</label>
-                <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-                  placeholder="e.g. customer picked up in store…"
-                  style={{ ...inputSm, resize: 'vertical', fontFamily: 'inherit' } as React.CSSProperties} />
+                <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="e.g. customer picked up in store…" style={{ ...inputSm, resize: 'vertical', fontFamily: 'inherit' } as React.CSSProperties} />
               </div>
             </div>
           </div>
 
-          {/* Right sidebar */}
           <div style={{ position: 'sticky', top: '1.5rem' }}>
             <div style={{ background: '#fff', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: '1rem' }}>
               <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#9ca3af', marginBottom: '.75rem' }}>Payment method</div>
@@ -553,8 +401,7 @@ export default function AdminCheckoutPage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '.75rem' }}>
                 <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#9ca3af' }}>Shipping</div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer', fontSize: '.85rem', color: '#374151' }}>
-                  <input type="checkbox" checked={shippingEnabled} onChange={e => setShipEn(e.target.checked)} style={{ accentColor: '#9d174d' }} />
-                  Add shipping
+                  <input type="checkbox" checked={shippingEnabled} onChange={e => setShipEn(e.target.checked)} style={{ accentColor: '#9d174d' }} /> Add shipping
                 </label>
               </div>
               {shippingEnabled && (
@@ -566,17 +413,9 @@ export default function AdminCheckoutPage() {
             </div>
 
             <div style={{ background: '#fdf2f8', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem', fontSize: '.88rem', color: '#6b7280' }}>
-                <span>Subtotal</span><span>{fmt(subtotal)}</span>
-              </div>
-              {shippingEnabled && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem', fontSize: '.88rem', color: '#6b7280' }}>
-                  <span>Shipping</span><span>{fmt(shippingCost)}</span>
-                </div>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '.75rem', borderTop: '2px solid #fce7f3', fontWeight: 800, fontSize: '1.2rem', color: '#9d174d' }}>
-                <span>Total</span><span>{fmt(grandTotal)}</span>
-              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem', fontSize: '.88rem', color: '#6b7280' }}><span>Subtotal</span><span>{fmt(subtotal)}</span></div>
+              {shippingEnabled && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem', fontSize: '.88rem', color: '#6b7280' }}><span>Shipping</span><span>{fmt(shippingCost)}</span></div>}
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '.75rem', borderTop: '2px solid #fce7f3', fontWeight: 800, fontSize: '1.2rem', color: '#9d174d' }}><span>Total</span><span>{fmt(grandTotal)}</span></div>
             </div>
 
             {error && <div style={{ background: '#fee2e2', color: '#991b1b', borderRadius: 8, padding: '10px 14px', fontSize: '.85rem', marginBottom: '1rem' }}>{error}</div>}
