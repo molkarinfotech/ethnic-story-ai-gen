@@ -79,14 +79,35 @@ export interface OrderEmailData {
   customerEmail: string;
   orderId: string;
   items: { name: string; quantity: number; price: number; size?: string }[];
+  subtotalAud?: number;   // if omitted, derived from items
+  shippingCost?: number;  // 0 = free; undefined = not shown
   totalAud: number;
+  paymentMethod?: 'card' | 'cash' | 'eftpos' | 'payid';
   shippingAddress: {
     line1?: string; line2?: string; suburb?: string;
     state?: string; postcode?: string;
   };
 }
 
+const PAYMENT_LABELS: Record<string, string> = {
+  card:   '💳 Card (Stripe)',
+  cash:   '💵 Cash on Delivery',
+  eftpos: '🏧 EFTPOS (Pay in store / on pickup)',
+  payid:  '📲 PayID / Bank Transfer',
+};
+
+const PAYMENT_INSTRUCTIONS: Record<string, string> = {
+  cash:   'Please have the exact cash amount ready when your order is collected or delivered.',
+  eftpos: 'Our team will contact you to arrange payment when your order is ready.',
+  payid:  `Please transfer the total amount to:<br/><strong>PayID:</strong> orders@ethnicstory.com.au<br/><strong>Reference:</strong> your order ID shown above.<br/>Your order will be dispatched once payment is confirmed.`,
+};
+
 export function buildOrderConfirmationEmail(data: OrderEmailData): EmailPayload {
+  // Derive subtotal from items if not supplied
+  const subtotal = data.subtotalAud ?? data.items.reduce((s, i) => s + i.price * i.quantity, 0);
+  const shippingCost = data.shippingCost ?? 0;
+  const method = data.paymentMethod ?? 'card';
+
   const itemRows = data.items.map(i => `
     <tr>
       <td style="padding:12px 0;border-bottom:1px solid #f3f4f6;">
@@ -100,6 +121,13 @@ export function buildOrderConfirmationEmail(data: OrderEmailData): EmailPayload 
   const addr = data.shippingAddress;
   const addrStr = [addr.line1, addr.line2, addr.suburb, addr.state, addr.postcode].filter(Boolean).join(', ');
 
+  const paymentInstructionHtml = PAYMENT_INSTRUCTIONS[method]
+    ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px 20px;margin-bottom:28px;">
+        <div style="font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">Payment instructions</div>
+        <div style="font-size:14px;color:#374151;line-height:1.7;">${PAYMENT_INSTRUCTIONS[method]}</div>
+      </div>`
+    : '';
+
   const content = `
     <h1 style="font-family:Georgia,serif;color:#9d174d;font-size:24px;margin:0 0 8px;">Order Confirmed 🎉</h1>
     <p style="color:#6b7280;margin:0 0 28px;font-size:15px;">Thank you, <strong>${data.customerName}</strong>! We've received your order and it's being prepared with care.</p>
@@ -109,6 +137,7 @@ export function buildOrderConfirmationEmail(data: OrderEmailData): EmailPayload 
       <div style="font-weight:700;font-size:15px;color:#1a1a1a;margin-top:4px;font-family:monospace;">${data.orderId.toUpperCase().slice(0,16)}</div>
     </div>
 
+    <!-- ── Invoice table ── -->
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
       <thead>
         <tr style="background:#fdf8f4;">
@@ -119,12 +148,34 @@ export function buildOrderConfirmationEmail(data: OrderEmailData): EmailPayload 
       </thead>
       <tbody>${itemRows}</tbody>
       <tfoot>
+        <!-- Subtotal -->
         <tr>
-          <td colspan="2" style="padding:16px 0 0;font-weight:700;font-size:15px;">Total</td>
-          <td style="padding:16px 0 0;text-align:right;font-weight:800;font-size:18px;color:#9d174d;">A$${data.totalAud.toFixed(2)}</td>
+          <td colspan="2" style="padding:14px 0 4px;font-size:14px;color:#6b7280;">Subtotal</td>
+          <td style="padding:14px 0 4px;text-align:right;font-size:14px;color:#6b7280;">A$${subtotal.toFixed(2)}</td>
+        </tr>
+        <!-- Shipping -->
+        <tr>
+          <td colspan="2" style="padding:4px 0;font-size:14px;color:#6b7280;">Shipping</td>
+          <td style="padding:4px 0;text-align:right;font-size:14px;color:${shippingCost === 0 ? '#16a34a' : '#6b7280'};">
+            ${shippingCost === 0 ? '<strong>FREE</strong>' : `A$${shippingCost.toFixed(2)}`}
+          </td>
+        </tr>
+        <!-- Divider -->
+        <tr><td colspan="3" style="padding:0;border-top:2px solid #f3f4f6;"></td></tr>
+        <!-- Grand total -->
+        <tr>
+          <td colspan="2" style="padding:14px 0 0;font-weight:700;font-size:15px;">Total (AUD)</td>
+          <td style="padding:14px 0 0;text-align:right;font-weight:800;font-size:18px;color:#9d174d;">A$${data.totalAud.toFixed(2)}</td>
+        </tr>
+        <!-- Payment method -->
+        <tr>
+          <td colspan="2" style="padding:8px 0 0;font-size:12px;color:#9ca3af;">Payment method</td>
+          <td style="padding:8px 0 0;text-align:right;font-size:12px;color:#6b7280;">${PAYMENT_LABELS[method] ?? method}</td>
         </tr>
       </tfoot>
     </table>
+
+    ${paymentInstructionHtml}
 
     ${addrStr ? `
     <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:16px 20px;margin-bottom:28px;">
@@ -138,7 +189,7 @@ export function buildOrderConfirmationEmail(data: OrderEmailData): EmailPayload 
     </div>
 
     <div style="text-align:center;">
-      <a href="https://ethnicstory.com.au/account" style="display:inline-block;padding:14px 32px;background:#9d174d;color:white;text-decoration:none;border-radius:50px;font-weight:700;font-size:14px;letter-spacing:.04em;">Track My Order</a>
+      <a href="https://ethnicstory.com.au/orders/${data.orderId}" style="display:inline-block;padding:14px 32px;background:#9d174d;color:white;text-decoration:none;border-radius:50px;font-weight:700;font-size:14px;letter-spacing:.04em;">Track My Order →</a>
     </div>
   `;
 
