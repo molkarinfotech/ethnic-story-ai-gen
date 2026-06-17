@@ -139,7 +139,7 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
             <tbody>
               {items.map((item, i) => {
                 const variant = [item.size, item.colour].filter(Boolean).join(' / ');
-                const productUrl = `/admin/products/${item.id}`;
+                const productUrl = `/admin/products/${item.id}/edit`;
                 return (
                   <tr key={i} style={{ borderBottom: '1px solid #f9fafb' }}>
                     <td style={{ padding: '8px 0' }}>
