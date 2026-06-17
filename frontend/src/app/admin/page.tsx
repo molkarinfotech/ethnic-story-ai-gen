@@ -820,7 +820,7 @@ export default function AdminDashboard() {
     <main style={{ minHeight:'100dvh',background:'#fdf2f8',fontFamily:'system-ui, sans-serif',paddingBottom:'5rem' }}>
       <div style={{ background:'#9d174d',color:'white',padding:'.85rem 1rem',display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:20 }}>
         <div style={{ display:'flex',alignItems:'center',gap:'.6rem' }}>
-          <a href="/" style={{ color:'white',textDecoration:'none',fontWeight:800,fontSize:'1rem' }}>Ethnic Story</a>
+          <span style={{ fontWeight: 800, fontSize: '1rem' }}>Ethnic Story</span>
           <span style={{ opacity:.5 }}>|</span>
           <span style={{ fontSize:'.82rem',opacity:.8 }}>Admin</span>
         </div>
