@@ -43,11 +43,11 @@ export async function POST(req: NextRequest) {
     const sb = getServiceSupabase();
 
     // Derive shipping cost: total minus sum of item prices
-    const itemsTotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
-    const totalAud   = pi.amount / 100;
+    const itemsTotal  = items.reduce((s, i) => s + i.price * i.quantity, 0);
+    const totalAud    = pi.amount / 100;
     const shippingCost = Math.max(0, Math.round((totalAud - itemsTotal) * 100) / 100);
 
-    // ── 1. Save order ──────────────────────────────────────────────────────────────────────
+    // ── 1. Save order ───────────────────────────────────────────────────────────────────────────────
     const { error: insertError, data: orderData } = await sb.from('orders').insert({
       stripe_payment_intent_id: pi.id,
       amount_aud:               totalAud,
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     const orderId = orderData?.[0]?.id ?? pi.id;
     console.log('[stripe-webhook] Order saved. user_id:', m.user_id || 'guest', '| row:', orderId);
 
-    // ── 2. Decrement stock per variant ─────────────────────────────────────────────────────
+    // ── 2. Decrement stock per variant ─────────────────────────────────────────────────────────────────────
     for (const item of items) {
       if (!item.id || !item.quantity) continue;
 
@@ -109,14 +109,25 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── 3. Send order confirmation email ────────────────────────────────────────────────
+    // ── 3. Fetch product images for confirmation email ──────────────────────────────────────────────
+    const productIds = [...new Set(items.map(i => i.id))];
+    const { data: productRows } = await sb
+      .from('products')
+      .select('id, image')
+      .in('id', productIds);
+    const imageMap: Record<string, string> = {};
+    for (const row of productRows ?? []) {
+      if (row.image) imageMap[row.id] = row.image;
+    }
+
+    // ── 4. Send order confirmation email ────────────────────────────────────────────────────────────
     if (m.customer_email) {
       try {
         const emailPayload = buildOrderConfirmationEmail({
           customerName:    m.customer_name || 'Valued Customer',
           customerEmail:   m.customer_email,
           orderId,
-          items,
+          items: items.map(i => ({ ...i, image: imageMap[i.id] })),
           subtotalAud:     itemsTotal,
           shippingCost,
           totalAud,
