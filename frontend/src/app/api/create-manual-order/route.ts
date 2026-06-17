@@ -7,6 +7,14 @@ export const dynamic = 'force-dynamic';
 const ALLOWED_METHODS = ['cash', 'eftpos', 'payid'] as const;
 type ManualMethod = typeof ALLOWED_METHODS[number];
 
+function genId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
@@ -24,11 +32,15 @@ export async function POST(req: NextRequest) {
     amount_aud,
     shipping_cost = 0,
     user_id,
+    notes,
   } = body;
 
-  // ── Validate ────────────────────────────────────────────────────────────────────
+  // ── Validate ──────────────────────────────────────────────────────────────────
   if (!ALLOWED_METHODS.includes(payment_method)) {
-    return NextResponse.json({ error: `payment_method must be one of: ${ALLOWED_METHODS.join(', ')}` }, { status: 400 });
+    return NextResponse.json(
+      { error: `payment_method must be one of: ${ALLOWED_METHODS.join(', ')}` },
+      { status: 400 },
+    );
   }
   if (!Array.isArray(items) || items.length === 0) {
     return NextResponse.json({ error: 'items must be a non-empty array' }, { status: 400 });
@@ -42,19 +54,27 @@ export async function POST(req: NextRequest) {
 
   const sb = getServiceSupabase();
 
-  // ── Insert order ───────────────────────────────────────────────────────────────────
+  // ── Insert order ───────────────────────────────────────────────────────────────
+  // stripe_payment_intent_id has a NOT NULL constraint in the DB schema.
+  // For manual (non-Stripe) orders we supply a prefixed placeholder so the
+  // constraint is satisfied while remaining clearly distinguishable from real
+  // Stripe PI ids (which always start with "pi_").
+  const manualPiId = `manual_${genId()}`;
+
   const { data: orderData, error: insertError } = await sb
     .from('orders')
     .insert({
+      stripe_payment_intent_id: manualPiId,
       payment_method,
-      status:         'pending',          // awaiting cash / eftpos / payid
+      status:         'pending',
       amount_aud:     Number(amount_aud),
       shipping_cost:  Number(shipping_cost),
       items,
-      user_id:        user_id || null,
+      user_id:        user_id        || null,
       customer_name:  customer_name  || null,
       customer_email: customer_email || null,
       customer_phone: customer_phone || null,
+      notes:          notes          || null,
       shipping_address: {
         line1:    shipping_line1    || null,
         line2:    shipping_line2    || null,
@@ -74,20 +94,58 @@ export async function POST(req: NextRequest) {
 
   const orderId = orderData.id;
 
-  // ── Decrement stock ──────────────────────────────────────────────────────────────────
+  // ── Decrement stock ────────────────────────────────────────────────────────────
+  // Strategy:
+  //   1. If item has a size → decrement the matching product_variants row.
+  //   2. If no size but variants exist for this product → decrement the first
+  //      variant (covers single-variant products like "One Size").
+  //   3. If no variants at all → decrement products.stock_count directly.
   for (const item of items) {
-    if (!item.id || !item.quantity) continue;
-    let q = sb.from('product_variants').select('id, stock_count').eq('product_id', item.id);
-    if (item.size) q = q.eq('size', item.size);
-    const { data: variant } = await q.maybeSingle();
-    if (variant) {
-      const newStock = Math.max(0, (variant.stock_count ?? 0) - item.quantity);
-      await sb.from('product_variants').update({ stock_count: newStock }).eq('id', variant.id);
+    if (!item.id || !item.quantity || item.quantity < 1) continue;
+
+    const qty = Number(item.quantity);
+
+    // Look up variants for this product
+    let variantQuery = sb
+      .from('product_variants')
+      .select('id, stock_count')
+      .eq('product_id', item.id);
+    if (item.size) variantQuery = variantQuery.eq('size', item.size);
+
+    const { data: variants } = await variantQuery;
+
+    if (variants && variants.length > 0) {
+      // Use the first matching variant (exact size match, or first variant if no size given)
+      const v = variants[0];
+      const newStock = Math.max(0, (v.stock_count ?? 0) - qty);
+      const { error: varErr } = await sb
+        .from('product_variants')
+        .update({ stock_count: newStock })
+        .eq('id', v.id);
+      if (varErr) console.error('[create-manual-order] variant stock update failed:', varErr.message);
+    } else {
+      // Fallback: update products.stock_count directly
+      const { data: prod } = await sb
+        .from('products')
+        .select('id, stock_count')
+        .eq('id', item.id)
+        .maybeSingle();
+      if (prod) {
+        const newStock = Math.max(0, ((prod as any).stock_count ?? 0) - qty);
+        const { error: prodErr } = await sb
+          .from('products')
+          .update({ stock_count: newStock })
+          .eq('id', item.id);
+        if (prodErr) console.error('[create-manual-order] product stock update failed:', prodErr.message);
+      }
     }
   }
 
-  // ── Send confirmation email ──────────────────────────────────────────────────────────
-  const itemsTotal = items.reduce((s: number, i: { price: number; quantity: number }) => s + i.price * i.quantity, 0);
+  // ── Send confirmation email ────────────────────────────────────────────────────
+  const itemsTotal = items.reduce(
+    (s: number, i: { price: number; quantity: number }) => s + i.price * i.quantity,
+    0,
+  );
   try {
     const emailPayload = buildOrderConfirmationEmail({
       customerName:    customer_name || 'Valued Customer',
