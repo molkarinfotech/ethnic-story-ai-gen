@@ -1,22 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '../../../../../lib/supabase';
-import { cookies } from 'next/headers';
+import { isAdminAuthed } from '../../../../../lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
-function isAdminAuthed(): boolean {
-  try {
-    const store = cookies();
-    return store.get('admin_session')?.value === (process.env.ADMIN_SECRET ?? 'ethnic-admin-secret');
-  } catch { return false; }
-}
-
-// GET — fetch a single order (admin only)
+// GET — fetch a single order
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  if (!isAdminAuthed()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const sb = getServiceSupabase();
   const { data, error } = await sb
@@ -26,18 +19,16 @@ export async function GET(
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (!data)  return NextResponse.json({ error: 'Not found' },    { status: 404 });
   return NextResponse.json(data);
 }
 
-// PATCH — update order fulfillment fields (admin only)
+// PATCH — update fulfillment fields
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  if (!isAdminAuthed()) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = params;
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
@@ -47,14 +38,17 @@ export async function PATCH(
   const VALID_STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
   const allowed: Record<string, unknown> = {};
 
-  // Support both 'status' (legacy) and 'fulfillment_status'
+  // Accept both fulfillment_status and legacy status
   const statusVal = body.fulfillment_status ?? body.status;
   if (statusVal !== undefined) {
     if (!VALID_STATUSES.includes(statusVal)) {
-      return NextResponse.json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` }, { status: 400 });
+      return NextResponse.json(
+        { error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` },
+        { status: 400 },
+      );
     }
     allowed.fulfillment_status = statusVal;
-    allowed.status             = statusVal; // keep both in sync
+    allowed.status             = statusVal;
   }
   if (body.tracking_number  !== undefined) allowed.tracking_number  = body.tracking_number  || null;
   if (body.shipping_carrier !== undefined) allowed.shipping_carrier = body.shipping_carrier || null;
