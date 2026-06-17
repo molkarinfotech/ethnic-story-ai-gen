@@ -67,7 +67,7 @@ export interface OrderEmailData {
   customerName:  string;
   customerEmail: string;
   orderId:       string;
-  items: { name: string; quantity: number; price: number; size?: string; colour?: string }[];
+  items: { name: string; quantity: number; price: number; size?: string; colour?: string; image?: string }[];
   subtotalAud?:  number;
   shippingCost?: number;
   totalAud:      number;
@@ -92,14 +92,23 @@ const PAYMENT_INSTRUCTIONS: Record<string, string> = {
 function buildItemRows(items: OrderEmailData['items']): string {
   return items.map(i => {
     const variant = [i.size, i.colour].filter(Boolean).join(' / ');
+    // Use a nested table for image + text so it renders correctly in all email clients
+    const imgCell = i.image
+      ? `<img src="${i.image}" alt="${i.name}" width="56" height="56" style="border-radius:8px;object-fit:cover;border:1px solid #f0e8e0;display:block;" />`
+      : `<div style="width:56px;height:56px;border-radius:8px;background:#f3f4f6;text-align:center;line-height:56px;font-size:1.4rem;">🧵</div>`;
     return `
     <tr>
       <td style="padding:12px 0;border-bottom:1px solid #f3f4f6;">
-        <div style="font-weight:600;color:#1a1a1a;">${i.name}</div>
-        ${variant ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">${variant}</div>` : ''}
+        <table cellpadding="0" cellspacing="0" border="0"><tr>
+          <td style="padding-right:12px;vertical-align:top;">${imgCell}</td>
+          <td style="vertical-align:middle;">
+            <div style="font-weight:600;color:#1a1a1a;">${i.name}</div>
+            ${variant ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">${variant}</div>` : ''}
+          </td>
+        </tr></table>
       </td>
-      <td style="padding:12px 0;border-bottom:1px solid #f3f4f6;text-align:center;color:#6b7280;">${i.quantity}</td>
-      <td style="padding:12px 0;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:#9d174d;">A$${(i.price * i.quantity).toFixed(2)}</td>
+      <td style="padding:12px 0;border-bottom:1px solid #f3f4f6;text-align:center;color:#6b7280;vertical-align:middle;">${i.quantity}</td>
+      <td style="padding:12px 0;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:#9d174d;vertical-align:middle;">A$${(i.price * i.quantity).toFixed(2)}</td>
     </tr>`;
   }).join('');
 }
@@ -145,7 +154,7 @@ export function buildOrderConfirmationEmail(data: OrderEmailData): EmailPayload 
 
   const content = `
     <h1 style="font-family:Georgia,serif;color:#9d174d;font-size:24px;margin:0 0 8px;">Order Confirmed 🎉</h1>
-    <p style="color:#6b7280;margin:0 0 28px;font-size:15px;">Thank you, <strong>${data.customerName}</strong>! We’ve received your order and it’s being prepared with care.</p>
+    <p style="color:#6b7280;margin:0 0 28px;font-size:15px;">Thank you, <strong>${data.customerName}</strong>! We've received your order and it's being prepared with care.</p>
 
     <div style="background:#fdf8f4;border-radius:10px;padding:16px 20px;margin-bottom:28px;">
       <span style="font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:.1em;">Order reference</span>
@@ -251,8 +260,8 @@ export function buildInstoreInvoiceEmail(data: OrderEmailData): EmailPayload {
 
     <!-- Warm closing -->
     <div style="background:linear-gradient(135deg,#fdf2f8,#fff7ed);border-radius:10px;padding:20px 24px;text-align:center;margin-bottom:28px;">
-      <div style="font-family:Georgia,serif;font-size:15px;color:#9d174d;font-style:italic;">“Wearing culture, carrying tradition.”</div>
-      <div style="font-size:12px;color:#9ca3af;margin-top:8px;">We’d love to see you again. Visit us in store or online at <a href="https://ethnicstory.com.au" style="color:#9d174d;">ethnicstory.com.au</a></div>
+      <div style="font-family:Georgia,serif;font-size:15px;color:#9d174d;font-style:italic;">"Wearing culture, carrying tradition."</div>
+      <div style="font-size:12px;color:#9ca3af;margin-top:8px;">We'd love to see you again. Visit us in store or online at <a href="https://ethnicstory.com.au" style="color:#9d174d;">ethnicstory.com.au</a></div>
     </div>
 
     <div style="text-align:center;">
@@ -277,7 +286,7 @@ export interface RestockEmailData {
 export function buildRestockEmail(data: RestockEmailData): EmailPayload {
   const url = `https://ethnicstory.com.au/products/${data.productSlug}`;
   const content = `
-    <h1 style="font-family:Georgia,serif;color:#9d174d;font-size:24px;margin:0 0 8px;">It’s back! 🎉</h1>
+    <h1 style="font-family:Georgia,serif;color:#9d174d;font-size:24px;margin:0 0 8px;">It's back! 🎉</h1>
     <p style="color:#6b7280;margin:0 0 28px;font-size:15px;"><strong>${data.productName}</strong> is back in stock — grab yours before it sells out again.</p>
     ${data.productImage ? `<div style="text-align:center;margin-bottom:24px;"><img src="${data.productImage}" alt="${data.productName}" style="max-width:240px;border-radius:12px;border:1px solid #f0e8e0;" /></div>` : ''}
     <div style="text-align:center;margin-bottom:32px;">
@@ -294,8 +303,8 @@ export function buildRestockEmail(data: RestockEmailData): EmailPayload {
 // ─── Template: Restock Subscription Confirmation ─────────────────────────────
 export function buildRestockSubscribedEmail(productName: string, email: string): EmailPayload {
   const content = `
-    <h1 style="font-family:Georgia,serif;color:#9d174d;font-size:24px;margin:0 0 8px;">You’re on the list ✓</h1>
-    <p style="color:#6b7280;margin:0 0 28px;font-size:15px;">We’ll send you an email at <strong>${email}</strong> as soon as <strong>${productName}</strong> is back in stock.</p>
+    <h1 style="font-family:Georgia,serif;color:#9d174d;font-size:24px;margin:0 0 8px;">You're on the list ✓</h1>
+    <p style="color:#6b7280;margin:0 0 28px;font-size:15px;">We'll send you an email at <strong>${email}</strong> as soon as <strong>${productName}</strong> is back in stock.</p>
     <div style="background:#fdf2f8;border:1px solid #fbcfe8;border-radius:10px;padding:20px;text-align:center;margin-bottom:28px;">
       <span style="font-size:2rem;">🔔</span>
       <div style="font-size:14px;color:#9d174d;font-weight:600;margin-top:8px;">Notification set for</div>
@@ -306,7 +315,7 @@ export function buildRestockSubscribedEmail(productName: string, email: string):
     </div>`;
   return {
     to:      email,
-    subject: `We’ll notify you when ${productName} is back ✦ Ethnic Story`,
+    subject: `We'll notify you when ${productName} is back ✦ Ethnic Story`,
     html:    brandWrap(content),
   };
 }
