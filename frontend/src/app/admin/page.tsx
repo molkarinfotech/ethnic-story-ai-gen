@@ -102,7 +102,7 @@ function OrdersPanel({ orders: initialOrders }: { orders: Order[] }) {
   };
 
   return (
-    <div>
+    <div style={{ maxWidth: '860px' }}>
       {/* Filter bar */}
       <div style={{ display:'flex',flexDirection:'column',gap:'.5rem',marginBottom:'.85rem' }}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search name, email, tracking…"
@@ -153,8 +153,6 @@ function OrdersPanel({ orders: initialOrders }: { orders: Order[] }) {
 
               {isOpen && (
                 <div style={{ borderTop:'1px solid #f3f4f6',padding:'.9rem 1rem',display:'flex',flexDirection:'column',gap:'.75rem' }}>
-
-                  {/* Contact */}
                   <div style={{ fontSize:'.8rem',color:'#6b7280',lineHeight:1.6 }}>
                     {o.customer_email && <div>✉️ {o.customer_email}</div>}
                     {o.customer_phone && <div>📞 {o.customer_phone}</div>}
@@ -162,8 +160,6 @@ function OrdersPanel({ orders: initialOrders }: { orders: Order[] }) {
                       <div>📍 {[o.shipping_address.line1,o.shipping_address.line2,o.shipping_address.suburb,o.shipping_address.state,o.shipping_address.postcode].filter(Boolean).join(', ')}</div>
                     )}
                   </div>
-
-                  {/* Items */}
                   <div style={{ display:'flex',flexDirection:'column',gap:'.3rem' }}>
                     {items.map((it,i)=>(
                       <div key={i} style={{ display:'flex',justifyContent:'space-between',alignItems:'center',padding:'.4rem .65rem',background:'#f9fafb',borderRadius:'.45rem',fontSize:'.82rem' }}>
@@ -181,12 +177,8 @@ function OrdersPanel({ orders: initialOrders }: { orders: Order[] }) {
                       <span>Total</span><span style={{ color:'#9d174d' }}>{formatAUD(Number(o.amount_aud))}</span>
                     </div>
                   </div>
-
-                  {/* Editable fields */}
                   <div style={{ background:'#fdf8f4',borderRadius:'.75rem',padding:'.75rem',display:'flex',flexDirection:'column',gap:'.55rem' }}>
                     <div style={{ fontSize:'.72rem',fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'.05em' }}>Fulfillment</div>
-
-                    {/* Status */}
                     <div>
                       <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',display:'block',marginBottom:'.25rem' }}>Status</label>
                       <select value={fieldVal(o.id,'status',o.status) as string}
@@ -195,8 +187,6 @@ function OrdersPanel({ orders: initialOrders }: { orders: Order[] }) {
                         {ORDER_STATUSES.map(s=><option key={s} value={s} style={{ textTransform:'capitalize' }}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
                       </select>
                     </div>
-
-                    {/* Carrier */}
                     <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:'.45rem' }}>
                       <div>
                         <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',display:'block',marginBottom:'.25rem' }}>Carrier</label>
@@ -214,8 +204,6 @@ function OrdersPanel({ orders: initialOrders }: { orders: Order[] }) {
                           placeholder="e.g. 7XE1234567890" style={inputStyle} />
                       </div>
                     </div>
-
-                    {/* Notes */}
                     <div>
                       <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',display:'block',marginBottom:'.25rem' }}>Internal notes</label>
                       <textarea value={fieldVal(o.id,'notes',o.notes??'') as string}
@@ -223,8 +211,6 @@ function OrdersPanel({ orders: initialOrders }: { orders: Order[] }) {
                         rows={2} placeholder="e.g. Customer called re: address change"
                         style={{ ...inputStyle,resize:'vertical' } as React.CSSProperties} />
                     </div>
-
-                    {/* Save + msg */}
                     <div style={{ display:'flex',alignItems:'center',gap:'.65rem' }}>
                       <button onClick={()=>saveOrder(o)} disabled={!isDirty(o.id)||saving[o.id]}
                         style={{ flex:1,padding:'.55rem',borderRadius:'.6rem',border:'none',background:'#9d174d',color:'white',fontWeight:700,fontSize:'.82rem',cursor:'pointer',opacity:isDirty(o.id)&&!saving[o.id]?1:.45 }}>
@@ -239,8 +225,6 @@ function OrdersPanel({ orders: initialOrders }: { orders: Order[] }) {
                       <div style={{ fontSize:'.78rem',padding:'.35rem .6rem',borderRadius:'.4rem',background:msgs[o.id].startsWith('✅')?'#f0fdf4':'#fef2f2',color:msgs[o.id].startsWith('✅')?'#15803d':'#dc2626',fontWeight:600 }}>{msgs[o.id]}</div>
                     )}
                   </div>
-
-                  {/* Footer links */}
                   <div style={{ display:'flex',gap:'.6rem',flexWrap:'wrap',paddingTop:'.15rem' }}>
                     <a href={`/orders/${o.id}`} target="_blank" rel="noopener" style={{ fontSize:'.76rem',color:'#9d174d',textDecoration:'none',fontWeight:700 }}>🔗 View tracking page ↗</a>
                     <span style={{ fontSize:'.76rem',color:'#d1d5db' }}>ID: {o.id.slice(0,16).toUpperCase()}</span>
@@ -267,7 +251,6 @@ function ProductCard({
 }) {
   const [open, setOpen]               = useState(false);
   const [activePanel, setActivePanel] = useState<'stock'|'images'|'edit'>('stock');
-
   const [imgs,         setImgs]        = useState<ImgRow[]|null>(null);
   const [loadingImgs,  setLoadingImgs] = useState(false);
   const [newImgColour, setNewImgColour]= useState('');
@@ -275,14 +258,12 @@ function ProductCard({
   const [deletingImg,  setDeletingImg] = useState<Record<string,boolean>>({});
   const fileRef      = useRef<HTMLInputElement|null>(null);
   const extraFileRef = useRef<HTMLInputElement|null>(null);
-
   const [stockEdits,  setStockEdits]  = useState<Record<string,number>>({});
   const [stockSaving, setStockSaving] = useState<Record<string,boolean>>({});
   const [deletingVar, setDeletingVar] = useState<Record<string,boolean>>({});
   const [newSize,     setNewSize]     = useState('');
   const [newColour,   setNewColour]   = useState('');
   const [addingVar,   setAddingVar]   = useState(false);
-
   const [editForm, setEditForm] = useState({
     name:product.name, subtitle:product.subtitle||'',
     price:String(product.price), original_price:String(product.original_price||''),
@@ -585,7 +566,7 @@ function CategoriesPanel({ categories, onRefresh }:{ categories:Category[]; onRe
   }
 
   return (
-    <div>
+    <div style={{ maxWidth:'680px' }}>
       <div style={{ display:'flex',flexDirection:'column',gap:'.5rem',marginBottom:'1.25rem' }}>
         {categories.length===0 && <p style={{ color:'#9ca3af',fontSize:'.85rem',textAlign:'center',padding:'1.5rem' }}>No categories yet.</p>}
         {categories.map(c=>(
@@ -813,29 +794,30 @@ export default function AdminDashboard() {
   if(loading) return <div style={{ padding:'4rem',textAlign:'center',color:'#9ca3af' }}>Loading dashboard…</div>;
 
   return (
-    <main style={{ maxWidth:'560px',margin:'0 auto',padding:'1rem',paddingBottom:'1rem' }}>
+    <div>
       {apiError && <div style={{ background:'#fef2f2',border:'1px solid #fecaca',borderRadius:'.75rem',padding:'.85rem',marginBottom:'1rem',color:'#dc2626',fontSize:'.82rem' }}>⚠️ {apiError}</div>}
 
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'.5rem',marginBottom:'1rem' }}>
+      {/* Stats row */}
+      <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'.65rem',marginBottom:'1.25rem' }}>
         {[
           { label:'Products',value:products.length,       icon:'👗',alert:false },
           { label:'Revenue', value:formatAUD(totalRevenue),icon:'💰',alert:false },
           { label:'Low',     value:lowStockCount,          icon:'⚠️',alert:lowStockCount>0 },
           { label:'OOS',     value:outOfStockCount,        icon:'🚫',alert:outOfStockCount>0 },
         ].map(s=>(
-          <div key={s.label} style={{ background:'white',borderRadius:'.75rem',padding:'.75rem .6rem',textAlign:'center',boxShadow:'0 1px 4px rgba(0,0,0,.06)',border:s.alert&&(s.value as number)>0?'1px solid #fecaca':'1px solid transparent' }}>
-            <div style={{ fontSize:'1.3rem' }}>{s.icon}</div>
-            <div style={{ fontWeight:700,fontSize:'.95rem',color:s.alert&&(s.value as number)>0?'#dc2626':'#111827',marginTop:'.1rem' }}>{s.value}</div>
-            <div style={{ fontSize:'.65rem',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'.04em' }}>{s.label}</div>
+          <div key={s.label} style={{ background:'white',borderRadius:'.85rem',padding:'.85rem .75rem',textAlign:'center',boxShadow:'0 1px 4px rgba(0,0,0,.06)',border:s.alert&&(s.value as number)>0?'1px solid #fecaca':'1px solid transparent' }}>
+            <div style={{ fontSize:'1.4rem' }}>{s.icon}</div>
+            <div style={{ fontWeight:700,fontSize:'1rem',color:s.alert&&(s.value as number)>0?'#dc2626':'#111827',marginTop:'.15rem' }}>{s.value}</div>
+            <div style={{ fontSize:'.68rem',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'.04em' }}>{s.label}</div>
           </div>
         ))}
       </div>
 
-      {/* Tab switcher for dashboard sections */}
-      <div style={{ display:'flex',gap:'.35rem',marginBottom:'1rem',background:'white',padding:'.4rem',borderRadius:'.75rem',boxShadow:'0 1px 4px rgba(0,0,0,.06)' }}>
+      {/* Tab switcher */}
+      <div style={{ display:'flex',gap:'.35rem',marginBottom:'1.25rem',background:'white',padding:'.4rem',borderRadius:'.75rem',boxShadow:'0 1px 4px rgba(0,0,0,.06)',maxWidth:'480px' }}>
         {(['products','orders','categories'] as const).map(t=>(
           <button key={t} onClick={()=>setTab(t)}
-            style={{ flex:1,padding:'.45rem',borderRadius:'.55rem',border:'none',cursor:'pointer',fontWeight:700,fontSize:'.78rem',
+            style={{ flex:1,padding:'.5rem',borderRadius:'.55rem',border:'none',cursor:'pointer',fontWeight:700,fontSize:'.82rem',
               background:tab===t?'#9d174d':'transparent',color:tab===t?'white':'#9ca3af',transition:'background .15s,color .15s',
               textTransform:'capitalize' }}>
             {t==='products'?'👗 Products':t==='orders'?'📦 Orders':'🏷️ Categories'}
@@ -847,7 +829,7 @@ export default function AdminDashboard() {
         <div>
           <div style={{ display:'flex',gap:'.5rem',marginBottom:'.85rem',alignItems:'center' }}>
             <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search products…"
-              style={{ flex:1,padding:'.6rem .85rem',border:'1.5px solid #e5e7eb',borderRadius:'.75rem',fontSize:'.88rem',background:'white' }} />
+              style={{ flex:1,padding:'.6rem .85rem',border:'1.5px solid #e5e7eb',borderRadius:'.75rem',fontSize:'.88rem',background:'white',maxWidth:'420px' }} />
             <a href="/admin/products/new" style={{ padding:'.6rem .9rem',borderRadius:'.75rem',background:'#9d174d',color:'white',fontWeight:700,fontSize:'.82rem',textDecoration:'none',whiteSpace:'nowrap' }}>+ New</a>
           </div>
           <div style={{ display:'flex',alignItems:'center',gap:'.6rem',marginBottom:'.85rem',flexWrap:'wrap' }}>
@@ -855,7 +837,7 @@ export default function AdminDashboard() {
             {seedMsg && <span style={{ fontSize:'.78rem',color:seedMsg.startsWith('✅')?'#16a34a':'#dc2626' }}>{seedMsg}</span>}
           </div>
           {filteredProducts.length>0 && (
-            <div style={{ display:'flex',alignItems:'center',gap:'.6rem',marginBottom:'.65rem',padding:'.4rem .6rem',background:'white',borderRadius:'.65rem',border:'1.5px solid #e5e7eb' }}>
+            <div style={{ display:'flex',alignItems:'center',gap:'.6rem',marginBottom:'.65rem',padding:'.4rem .6rem',background:'white',borderRadius:'.65rem',border:'1.5px solid #e5e7eb',maxWidth:'420px' }}>
               <div onClick={toggleAll} style={{ width:'20px',height:'20px',borderRadius:'.35rem',border:`2px solid ${allSelected?'#9d174d':'#d1d5db'}`,background:allSelected?'#9d174d':'white',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0 }}>
                 {allSelected && <span style={{ color:'white',fontSize:'.75rem' }}>✓</span>}
                 {!allSelected && selected.size>0 && filteredProducts.some(p=>selected.has(p.id)) && <span style={{ color:'#9d174d',fontSize:'.75rem',fontWeight:900 }}>−</span>}
@@ -865,7 +847,7 @@ export default function AdminDashboard() {
             </div>
           )}
           {selected.size>0 && <BulkBar count={selected.size} onClearAll={()=>setSelected(new Set())} onAction={executeBulkAction} categories={categories} />}
-          <div style={{ display:'flex',flexDirection:'column',gap:'.6rem' }}>
+          <div style={{ display:'flex',flexDirection:'column',gap:'.6rem',maxWidth:'860px' }}>
             {filteredProducts.length===0 && (
               <div style={{ textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:'.9rem' }}>{search?`No products matching "${search}"` : 'No products yet.'}</div>
             )}
@@ -878,6 +860,6 @@ export default function AdminDashboard() {
 
       {tab==='orders'     && <OrdersPanel orders={orders} />}
       {tab==='categories' && <CategoriesPanel categories={categories} onRefresh={fetchCategories} />}
-    </main>
+    </div>
   );
 }
