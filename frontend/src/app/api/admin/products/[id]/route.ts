@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '../../../../../lib/supabase';
 import { isAdminAuthed } from '../../../../../lib/admin-auth';
 
+const LETTER_SIZE_ORDER = ['XS','S','M','L','XL','XXL','Free Size'];
+
+function sortVariants(variants: { id: string; size: string; colour?: string; stock_count: number; price?: number }[]) {
+  const letter  = variants.filter(v => LETTER_SIZE_ORDER.includes(v.size))
+    .sort((a, b) => LETTER_SIZE_ORDER.indexOf(a.size) - LETTER_SIZE_ORDER.indexOf(b.size));
+  const numeric = variants.filter(v => /^\d/.test(v.size))
+    .sort((a, b) => parseFloat(a.size) - parseFloat(b.size));
+  const other   = variants.filter(v => !LETTER_SIZE_ORDER.includes(v.size) && !/^\d/.test(v.size));
+  return [...letter, ...numeric, ...other];
+}
+
 // ── GET: return a single product with its variants ─────────────────────────────
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -20,11 +31,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   const { data: variants } = await sb
     .from('product_variants')
-    .select('id, size, stock_count, price')
-    .eq('product_id', params.id)
-    .order('size', { ascending: true });
+    .select('id, size, colour, stock_count, price')   // ← colour was missing
+    .eq('product_id', params.id);
 
-  return NextResponse.json({ ...product, variants: variants ?? [] });
+  return NextResponse.json({ ...product, variants: sortVariants(variants ?? []) });
 }
 
 // ── PATCH: update product fields ───────────────────────────────────────────────
