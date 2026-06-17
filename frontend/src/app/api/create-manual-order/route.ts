@@ -59,6 +59,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Fetch product images for all unique product IDs
+  const productIds = [...new Set(items.map((i: { id: string }) => i.id))];
+  const { data: productRows } = await sb
+    .from('products')
+    .select('id, image')
+    .in('id', productIds);
+  const imageMap: Record<string, string> = {};
+  for (const row of productRows ?? []) {
+    if (row.image) imageMap[row.id] = row.image;
+  }
+
   // Insert — write BOTH status and fulfillment_status as 'delivered'
   // since payment is collected at point of sale
   const manualPiId = `manual_${genId()}`;
@@ -113,7 +124,10 @@ export async function POST(req: NextRequest) {
       customerName:    customer_name || 'Valued Customer',
       customerEmail:   customer_email,
       orderId,
-      items,
+      items: items.map((i: { id: string; name: string; quantity: number; price: number; size?: string; colour?: string }) => ({
+        ...i,
+        image: imageMap[i.id],
+      })),
       subtotalAud:     itemsTotal,
       shippingCost:    Number(shipping_cost),
       totalAud:        Number(amount_aud),
