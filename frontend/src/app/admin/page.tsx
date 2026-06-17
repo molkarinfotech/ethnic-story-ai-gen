@@ -14,7 +14,14 @@ function sortVariants(variants: Variant[]) {
 type Variant  = { id:string; size:string; colour:string; stock_count:number };
 type ImgRow   = { id:string; colour:string; url:string; sort_order:number };
 type Product  = { id:string; slug:string; name:string; subtitle?:string; price:number; original_price?:number; category:string; badge?:string; image?:string; created_at:string; stock_count:number; low_stock_threshold:number; variants:Variant[] };
-type Order    = { id:string; customer_name:string; customer_email:string; amount_aud:number; status:string; created_at:string; items:{name:string;quantity:number;price:number;size?:string;colour?:string}[]; shipping_address?:{line1?:string;suburb?:string;state?:string;postcode?:string} };
+type Order    = {
+  id:string; customer_name:string; customer_email:string; customer_phone?:string;
+  amount_aud:number; status:string; payment_method?:string;
+  shipping_cost?:number; tracking_number?:string; shipping_carrier?:string; notes?:string;
+  created_at:string;
+  items:{name:string;quantity:number;price:number;size?:string;colour?:string}[];
+  shipping_address?:{line1?:string;line2?:string;suburb?:string;state?:string;postcode?:string};
+};
 type Category = { id:string; slug:string; label:string; description?:string; genders:string[]; sort_order:number };
 
 function StockBadge({ count, threshold }:{count:number;threshold:number}) {
@@ -23,6 +30,230 @@ function StockBadge({ count, threshold }:{count:number;threshold:number}) {
 }
 
 const SIZES = ['XS','S','M','L','XL','XXL','Free Size'];
+
+const ORDER_STATUSES = ['pending','processing','shipped','delivered','cancelled'] as const;
+type OrderStatus = typeof ORDER_STATUSES[number];
+const STATUS_COLORS: Record<OrderStatus, { bg:string; color:string }> = {
+  pending:    { bg:'#fefce8', color:'#ca8a04' },
+  processing: { bg:'#eff6ff', color:'#1d4ed8' },
+  shipped:    { bg:'#f0f9ff', color:'#0369a1' },
+  delivered:  { bg:'#dcfce7', color:'#16a34a' },
+  cancelled:  { bg:'#fef2f2', color:'#dc2626' },
+};
+const PAYMENT_LABELS: Record<string,string> = {
+  card:'💳 Card', cash:'💵 Cash on Delivery', eftpos:'🏧 EFTPOS', payid:'📲 PayID',
+};
+const CARRIERS = ['Australia Post','Aramex','DHL','FedEx','TNT','Toll','CouriersPlease','StarTrack','Sendle','Other'];
+
+// ─── Upgraded Orders Panel ────────────────────────────────────────────────────
+function OrdersPanel({ orders: initialOrders }: { orders: Order[] }) {
+  const [orders,   setOrders]   = useState<Order[]>(initialOrders);
+  const [search,   setSearch]   = useState('');
+  const [filter,   setFilter]   = useState<OrderStatus|'all'>('all');
+  const [expanded, setExpanded] = useState<Record<string,boolean>>({});
+  const [saving,   setSaving]   = useState<Record<string,boolean>>({});
+  const [drafts,   setDrafts]   = useState<Record<string,Partial<Order>>>({});
+  const [msgs,     setMsgs]     = useState<Record<string,string>>({});
+
+  useEffect(() => { setOrders(initialOrders); }, [initialOrders]);
+
+  function draft(id:string) { return drafts[id] ?? {}; }
+  function setDraft(id:string, patch: Partial<Order>) {
+    setDrafts(d => ({ ...d, [id]: { ...(d[id]??{}), ...patch } }));
+  }
+  function fieldVal<K extends keyof Order>(id:string, key:K, fallback: Order[K]): Order[K] {
+    const d = drafts[id];
+    return (d && key in d ? d[key] : fallback) as Order[K];
+  }
+  function isDirty(id:string) { return Object.keys(drafts[id]??{}).length > 0; }
+
+  async function saveOrder(order: Order) {
+    const d = drafts[order.id];
+    if (!d || Object.keys(d).length===0) return;
+    setSaving(s => ({...s,[order.id]:true}));
+    setMsgs(m => ({...m,[order.id]:''}) );
+    const res = await fetch(`/api/admin/orders/${order.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify(d),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setOrders(os => os.map(o => o.id===order.id ? {...o,...data} : o));
+      setDrafts(d => { const n={...d}; delete n[order.id]; return n; });
+      setMsgs(m => ({...m,[order.id]:'✅ Saved'}) );
+    } else {
+      setMsgs(m => ({...m,[order.id]:`❌ ${data.error}`}) );
+    }
+    setSaving(s => ({...s,[order.id]:false}));
+    setTimeout(() => setMsgs(m => ({...m,[order.id]:''})), 3500);
+  }
+
+  const filtered = orders
+    .filter(o => filter==='all' || o.status===filter)
+    .filter(o => !search.trim() || [
+      o.customer_name, o.customer_email, o.id,
+      o.tracking_number, o.customer_phone,
+    ].some(v => v?.toLowerCase().includes(search.toLowerCase())));
+
+  const inputStyle: React.CSSProperties = {
+    padding:'.45rem .65rem',border:'1.5px solid #e5e7eb',borderRadius:'.5rem',
+    fontSize:'.82rem',background:'white',width:'100%',boxSizing:'border-box',
+  };
+
+  return (
+    <div>
+      {/* Filter bar */}
+      <div style={{ display:'flex',flexDirection:'column',gap:'.5rem',marginBottom:'.85rem' }}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search name, email, tracking…"
+          style={{ ...inputStyle, fontSize:'.85rem', padding:'.6rem .85rem' }} />
+        <div style={{ display:'flex',gap:'.35rem',flexWrap:'wrap' }}>
+          {(['all',...ORDER_STATUSES] as const).map(s=>(
+            <button key={s} onClick={()=>setFilter(s)}
+              style={{ padding:'.28rem .7rem',borderRadius:'2rem',border:'none',cursor:'pointer',fontSize:'.72rem',fontWeight:700,
+                background:filter===s?'#9d174d':'#f3f4f6',color:filter===s?'white':'#6b7280',
+                textTransform:'capitalize' }}>
+              {s==='all'?`All (${orders.length})`:s}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Orders list */}
+      <div style={{ display:'flex',flexDirection:'column',gap:'.6rem' }}>
+        {filtered.length===0 && (
+          <div style={{ textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:'.9rem' }}>No orders found.</div>
+        )}
+        {filtered.map(o => {
+          const sc = STATUS_COLORS[o.status as OrderStatus] ?? STATUS_COLORS.pending;
+          const isOpen = expanded[o.id];
+          const items = o.items ?? [];
+          const subtotal = items.reduce((s,i)=>s+i.price*i.quantity,0);
+          const shippingCost = o.shipping_cost ?? Math.max(0, Number(o.amount_aud)-subtotal);
+          return (
+            <div key={o.id} style={{ background:'white',borderRadius:'.85rem',boxShadow:'0 1px 6px rgba(0,0,0,.06)',overflow:'hidden',border:isDirty(o.id)?'1.5px solid #fbbf24':'1.5px solid transparent',transition:'border .15s' }}>
+
+              {/* Header row */}
+              <button onClick={()=>setExpanded(e=>({...e,[o.id]:!e[o.id]}))} style={{ width:'100%',padding:'.85rem 1rem',border:'none',background:'none',cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:'.75rem' }}>
+                <div style={{ flex:1,minWidth:0 }}>
+                  <div style={{ display:'flex',alignItems:'center',gap:'.5rem',flexWrap:'wrap' }}>
+                    <span style={{ fontWeight:700,fontSize:'.88rem' }}>{o.customer_name||'Guest'}</span>
+                    <span style={{ ...sc,borderRadius:'2rem',padding:'.1rem .55rem',fontSize:'.68rem',fontWeight:700,textTransform:'capitalize' }}>{o.status}</span>
+                    {o.payment_method && o.payment_method!=='card' && (
+                      <span style={{ background:'#fef9c3',color:'#92400e',borderRadius:'2rem',padding:'.1rem .5rem',fontSize:'.66rem',fontWeight:700 }}>{PAYMENT_LABELS[o.payment_method]??o.payment_method}</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize:'.74rem',color:'#9ca3af',marginTop:'.15rem' }}>
+                    {new Date(o.created_at).toLocaleDateString('en-AU')} · {formatAUD(Number(o.amount_aud))}
+                    {o.tracking_number && <span style={{ marginLeft:'.5rem',color:'#0369a1' }}>📦 {o.tracking_number}</span>}
+                  </div>
+                </div>
+                <span style={{ color:'#9ca3af',fontSize:'.8rem',flexShrink:0 }}>{isOpen?'▲':'▼'}</span>
+              </button>
+
+              {isOpen && (
+                <div style={{ borderTop:'1px solid #f3f4f6',padding:'.9rem 1rem',display:'flex',flexDirection:'column',gap:'.75rem' }}>
+
+                  {/* Contact */}
+                  <div style={{ fontSize:'.8rem',color:'#6b7280',lineHeight:1.6 }}>
+                    {o.customer_email && <div>✉️ {o.customer_email}</div>}
+                    {o.customer_phone && <div>📞 {o.customer_phone}</div>}
+                    {o.shipping_address && (
+                      <div>📍 {[o.shipping_address.line1,o.shipping_address.line2,o.shipping_address.suburb,o.shipping_address.state,o.shipping_address.postcode].filter(Boolean).join(', ')}</div>
+                    )}
+                  </div>
+
+                  {/* Items */}
+                  <div style={{ display:'flex',flexDirection:'column',gap:'.3rem' }}>
+                    {items.map((it,i)=>(
+                      <div key={i} style={{ display:'flex',justifyContent:'space-between',alignItems:'center',padding:'.4rem .65rem',background:'#f9fafb',borderRadius:'.45rem',fontSize:'.82rem' }}>
+                        <span>{it.name}{it.size?` (${it.size}${it.colour?` / ${it.colour}`:''})`:''}  ×{it.quantity}</span>
+                        <span style={{ fontWeight:600,color:'#9d174d' }}>{formatAUD(it.price*it.quantity)}</span>
+                      </div>
+                    ))}
+                    <div style={{ display:'flex',justifyContent:'space-between',fontSize:'.78rem',color:'#9ca3af',padding:'0 .65rem',marginTop:'.2rem' }}>
+                      <span>Subtotal</span><span>{formatAUD(subtotal)}</span>
+                    </div>
+                    <div style={{ display:'flex',justifyContent:'space-between',fontSize:'.78rem',color:shippingCost===0?'#16a34a':'#9ca3af',padding:'0 .65rem' }}>
+                      <span>Shipping</span><span>{shippingCost===0?'FREE':formatAUD(shippingCost)}</span>
+                    </div>
+                    <div style={{ display:'flex',justifyContent:'space-between',fontSize:'.88rem',fontWeight:700,padding:'.4rem .65rem',borderTop:'1.5px solid #e5e7eb',marginTop:'.2rem' }}>
+                      <span>Total</span><span style={{ color:'#9d174d' }}>{formatAUD(Number(o.amount_aud))}</span>
+                    </div>
+                  </div>
+
+                  {/* Editable fields */}
+                  <div style={{ background:'#fdf8f4',borderRadius:'.75rem',padding:'.75rem',display:'flex',flexDirection:'column',gap:'.55rem' }}>
+                    <div style={{ fontSize:'.72rem',fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'.05em' }}>Fulfillment</div>
+
+                    {/* Status */}
+                    <div>
+                      <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',display:'block',marginBottom:'.25rem' }}>Status</label>
+                      <select value={fieldVal(o.id,'status',o.status) as string}
+                        onChange={e=>setDraft(o.id,{status:e.target.value})}
+                        style={{ ...inputStyle,cursor:'pointer',background:STATUS_COLORS[fieldVal(o.id,'status',o.status) as OrderStatus]?.bg??'white',fontWeight:700 }}>
+                        {ORDER_STATUSES.map(s=><option key={s} value={s} style={{ textTransform:'capitalize' }}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
+                      </select>
+                    </div>
+
+                    {/* Carrier */}
+                    <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:'.45rem' }}>
+                      <div>
+                        <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',display:'block',marginBottom:'.25rem' }}>Carrier</label>
+                        <select value={fieldVal(o.id,'shipping_carrier',o.shipping_carrier??'') as string}
+                          onChange={e=>setDraft(o.id,{shipping_carrier:e.target.value})}
+                          style={{ ...inputStyle,cursor:'pointer' }}>
+                          <option value="">— select —</option>
+                          {CARRIERS.map(c=><option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',display:'block',marginBottom:'.25rem' }}>Tracking #</label>
+                        <input value={fieldVal(o.id,'tracking_number',o.tracking_number??'') as string}
+                          onChange={e=>setDraft(o.id,{tracking_number:e.target.value})}
+                          placeholder="e.g. 7XE1234567890" style={inputStyle} />
+                      </div>
+                    </div>
+
+                    {/* Notes */}
+                    <div>
+                      <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',display:'block',marginBottom:'.25rem' }}>Internal notes</label>
+                      <textarea value={fieldVal(o.id,'notes',o.notes??'') as string}
+                        onChange={e=>setDraft(o.id,{notes:e.target.value})}
+                        rows={2} placeholder="e.g. Customer called re: address change"
+                        style={{ ...inputStyle,resize:'vertical' } as React.CSSProperties} />
+                    </div>
+
+                    {/* Save + msg */}
+                    <div style={{ display:'flex',alignItems:'center',gap:'.65rem' }}>
+                      <button onClick={()=>saveOrder(o)} disabled={!isDirty(o.id)||saving[o.id]}
+                        style={{ flex:1,padding:'.55rem',borderRadius:'.6rem',border:'none',background:'#9d174d',color:'white',fontWeight:700,fontSize:'.82rem',cursor:'pointer',opacity:isDirty(o.id)&&!saving[o.id]?1:.45 }}>
+                        {saving[o.id]?'Saving…':'💾 Save changes'}
+                      </button>
+                      {isDirty(o.id) && (
+                        <button onClick={()=>{setDrafts(d=>{const n={...d};delete n[o.id];return n;});}}
+                          style={{ padding:'.55rem .75rem',borderRadius:'.6rem',border:'1.5px solid #e5e7eb',background:'white',fontSize:'.78rem',cursor:'pointer',color:'#6b7280',fontWeight:600 }}>Discard</button>
+                      )}
+                    </div>
+                    {msgs[o.id] && (
+                      <div style={{ fontSize:'.78rem',padding:'.35rem .6rem',borderRadius:'.4rem',background:msgs[o.id].startsWith('✅')?'#f0fdf4':'#fef2f2',color:msgs[o.id].startsWith('✅')?'#15803d':'#dc2626',fontWeight:600 }}>{msgs[o.id]}</div>
+                    )}
+                  </div>
+
+                  {/* Footer links */}
+                  <div style={{ display:'flex',gap:'.6rem',flexWrap:'wrap',paddingTop:'.15rem' }}>
+                    <a href={`/orders/${o.id}`} target="_blank" rel="noopener" style={{ fontSize:'.76rem',color:'#9d174d',textDecoration:'none',fontWeight:700 }}>🔗 View tracking page ↗</a>
+                    <span style={{ fontSize:'.76rem',color:'#d1d5db' }}>ID: {o.id.slice(0,16).toUpperCase()}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 // ─── Product Card ─────────────────────────────────────────────────────────────
 function ProductCard({
@@ -318,40 +549,91 @@ function ProductCard({
   );
 }
 
-// ─── Orders Panel ─────────────────────────────────────────────────────────────
-function OrdersPanel({ orders }:{orders:Order[]}) {
-  const [expanded,setExpanded]=useState<Record<string,boolean>>({});
+// ─── Categories Panel ─────────────────────────────────────────────────────────
+function CategoriesPanel({ categories, onRefresh }:{ categories:Category[]; onRefresh:()=>void }) {
+  const [newSlug,  setNewSlug]  = useState('');
+  const [newLabel, setNewLabel] = useState('');
+  const [newDesc,  setNewDesc]  = useState('');
+  const [saving,   setSaving]   = useState(false);
+  const [msg,      setMsg]      = useState('');
+  const [deleting, setDeleting] = useState<Record<string,boolean>>({});
+
+  const inputStyle:React.CSSProperties = { width:'100%',padding:'.55rem .75rem',border:'1.5px solid #e5e7eb',borderRadius:'.6rem',fontSize:'.88rem',boxSizing:'border-box',background:'white' };
+
+  async function addCategory(e:React.FormEvent) {
+    e.preventDefault();
+    if(!newSlug.trim()||!newLabel.trim()) return;
+    setSaving(true); setMsg('');
+    const res = await fetch('/api/admin/categories',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ slug:newSlug.trim().toLowerCase().replace(/\s+/g,'-'), label:newLabel.trim(), description:newDesc.trim()||undefined }),
+    });
+    const data = await res.json();
+    if(res.ok) { setMsg('✅ Category added!'); setNewSlug(''); setNewLabel(''); setNewDesc(''); onRefresh(); }
+    else setMsg(`❌ ${data.error}`);
+    setSaving(false);
+    setTimeout(()=>setMsg(''),4000);
+  }
+
+  async function deleteCategory(id:string, slug:string) {
+    if(!confirm(`Delete "${slug}"? Products with this category will keep the value but it won't appear in dropdowns.`)) return;
+    setDeleting(d=>({...d,[id]:true}));
+    await fetch('/api/admin/categories',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+    setDeleting(d=>({...d,[id]:false}));
+    onRefresh();
+  }
+
   return (
-    <div style={{ display:'flex',flexDirection:'column',gap:'.6rem' }}>
-      {orders.length===0 && <div style={{ textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:'.9rem' }}>No orders yet.</div>}
-      {orders.map(o=>(
-        <div key={o.id} style={{ background:'white',borderRadius:'.85rem',boxShadow:'0 1px 6px rgba(0,0,0,.06)',overflow:'hidden' }}>
-          <button onClick={()=>setExpanded(e=>({...e,[o.id]:!e[o.id]}))} style={{ width:'100%',padding:'.85rem 1rem',border:'none',background:'none',cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:'.75rem' }}>
+    <div>
+      <div style={{ display:'flex',flexDirection:'column',gap:'.5rem',marginBottom:'1.25rem' }}>
+        {categories.length===0 && <p style={{ color:'#9ca3af',fontSize:'.85rem',textAlign:'center',padding:'1.5rem' }}>No categories yet.</p>}
+        {categories.map(c=>(
+          <div key={c.id} style={{ background:'white',borderRadius:'.85rem',padding:'.75rem 1rem',boxShadow:'0 1px 4px rgba(0,0,0,.06)',display:'flex',alignItems:'center',gap:'.75rem' }}>
             <div style={{ flex:1,minWidth:0 }}>
               <div style={{ display:'flex',alignItems:'center',gap:'.5rem',flexWrap:'wrap' }}>
-                <span style={{ fontWeight:700,fontSize:'.88rem' }}>{o.customer_name||'Guest'}</span>
-                <span style={{ background:'#dcfce7',color:'#16a34a',borderRadius:'2rem',padding:'.1rem .55rem',fontSize:'.68rem',fontWeight:700,textTransform:'capitalize' }}>{o.status}</span>
+                <span style={{ fontWeight:700,fontSize:'.88rem' }}>{c.label}</span>
+                <span style={{ background:'#ede9fe',color:'#6d28d9',borderRadius:'.3rem',padding:'.1rem .4rem',fontSize:'.7rem',fontWeight:600 }}>{c.slug}</span>
               </div>
-              <div style={{ fontSize:'.75rem',color:'#9ca3af',marginTop:'.15rem' }}>{new Date(o.created_at).toLocaleDateString('en-AU')} · {formatAUD(Number(o.amount_aud))}</div>
+              {c.description && <div style={{ fontSize:'.75rem',color:'#9ca3af',marginTop:'.2rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{c.description}</div>}
+              <div style={{ display:'flex',gap:'.3rem',marginTop:'.3rem',flexWrap:'wrap' }}>
+                {c.genders.map(g=><span key={g} style={{ background:'#fce7f3',color:'#9d174d',borderRadius:'2rem',padding:'.1rem .45rem',fontSize:'.65rem',fontWeight:600 }}>{g}</span>)}
+              </div>
             </div>
-            <span style={{ color:'#9ca3af',fontSize:'.8rem',flexShrink:0 }}>{expanded[o.id]?'▲':'▼'}</span>
+            <button onClick={()=>deleteCategory(c.id,c.slug)} disabled={!!deleting[c.id]}
+              style={{ padding:'.35rem .6rem',borderRadius:'.5rem',background:'#fef2f2',border:'1px solid #fecaca',color:'#dc2626',fontSize:'.75rem',cursor:'pointer',flexShrink:0 }}>
+              {deleting[c.id]?'…':'🗑️'}
+            </button>
+          </div>
+        ))}
+      </div>
+      <div style={{ background:'white',borderRadius:'1rem',padding:'1rem',boxShadow:'0 1px 6px rgba(0,0,0,.07)',border:'1.5px dashed #c4b5fd' }}>
+        <div style={{ fontSize:'.8rem',fontWeight:700,color:'#6d28d9',marginBottom:'.75rem' }}>+ Add New Category</div>
+        <form onSubmit={addCategory} style={{ display:'flex',flexDirection:'column',gap:'.6rem' }}>
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:'.5rem' }}>
+            <div>
+              <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:'.25rem' }}>Label *</label>
+              <input value={newLabel} onChange={e=>{ setNewLabel(e.target.value); if(!newSlug) setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')); }} placeholder="e.g. Dupattas" required style={inputStyle} />
+            </div>
+            <div>
+              <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:'.25rem' }}>Slug *</label>
+              <input value={newSlug} onChange={e=>setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,''))} placeholder="e.g. dupattas" required style={inputStyle} />
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:'.25rem' }}>Description</label>
+            <input value={newDesc} onChange={e=>setNewDesc(e.target.value)} placeholder="Short description shown on collection page" style={inputStyle} />
+          </div>
+          {msg && <div style={{ padding:'.4rem .65rem',borderRadius:'.45rem',background:msg.startsWith('✅')?'#f0fdf4':'#fef2f2',color:msg.startsWith('✅')?'#15803d':'#dc2626',fontSize:'.8rem',fontWeight:600 }}>{msg}</div>}
+          <button type="submit" disabled={saving||!newSlug.trim()||!newLabel.trim()}
+            style={{ padding:'.65rem',borderRadius:'.65rem',border:'none',background:'#9d174d',color:'white',fontWeight:700,fontSize:'.88rem',cursor:'pointer',opacity:(saving||!newSlug.trim()||!newLabel.trim())?.5:1 }}>
+            {saving?'Saving…':'Save Category'}
           </button>
-          {expanded[o.id] && (
-            <div style={{ borderTop:'1px solid #f3f4f6',padding:'.85rem 1rem',fontSize:'.82rem' }}>
-              <div style={{ color:'#6b7280',marginBottom:'.5rem' }}>{o.customer_email}</div>
-              {o.shipping_address && <div style={{ color:'#6b7280',marginBottom:'.65rem' }}>📍 {[o.shipping_address.line1,o.shipping_address.suburb,o.shipping_address.state,o.shipping_address.postcode].filter(Boolean).join(', ')}</div>}
-              <div style={{ display:'flex',flexDirection:'column',gap:'.3rem' }}>
-                {(o.items??[]).map((it,i)=>(
-                  <div key={i} style={{ display:'flex',justifyContent:'space-between',padding:'.4rem .6rem',background:'#f9fafb',borderRadius:'.45rem' }}>
-                    <span>{it.name}{it.size?` (${it.size}${it.colour?` / ${it.colour}`:''})`:''}  ×{it.quantity}</span>
-                    <span style={{ fontWeight:600 }}>{formatAUD(it.price)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      ))}
+        </form>
+      </div>
+      <p style={{ fontSize:'.75rem',color:'#9ca3af',marginTop:'1rem',padding:'.6rem .8rem',background:'white',borderRadius:'.6rem',lineHeight:1.5 }}>
+        💡 New categories appear automatically in the <strong>Category</strong> dropdowns when adding/editing products, and will show up in <strong>/collections</strong> once you assign products to them.
+      </p>
     </div>
   );
 }
@@ -429,99 +711,6 @@ function BulkBar({
           {resultMsg && <span style={{ fontSize:'.8rem',color:'#86efac' }}>{resultMsg}</span>}
         </div>
       )}
-    </div>
-  );
-}
-
-// ─── Categories Panel ─────────────────────────────────────────────────────────
-function CategoriesPanel({ categories, onRefresh }:{ categories:Category[]; onRefresh:()=>void }) {
-  const [newSlug,  setNewSlug]  = useState('');
-  const [newLabel, setNewLabel] = useState('');
-  const [newDesc,  setNewDesc]  = useState('');
-  const [saving,   setSaving]   = useState(false);
-  const [msg,      setMsg]      = useState('');
-  const [deleting, setDeleting] = useState<Record<string,boolean>>({});
-
-  const inputStyle:React.CSSProperties = { width:'100%',padding:'.55rem .75rem',border:'1.5px solid #e5e7eb',borderRadius:'.6rem',fontSize:'.88rem',boxSizing:'border-box',background:'white' };
-
-  async function addCategory(e:React.FormEvent) {
-    e.preventDefault();
-    if(!newSlug.trim()||!newLabel.trim()) return;
-    setSaving(true); setMsg('');
-    const res = await fetch('/api/admin/categories',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ slug:newSlug.trim().toLowerCase().replace(/\s+/g,'-'), label:newLabel.trim(), description:newDesc.trim()||undefined }),
-    });
-    const data = await res.json();
-    if(res.ok) { setMsg('✅ Category added!'); setNewSlug(''); setNewLabel(''); setNewDesc(''); onRefresh(); }
-    else setMsg(`❌ ${data.error}`);
-    setSaving(false);
-    setTimeout(()=>setMsg(''),4000);
-  }
-
-  async function deleteCategory(id:string, slug:string) {
-    if(!confirm(`Delete "${slug}"? Products with this category will keep the value but it won't appear in dropdowns.`)) return;
-    setDeleting(d=>({...d,[id]:true}));
-    await fetch('/api/admin/categories',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
-    setDeleting(d=>({...d,[id]:false}));
-    onRefresh();
-  }
-
-  return (
-    <div>
-      {/* Existing categories */}
-      <div style={{ display:'flex',flexDirection:'column',gap:'.5rem',marginBottom:'1.25rem' }}>
-        {categories.length===0 && <p style={{ color:'#9ca3af',fontSize:'.85rem',textAlign:'center',padding:'1.5rem' }}>No categories yet.</p>}
-        {categories.map(c=>(
-          <div key={c.id} style={{ background:'white',borderRadius:'.85rem',padding:'.75rem 1rem',boxShadow:'0 1px 4px rgba(0,0,0,.06)',display:'flex',alignItems:'center',gap:'.75rem' }}>
-            <div style={{ flex:1,minWidth:0 }}>
-              <div style={{ display:'flex',alignItems:'center',gap:'.5rem',flexWrap:'wrap' }}>
-                <span style={{ fontWeight:700,fontSize:'.88rem' }}>{c.label}</span>
-                <span style={{ background:'#ede9fe',color:'#6d28d9',borderRadius:'.3rem',padding:'.1rem .4rem',fontSize:'.7rem',fontWeight:600 }}>{c.slug}</span>
-              </div>
-              {c.description && <div style={{ fontSize:'.75rem',color:'#9ca3af',marginTop:'.2rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{c.description}</div>}
-              <div style={{ display:'flex',gap:'.3rem',marginTop:'.3rem',flexWrap:'wrap' }}>
-                {c.genders.map(g=><span key={g} style={{ background:'#fce7f3',color:'#9d174d',borderRadius:'2rem',padding:'.1rem .45rem',fontSize:'.65rem',fontWeight:600 }}>{g}</span>)}
-              </div>
-            </div>
-            <button onClick={()=>deleteCategory(c.id,c.slug)} disabled={!!deleting[c.id]}
-              style={{ padding:'.35rem .6rem',borderRadius:'.5rem',background:'#fef2f2',border:'1px solid #fecaca',color:'#dc2626',fontSize:'.75rem',cursor:'pointer',flexShrink:0 }}>
-              {deleting[c.id]?'…':'🗑️'}
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* Add new */}
-      <div style={{ background:'white',borderRadius:'1rem',padding:'1rem',boxShadow:'0 1px 6px rgba(0,0,0,.07)',border:'1.5px dashed #c4b5fd' }}>
-        <div style={{ fontSize:'.8rem',fontWeight:700,color:'#6d28d9',marginBottom:'.75rem' }}>+ Add New Category</div>
-        <form onSubmit={addCategory} style={{ display:'flex',flexDirection:'column',gap:'.6rem' }}>
-          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:'.5rem' }}>
-            <div>
-              <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:'.25rem' }}>Label *</label>
-              <input value={newLabel} onChange={e=>{ setNewLabel(e.target.value); if(!newSlug) setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')); }} placeholder="e.g. Dupattas" required style={inputStyle} />
-            </div>
-            <div>
-              <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:'.25rem' }}>Slug *</label>
-              <input value={newSlug} onChange={e=>setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,''))} placeholder="e.g. dupattas" required style={inputStyle} />
-            </div>
-          </div>
-          <div>
-            <label style={{ fontSize:'.72rem',fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:'.25rem' }}>Description</label>
-            <input value={newDesc} onChange={e=>setNewDesc(e.target.value)} placeholder="Short description shown on collection page" style={inputStyle} />
-          </div>
-          {msg && <div style={{ padding:'.4rem .65rem',borderRadius:'.45rem',background:msg.startsWith('✅')?'#f0fdf4':'#fef2f2',color:msg.startsWith('✅')?'#15803d':'#dc2626',fontSize:'.8rem',fontWeight:600 }}>{msg}</div>}
-          <button type="submit" disabled={saving||!newSlug.trim()||!newLabel.trim()}
-            style={{ padding:'.65rem',borderRadius:'.65rem',border:'none',background:'#9d174d',color:'white',fontWeight:700,fontSize:'.88rem',cursor:'pointer',opacity:(saving||!newSlug.trim()||!newLabel.trim())?.5:1 }}>
-            {saving?'Saving…':'Save Category'}
-          </button>
-        </form>
-      </div>
-
-      <p style={{ fontSize:'.75rem',color:'#9ca3af',marginTop:'1rem',padding:'.6rem .8rem',background:'white',borderRadius:'.6rem',lineHeight:1.5 }}>
-        💡 New categories appear automatically in the <strong>Category</strong> dropdowns when adding/editing products, and will show up in <strong>/collections</strong> once you assign products to them.
-      </p>
     </div>
   );
 }
