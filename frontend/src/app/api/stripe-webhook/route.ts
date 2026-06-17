@@ -110,7 +110,11 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 3. Fetch product images for confirmation email ──────────────────────────────────────────────
-    const productIds = [...new Set(items.map(i => i.id))];
+    const seen: Record<string, boolean> = {};
+    const productIds: string[] = [];
+    for (const i of items) {
+      if (i.id && !seen[i.id]) { seen[i.id] = true; productIds.push(i.id); }
+    }
     const { data: productRows } = await sb
       .from('products')
       .select('id, image')
