@@ -764,10 +764,6 @@ export default function AdminDashboard() {
     setProducts(p=>p.filter(x=>x.id!==id));
     setSelected(s=>{const n=new Set(s);n.delete(id);return n;});
   }
-  async function handleLogout() {
-    await fetch('/api/admin/login',{method:'DELETE'});
-    router.push('/admin/login');
-  }
 
   function toggleSelect(id:string, val:boolean) {
     setSelected(s=>{const n=new Set(s);val?n.add(id):n.delete(id);return n;});
@@ -817,92 +813,71 @@ export default function AdminDashboard() {
   if(loading) return <div style={{ padding:'4rem',textAlign:'center',color:'#9ca3af' }}>Loading dashboard…</div>;
 
   return (
-    <main style={{ minHeight:'100dvh',background:'#fdf2f8',fontFamily:'system-ui, sans-serif',paddingBottom:'5rem' }}>
-      <div style={{ background:'#9d174d',color:'white',padding:'.85rem 1rem',display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:20 }}>
-        <div style={{ display:'flex',alignItems:'center',gap:'.6rem' }}>
-          <span style={{ fontWeight: 800, fontSize: '1rem' }}>Ethnic Story</span>
-          <span style={{ opacity:.5 }}>|</span>
-          <span style={{ fontSize:'.82rem',opacity:.8 }}>Admin</span>
-        </div>
-        <button onClick={handleLogout} style={{ background:'rgba(255,255,255,.2)',border:'none',color:'white',borderRadius:'.5rem',padding:'.3rem .75rem',fontSize:'.8rem',cursor:'pointer',fontWeight:600 }}>Sign out</button>
-      </div>
+    <main style={{ maxWidth:'560px',margin:'0 auto',padding:'1rem',paddingBottom:'1rem' }}>
+      {apiError && <div style={{ background:'#fef2f2',border:'1px solid #fecaca',borderRadius:'.75rem',padding:'.85rem',marginBottom:'1rem',color:'#dc2626',fontSize:'.82rem' }}>⚠️ {apiError}</div>}
 
-      <div style={{ maxWidth:'560px',margin:'0 auto',padding:'1rem' }}>
-        {apiError && <div style={{ background:'#fef2f2',border:'1px solid #fecaca',borderRadius:'.75rem',padding:'.85rem',marginBottom:'1rem',color:'#dc2626',fontSize:'.82rem' }}>⚠️ {apiError}</div>}
-
-        <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'.5rem',marginBottom:'1rem' }}>
-          {[
-            { label:'Products',value:products.length,       icon:'👗',alert:false },
-            { label:'Revenue', value:formatAUD(totalRevenue),icon:'💰',alert:false },
-            { label:'Low',     value:lowStockCount,          icon:'⚠️',alert:lowStockCount>0 },
-            { label:'OOS',     value:outOfStockCount,        icon:'🚫',alert:outOfStockCount>0 },
-          ].map(s=>(
-            <div key={s.label} style={{ background:'white',borderRadius:'.75rem',padding:'.75rem .6rem',textAlign:'center',boxShadow:'0 1px 4px rgba(0,0,0,.06)',border:s.alert&&(s.value as number)>0?'1px solid #fecaca':'1px solid transparent' }}>
-              <div style={{ fontSize:'1.3rem' }}>{s.icon}</div>
-              <div style={{ fontWeight:700,fontSize:'.95rem',color:s.alert&&(s.value as number)>0?'#dc2626':'#111827',marginTop:'.1rem' }}>{s.value}</div>
-              <div style={{ fontSize:'.65rem',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'.04em' }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-
-        {tab==='products' && (
-          <div>
-            <div style={{ display:'flex',gap:'.5rem',marginBottom:'.85rem',alignItems:'center' }}>
-              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search products…"
-                style={{ flex:1,padding:'.6rem .85rem',border:'1.5px solid #e5e7eb',borderRadius:'.75rem',fontSize:'.88rem',background:'white' }} />
-              <a href="/admin/products/new" style={{ padding:'.6rem .9rem',borderRadius:'.75rem',background:'#9d174d',color:'white',fontWeight:700,fontSize:'.82rem',textDecoration:'none',whiteSpace:'nowrap' }}>+ New</a>
-            </div>
-            <div style={{ display:'flex',alignItems:'center',gap:'.6rem',marginBottom:'.85rem',flexWrap:'wrap' }}>
-              <button onClick={handleSeed} disabled={seeding} style={{ padding:'.4rem .85rem',borderRadius:'.65rem',border:'1.5px solid #e5e7eb',background:'white',color:'#6b7280',fontSize:'.78rem',fontWeight:600,cursor:'pointer' }}>{seeding?'Seeding…':'🌱 Seed demo products'}</button>
-              {seedMsg && <span style={{ fontSize:'.78rem',color:seedMsg.startsWith('✅')?'#16a34a':'#dc2626' }}>{seedMsg}</span>}
-            </div>
-            {filteredProducts.length>0 && (
-              <div style={{ display:'flex',alignItems:'center',gap:'.6rem',marginBottom:'.65rem',padding:'.4rem .6rem',background:'white',borderRadius:'.65rem',border:'1.5px solid #e5e7eb' }}>
-                <div onClick={toggleAll} style={{ width:'20px',height:'20px',borderRadius:'.35rem',border:`2px solid ${allSelected?'#9d174d':'#d1d5db'}`,background:allSelected?'#9d174d':'white',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0 }}>
-                  {allSelected && <span style={{ color:'white',fontSize:'.75rem' }}>✓</span>}
-                  {!allSelected && selected.size>0 && filteredProducts.some(p=>selected.has(p.id)) && <span style={{ color:'#9d174d',fontSize:'.75rem',fontWeight:900 }}>−</span>}
-                </div>
-                <span style={{ fontSize:'.8rem',color:'#6b7280',cursor:'pointer' }} onClick={toggleAll}>{allSelected?'Deselect all':`Select all (${filteredProducts.length})`}</span>
-                {selected.size>0 && <span style={{ marginLeft:'auto',fontSize:'.75rem',color:'#9d174d',fontWeight:700 }}>{selected.size} selected</span>}
-              </div>
-            )}
-            {selected.size>0 && <BulkBar count={selected.size} onClearAll={()=>setSelected(new Set())} onAction={executeBulkAction} categories={categories} />}
-            <div style={{ display:'flex',flexDirection:'column',gap:'.6rem' }}>
-              {filteredProducts.length===0 && (
-                <div style={{ textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:'.9rem' }}>{search?`No products matching "${search}"` : 'No products yet.'}</div>
-              )}
-              {filteredProducts.map(p=>(
-                <ProductCard key={p.id} product={p} selected={selected.has(p.id)} onSelect={toggleSelect} onDeleted={handleDelete} onRefresh={fetchProducts} categories={categories} />
-              ))}
-            </div>
+      <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'.5rem',marginBottom:'1rem' }}>
+        {[
+          { label:'Products',value:products.length,       icon:'👗',alert:false },
+          { label:'Revenue', value:formatAUD(totalRevenue),icon:'💰',alert:false },
+          { label:'Low',     value:lowStockCount,          icon:'⚠️',alert:lowStockCount>0 },
+          { label:'OOS',     value:outOfStockCount,        icon:'🚫',alert:outOfStockCount>0 },
+        ].map(s=>(
+          <div key={s.label} style={{ background:'white',borderRadius:'.75rem',padding:'.75rem .6rem',textAlign:'center',boxShadow:'0 1px 4px rgba(0,0,0,.06)',border:s.alert&&(s.value as number)>0?'1px solid #fecaca':'1px solid transparent' }}>
+            <div style={{ fontSize:'1.3rem' }}>{s.icon}</div>
+            <div style={{ fontWeight:700,fontSize:'.95rem',color:s.alert&&(s.value as number)>0?'#dc2626':'#111827',marginTop:'.1rem' }}>{s.value}</div>
+            <div style={{ fontSize:'.65rem',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'.04em' }}>{s.label}</div>
           </div>
-        )}
-
-        {tab==='orders'     && <OrdersPanel orders={orders} />}
-        {tab==='categories' && <CategoriesPanel categories={categories} onRefresh={fetchCategories} />}
+        ))}
       </div>
 
-      <nav style={{ position:'fixed',bottom:0,left:0,right:0,background:'white',borderTop:'1.5px solid #fce7f3',display:'flex',zIndex:20,boxShadow:'0 -2px 12px rgba(0,0,0,.07)' }}>
-        {([
-          { id:'products',   icon:'👗', label:'Products' },
-          { id:'orders',     icon:'📦', label:'Orders' },
-          { id:'categories', icon:'🏷️', label:'Categories' },
-        ] as {id:'products'|'orders'|'categories';icon:string;label:string}[]).map(n=>(
-          <button key={n.id} onClick={()=>setTab(n.id)} style={{ flex:1,padding:'.75rem .5rem .5rem',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:'.15rem',position:'relative' }}>
-            <span style={{ fontSize:'1.3rem' }}>{n.icon}</span>
-            <span style={{ fontSize:'.68rem',fontWeight:700,color:tab===n.id?'#9d174d':'#9ca3af' }}>{n.label}</span>
-            {tab===n.id && <div style={{ position:'absolute',bottom:0,left:'50%',transform:'translateX(-50%)',width:'2rem',height:'2.5px',background:'#9d174d',borderRadius:'2px' }} />}
+      {/* Tab switcher for dashboard sections */}
+      <div style={{ display:'flex',gap:'.35rem',marginBottom:'1rem',background:'white',padding:'.4rem',borderRadius:'.75rem',boxShadow:'0 1px 4px rgba(0,0,0,.06)' }}>
+        {(['products','orders','categories'] as const).map(t=>(
+          <button key={t} onClick={()=>setTab(t)}
+            style={{ flex:1,padding:'.45rem',borderRadius:'.55rem',border:'none',cursor:'pointer',fontWeight:700,fontSize:'.78rem',
+              background:tab===t?'#9d174d':'transparent',color:tab===t?'white':'#9ca3af',transition:'background .15s,color .15s',
+              textTransform:'capitalize' }}>
+            {t==='products'?'👗 Products':t==='orders'?'📦 Orders':'🏷️ Categories'}
           </button>
         ))}
-        <a href="/admin/scan" style={{ flex:1,padding:'.75rem .5rem .5rem',textDecoration:'none',display:'flex',flexDirection:'column',alignItems:'center',gap:'.15rem' }}>
-          <span style={{ fontSize:'1.3rem' }}>📷</span>
-          <span style={{ fontSize:'.68rem',fontWeight:700,color:'#9ca3af' }}>Scan</span>
-        </a>
-        <a href="/admin/import" style={{ flex:1,padding:'.75rem .5rem .5rem',textDecoration:'none',display:'flex',flexDirection:'column',alignItems:'center',gap:'.15rem' }}>
-          <span style={{ fontSize:'1.3rem' }}>📥</span>
-          <span style={{ fontSize:'.68rem',fontWeight:700,color:'#9ca3af' }}>Import</span>
-        </a>
-      </nav>
+      </div>
+
+      {tab==='products' && (
+        <div>
+          <div style={{ display:'flex',gap:'.5rem',marginBottom:'.85rem',alignItems:'center' }}>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search products…"
+              style={{ flex:1,padding:'.6rem .85rem',border:'1.5px solid #e5e7eb',borderRadius:'.75rem',fontSize:'.88rem',background:'white' }} />
+            <a href="/admin/products/new" style={{ padding:'.6rem .9rem',borderRadius:'.75rem',background:'#9d174d',color:'white',fontWeight:700,fontSize:'.82rem',textDecoration:'none',whiteSpace:'nowrap' }}>+ New</a>
+          </div>
+          <div style={{ display:'flex',alignItems:'center',gap:'.6rem',marginBottom:'.85rem',flexWrap:'wrap' }}>
+            <button onClick={handleSeed} disabled={seeding} style={{ padding:'.4rem .85rem',borderRadius:'.65rem',border:'1.5px solid #e5e7eb',background:'white',color:'#6b7280',fontSize:'.78rem',fontWeight:600,cursor:'pointer' }}>{seeding?'Seeding…':'🌱 Seed demo products'}</button>
+            {seedMsg && <span style={{ fontSize:'.78rem',color:seedMsg.startsWith('✅')?'#16a34a':'#dc2626' }}>{seedMsg}</span>}
+          </div>
+          {filteredProducts.length>0 && (
+            <div style={{ display:'flex',alignItems:'center',gap:'.6rem',marginBottom:'.65rem',padding:'.4rem .6rem',background:'white',borderRadius:'.65rem',border:'1.5px solid #e5e7eb' }}>
+              <div onClick={toggleAll} style={{ width:'20px',height:'20px',borderRadius:'.35rem',border:`2px solid ${allSelected?'#9d174d':'#d1d5db'}`,background:allSelected?'#9d174d':'white',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0 }}>
+                {allSelected && <span style={{ color:'white',fontSize:'.75rem' }}>✓</span>}
+                {!allSelected && selected.size>0 && filteredProducts.some(p=>selected.has(p.id)) && <span style={{ color:'#9d174d',fontSize:'.75rem',fontWeight:900 }}>−</span>}
+              </div>
+              <span style={{ fontSize:'.8rem',color:'#6b7280',cursor:'pointer' }} onClick={toggleAll}>{allSelected?'Deselect all':`Select all (${filteredProducts.length})`}</span>
+              {selected.size>0 && <span style={{ marginLeft:'auto',fontSize:'.75rem',color:'#9d174d',fontWeight:700 }}>{selected.size} selected</span>}
+            </div>
+          )}
+          {selected.size>0 && <BulkBar count={selected.size} onClearAll={()=>setSelected(new Set())} onAction={executeBulkAction} categories={categories} />}
+          <div style={{ display:'flex',flexDirection:'column',gap:'.6rem' }}>
+            {filteredProducts.length===0 && (
+              <div style={{ textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:'.9rem' }}>{search?`No products matching "${search}"` : 'No products yet.'}</div>
+            )}
+            {filteredProducts.map(p=>(
+              <ProductCard key={p.id} product={p} selected={selected.has(p.id)} onSelect={toggleSelect} onDeleted={handleDelete} onRefresh={fetchProducts} categories={categories} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tab==='orders'     && <OrdersPanel orders={orders} />}
+      {tab==='categories' && <CategoriesPanel categories={categories} onRefresh={fetchCategories} />}
     </main>
   );
 }

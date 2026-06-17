@@ -5,7 +5,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const router = useRouter();
 
-  // Don't show admin nav on login page
   const isLoginPage = pathname === '/admin/login';
 
   async function handleLogout() {
@@ -14,10 +13,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   const navItems = [
-    { href: '/admin', label: 'Dashboard', icon: '📦' },
-    { href: '/admin/orders', label: 'Orders', icon: '🛒' },
-    { href: '/admin/scan', label: 'Scan', icon: '📷' },
-    { href: '/admin/import', label: 'Import', icon: '📥' },
+    { href: '/admin',          label: 'Dashboard',  icon: '📊' },
+    { href: '/admin/orders',   label: 'Orders',     icon: '📦' },
+    { href: '/admin/checkout', label: 'Checkout',   icon: '🛒' },
+    { href: '/admin/scan',     label: 'Scan',       icon: '📷' },
+    { href: '/admin/import',   label: 'Import',     icon: '📥' },
   ];
 
   if (isLoginPage) return <>{children}</>;
@@ -25,7 +25,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div style={{ minHeight: '100dvh', background: '#fdf2f8', fontFamily: 'system-ui, sans-serif' }}>
 
-      {/* Top bar */}
+      {/* Top bar — single source of truth for admin chrome */}
       <div style={{
         background: '#9d174d', color: 'white',
         padding: '.85rem 1rem',
@@ -51,7 +51,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {children}
       </div>
 
-      {/* Bottom nav — wired to admin screens only */}
+      {/* Bottom nav — all admin routes */}
       <nav style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
         background: 'white', borderTop: '1.5px solid #fce7f3',
@@ -72,10 +72,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 padding: '.55rem .25rem .45rem',
                 textDecoration: 'none',
                 color: active ? '#9d174d' : '#9ca3af',
-                fontSize: '.62rem', fontWeight: active ? 700 : 500,
+                fontSize: '.58rem', fontWeight: active ? 700 : 500,
                 gap: '.15rem',
                 borderTop: active ? '2px solid #9d174d' : '2px solid transparent',
                 transition: 'color .15s',
+                position: 'relative',
               }}
             >
               <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>{item.icon}</span>
