@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     notes,
   } = body;
 
-  // ── Validate ──────────────────────────────────────────────────────────────────
+  // ── Validate inputs ──────────────────────────────────────────────────────────────
   if (!ALLOWED_METHODS.includes(payment_method)) {
     return NextResponse.json(
       { error: `payment_method must be one of: ${ALLOWED_METHODS.join(', ')}` },
@@ -54,11 +54,63 @@ export async function POST(req: NextRequest) {
 
   const sb = getServiceSupabase();
 
-  // ── Insert order ───────────────────────────────────────────────────────────────
-  // stripe_payment_intent_id has a NOT NULL constraint in the DB schema.
-  // For manual (non-Stripe) orders we supply a prefixed placeholder so the
-  // constraint is satisfied while remaining clearly distinguishable from real
-  // Stripe PI ids (which always start with "pi_").
+  // ── Pre-flight stock check ────────────────────────────────────────────────────────
+  // Resolve each item to its variant (or product) and check available stock
+  // BEFORE writing anything, so we never partially-deplete then fail.
+  type ResolvedItem = {
+    item: typeof items[number];
+    qty: number;
+    variantId: string | null;
+    currentStock: number;
+    label: string;
+  };
+  const resolved: ResolvedItem[] = [];
+
+  for (const item of items) {
+    if (!item.id || !item.quantity || item.quantity < 1) continue;
+    const qty = Number(item.quantity);
+
+    // Build variant lookup — match on size AND colour if both provided
+    let variantQuery = sb
+      .from('product_variants')
+      .select('id, size, colour, stock_count')
+      .eq('product_id', item.id);
+    if (item.size)   variantQuery = variantQuery.eq('size', item.size);
+    if (item.colour) variantQuery = variantQuery.eq('colour', item.colour);
+
+    const { data: variants } = await variantQuery;
+
+    if (variants && variants.length > 0) {
+      const v = variants[0];
+      const stock = v.stock_count ?? 0;
+      const label = [item.name, v.size, v.colour].filter(Boolean).join(' / ');
+      if (stock < qty) {
+        return NextResponse.json(
+          { error: `“${label}” only has ${stock} in stock (requested ${qty}).` },
+          { status: 409 },
+        );
+      }
+      resolved.push({ item, qty, variantId: v.id, currentStock: stock, label });
+    } else {
+      // Fallback: product-level stock_count
+      const { data: prod } = await sb
+        .from('products')
+        .select('id, name, stock_count')
+        .eq('id', item.id)
+        .maybeSingle();
+      const stock = (prod as any)?.stock_count ?? 0;
+      const label = item.name ?? item.id;
+      if (stock < qty) {
+        return NextResponse.json(
+          { error: `“${label}” only has ${stock} in stock (requested ${qty}).` },
+          { status: 409 },
+        );
+      }
+      resolved.push({ item, qty, variantId: null, currentStock: stock, label });
+    }
+  }
+
+  // ── Insert order ──────────────────────────────────────────────────────────────────────
   const manualPiId = `manual_${genId()}`;
 
   const { data: orderData, error: insertError } = await sb
@@ -94,54 +146,25 @@ export async function POST(req: NextRequest) {
 
   const orderId = orderData.id;
 
-  // ── Decrement stock ────────────────────────────────────────────────────────────
-  // Strategy:
-  //   1. If item has a size → decrement the matching product_variants row.
-  //   2. If no size but variants exist for this product → decrement the first
-  //      variant (covers single-variant products like "One Size").
-  //   3. If no variants at all → decrement products.stock_count directly.
-  for (const item of items) {
-    if (!item.id || !item.quantity || item.quantity < 1) continue;
-
-    const qty = Number(item.quantity);
-
-    // Look up variants for this product
-    let variantQuery = sb
-      .from('product_variants')
-      .select('id, stock_count')
-      .eq('product_id', item.id);
-    if (item.size) variantQuery = variantQuery.eq('size', item.size);
-
-    const { data: variants } = await variantQuery;
-
-    if (variants && variants.length > 0) {
-      // Use the first matching variant (exact size match, or first variant if no size given)
-      const v = variants[0];
-      const newStock = Math.max(0, (v.stock_count ?? 0) - qty);
+  // ── Deplete stock (all pre-validated above) ────────────────────────────────────────
+  for (const { item, qty, variantId, currentStock } of resolved) {
+    const newStock = Math.max(0, currentStock - qty);
+    if (variantId) {
       const { error: varErr } = await sb
         .from('product_variants')
         .update({ stock_count: newStock })
-        .eq('id', v.id);
+        .eq('id', variantId);
       if (varErr) console.error('[create-manual-order] variant stock update failed:', varErr.message);
     } else {
-      // Fallback: update products.stock_count directly
-      const { data: prod } = await sb
+      const { error: prodErr } = await sb
         .from('products')
-        .select('id, stock_count')
-        .eq('id', item.id)
-        .maybeSingle();
-      if (prod) {
-        const newStock = Math.max(0, ((prod as any).stock_count ?? 0) - qty);
-        const { error: prodErr } = await sb
-          .from('products')
-          .update({ stock_count: newStock })
-          .eq('id', item.id);
-        if (prodErr) console.error('[create-manual-order] product stock update failed:', prodErr.message);
-      }
+        .update({ stock_count: newStock })
+        .eq('id', item.id);
+      if (prodErr) console.error('[create-manual-order] product stock update failed:', prodErr.message);
     }
   }
 
-  // ── Send confirmation email ────────────────────────────────────────────────────
+  // ── Send confirmation email ─────────────────────────────────────────────────────────
   const itemsTotal = items.reduce(
     (s: number, i: { price: number; quantity: number }) => s + i.price * i.quantity,
     0,
