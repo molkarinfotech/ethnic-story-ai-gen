@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 type Variant  = { id: string; size: string; colour?: string; stock_count: number; price?: number };
 type Product  = { id: string; name: string; price: number; category: string; image?: string; stock_count?: number; variants: Variant[] };
 type CartItem = { productId: string; name: string; price: number; quantity: number; variantId?: string; variantLabel?: string; size?: string; colour?: string; image?: string };
@@ -33,17 +32,15 @@ function pill(active: boolean, disabled = false): React.CSSProperties {
 
 // ─── Product Picker ───────────────────────────────────────────────────────────
 function ProductPicker({ allProducts, onAdd }: { allProducts: Product[]; onAdd: (item: CartItem) => void }) {
-  const [mode, setMode]           = useState<'browse' | 'search'>('browse');
-  const [query, setQuery]         = useState('');
-  const [category, setCategory]   = useState<string | null>(null);
-  const [selected, setSelected]   = useState<Product | null>(null);
+  const [mode, setMode]             = useState<'browse' | 'search'>('browse');
+  const [query, setQuery]           = useState('');
+  const [category, setCategory]     = useState<string | null>(null);
+  const [selected, setSelected]     = useState<Product | null>(null);
   const [selVariant, setSelVariant] = useState('');
-  const [qty, setQty]             = useState(1);
+  const [qty, setQty]               = useState(1);
 
-  // All unique categories derived from loaded products
   const allCategories = Array.from(new Set(allProducts.map(p => p.category).filter(Boolean))).sort();
 
-  // Products visible in the current browse category (or search)
   const visibleProducts: Product[] = mode === 'search'
     ? (query.trim() ? allProducts.filter(p => p.name.toLowerCase().includes(query.toLowerCase()) || p.category.toLowerCase().includes(query.toLowerCase())) : [])
     : (category ? allProducts.filter(p => p.category === category) : []);
@@ -71,14 +68,12 @@ function ProductPicker({ allProducts, onAdd }: { allProducts: Product[]; onAdd: 
     <div style={{ background: '#fff', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: '1rem' }}>
       <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#9ca3af', marginBottom: '.75rem' }}>Add product</div>
 
-      {/* Mode toggle */}
-      <div style={{ display: 'flex', gap: '.4rem', marginBottom: '.85rem' }}>
+      <div style={{ display: 'flex', gap: '.4rem', marginBottom: '.85rem', flexWrap: 'wrap' }}>
         <button type="button" onClick={() => { setMode('browse'); setQuery(''); setSelected(null); }} style={{ ...pill(mode === 'browse'), padding: '5px 14px' }}>🗂️ Browse</button>
         <button type="button" onClick={() => { setMode('search'); setSelected(null); }} style={{ ...pill(mode === 'search'), padding: '5px 14px' }}>🔍 Search</button>
         {allProducts.length === 0 && <span style={{ marginLeft: 'auto', fontSize: '.75rem', color: '#9ca3af', alignSelf: 'center' }}>Loading…</span>}
       </div>
 
-      {/* ── Search mode ── */}
       {mode === 'search' && !selected && (
         <div style={{ marginBottom: '.75rem' }}>
           <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name or category…" autoFocus
@@ -87,7 +82,6 @@ function ProductPicker({ allProducts, onAdd }: { allProducts: Product[]; onAdd: 
         </div>
       )}
 
-      {/* ── Browse mode: category pills ── */}
       {mode === 'browse' && !selected && (
         <div style={{ marginBottom: '.75rem' }}>
           {allCategories.length === 0
@@ -98,9 +92,7 @@ function ProductPicker({ allProducts, onAdd }: { allProducts: Product[]; onAdd: 
                   <button type="button" key={c} onClick={() => { setCategory(c); setSelected(null); }}
                     style={{ ...pill(category === c), textTransform: 'capitalize' }}>
                     {c}
-                    <span style={{ marginLeft: '.3rem', opacity: .6, fontSize: '.75rem' }}>
-                      ({allProducts.filter(p => p.category === c).length})
-                    </span>
+                    <span style={{ marginLeft: '.3rem', opacity: .6, fontSize: '.75rem' }}>({allProducts.filter(p => p.category === c).length})</span>
                   </button>
                 ))}
               </div>
@@ -109,7 +101,6 @@ function ProductPicker({ allProducts, onAdd }: { allProducts: Product[]; onAdd: 
         </div>
       )}
 
-      {/* ── Product list (browse or search) ── */}
       {!selected && visibleProducts.length > 0 && (
         <div style={{ border: '1px solid #f3f4f6', borderRadius: 8, overflow: 'hidden', maxHeight: 300, overflowY: 'auto' }}>
           {visibleProducts.map(p => {
@@ -139,7 +130,6 @@ function ProductPicker({ allProducts, onAdd }: { allProducts: Product[]; onAdd: 
         </div>
       )}
 
-      {/* ── Selected product: variant + qty ── */}
       {selected && (
         <div style={{ marginTop: '.5rem', padding: '1rem 1.1rem', background: '#fdf8f4', borderRadius: 10, border: '1px solid #fce7f3' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '.85rem', marginBottom: '.9rem' }}>
@@ -147,7 +137,7 @@ function ProductPicker({ allProducts, onAdd }: { allProducts: Product[]; onAdd: 
               ? <img src={selected.image} alt={selected.name} style={{ width: 52, height: 52, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
               : <div style={{ width: 52, height: 52, borderRadius: 8, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', flexShrink: 0 }}>🧵</div>
             }
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: '.95rem' }}>{selected.name}</div>
               <div style={{ fontSize: '.8rem', color: '#9d174d', fontWeight: 700 }}>{fmt(chosenVariant?.price ?? selected.price)}</div>
             </div>
@@ -219,15 +209,20 @@ function Cart({ items, onQtyChange, onRemove }: { items: CartItem[]; onQtyChange
       <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#9ca3af', marginBottom: '.75rem' }}>Order items</div>
       {items.map((item, idx) => (
         <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '.75rem', padding: '10px 0', borderBottom: '1px solid #f9fafb' }}>
-          {item.image ? <img src={item.image} alt={item.name} style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} /> : <div style={{ width: 40, height: 40, borderRadius: 6, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🧵</div>}
+          {item.image
+            ? <img src={item.image} alt={item.name} style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+            : <div style={{ width: 40, height: 40, borderRadius: 6, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🧵</div>
+          }
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: '.88rem' }}>{item.name}</div>
             {item.variantLabel && <div style={{ fontSize: '.72rem', color: '#6b7280', marginTop: 2 }}>{item.variantLabel}</div>}
           </div>
-          <input type="number" min={1} max={99} value={item.quantity} onChange={e => onQtyChange(idx, Math.max(1, parseInt(e.target.value) || 1))}
+          <input type="number" min={1} max={99} value={item.quantity}
+            onChange={e => onQtyChange(idx, Math.max(1, parseInt(e.target.value) || 1))}
             style={{ width: 54, padding: '6px 8px', border: '1px solid #e5e7eb', borderRadius: 6, textAlign: 'center', fontSize: '.88rem', flexShrink: 0 }} />
           <div style={{ fontWeight: 700, color: '#9d174d', fontSize: '.9rem', flexShrink: 0, minWidth: 64, textAlign: 'right' }}>{fmt(item.price * item.quantity)}</div>
-          <button onClick={() => onRemove(idx)} style={{ background: '#fee2e2', border: 'none', color: '#991b1b', borderRadius: 6, padding: '5px 9px', cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>×</button>
+          <button onClick={() => onRemove(idx)}
+            style={{ background: '#fee2e2', border: 'none', color: '#991b1b', borderRadius: 6, padding: '5px 9px', cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>×</button>
         </div>
       ))}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem', fontWeight: 800, fontSize: '1.05rem' }}>
@@ -243,19 +238,19 @@ function SuccessScreen({ orderId, customerName, customerEmail, total, paymentMet
 }) {
   const pm = PAYMENT_OPTIONS.find(o => o.value === paymentMethod);
   return (
-    <div style={{ maxWidth: 540, margin: '4rem auto', background: '#fff', borderRadius: 16, padding: '2.5rem', boxShadow: '0 4px 24px rgba(0,0,0,.1)', textAlign: 'center' }}>
-      <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#dcfce7', border: '2px solid #16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', margin: '0 auto 1.5rem' }}>✔️</div>
+    <div style={{ maxWidth: 540, margin: '2rem auto', background: '#fff', borderRadius: 16, padding: '2rem', boxShadow: '0 4px 24px rgba(0,0,0,.1)', textAlign: 'center' }}>
+      <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#dcfce7', border: '2px solid #16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', margin: '0 auto 1.25rem' }}>✔️</div>
       <h2 style={{ fontFamily: 'Georgia, serif', color: '#9d174d', margin: '0 0 .5rem' }}>Order placed!</h2>
-      <p style={{ color: '#6b7280', margin: '0 0 1.5rem' }}>Confirmation sent to <strong>{customerEmail}</strong></p>
-      <div style={{ background: '#fdf8f4', borderRadius: 10, padding: '1rem 1.5rem', marginBottom: '1.5rem', textAlign: 'left' }}>
+      <p style={{ color: '#6b7280', margin: '0 0 1.25rem', fontSize: '.9rem' }}>Confirmation sent to <strong>{customerEmail}</strong></p>
+      <div style={{ background: '#fdf8f4', borderRadius: 10, padding: '1rem', marginBottom: '1.25rem', textAlign: 'left' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem' }}><span style={{ color: '#9ca3af', fontSize: '.85rem' }}>Order ID</span><span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '.85rem' }}>#{orderId.slice(0,8).toUpperCase()}</span></div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem' }}><span style={{ color: '#9ca3af', fontSize: '.85rem' }}>Customer</span><span style={{ fontWeight: 600, fontSize: '.85rem' }}>{customerName}</span></div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem' }}><span style={{ color: '#9ca3af', fontSize: '.85rem' }}>Total</span><span style={{ fontWeight: 800, fontSize: '1rem', color: '#9d174d' }}>{fmt(total)}</span></div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#9ca3af', fontSize: '.85rem' }}>Payment</span><span style={{ fontWeight: 700, fontSize: '.85rem', color: pm?.colour }}>{pm?.icon} {pm?.label}</span></div>
       </div>
       <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-        <a href="/admin/orders" style={{ padding: '10px 24px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, fontWeight: 700, fontSize: '.88rem', textDecoration: 'none', color: '#1a1a1a' }}>View in orders →</a>
-        <button onClick={onNewOrder} style={{ padding: '10px 24px', background: '#9d174d', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '.88rem' }}>+ New order</button>
+        <a href="/admin/orders" style={{ padding: '10px 20px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, fontWeight: 700, fontSize: '.88rem', textDecoration: 'none', color: '#1a1a1a' }}>View in orders →</a>
+        <button onClick={onNewOrder} style={{ padding: '10px 20px', background: '#9d174d', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '.88rem' }}>+ New order</button>
       </div>
     </div>
   );
@@ -263,25 +258,24 @@ function SuccessScreen({ orderId, customerName, customerEmail, total, paymentMet
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function AdminCheckoutPage() {
-  const [allProducts, setAllProducts] = useState<Product[]>([]);
-  const [cartItems,   setCartItems]   = useState<CartItem[]>([]);
-  const [paymentMethod, setPayment]   = useState<PaymentMethod>('cash');
-  const [shippingCost, setShipping]   = useState(0);
-  const [shippingEnabled, setShipEn]  = useState(false);
-  const [notes, setNotes]             = useState('');
-  const [name,  setName]              = useState('');
-  const [email, setEmail]             = useState('');
-  const [phone, setPhone]             = useState('');
-  const [line1, setLine1]             = useState('');
-  const [line2, setLine2]             = useState('');
-  const [suburb, setSuburb]           = useState('');
-  const [state,  setState]            = useState('');
-  const [postcode, setPost]           = useState('');
-  const [submitting, setSubmitting]   = useState(false);
-  const [error,  setError]            = useState('');
-  const [success, setSuccess]         = useState<{ orderId: string } | null>(null);
+  const [allProducts,    setAllProducts] = useState<Product[]>([]);
+  const [cartItems,      setCartItems]   = useState<CartItem[]>([]);
+  const [paymentMethod,  setPayment]     = useState<PaymentMethod>('cash');
+  const [shippingCost,   setShipping]    = useState(0);
+  const [shippingEnabled,setShipEn]      = useState(false);
+  const [notes,   setNotes]   = useState('');
+  const [name,    setName]    = useState('');
+  const [email,   setEmail]   = useState('');
+  const [phone,   setPhone]   = useState('');
+  const [line1,   setLine1]   = useState('');
+  const [line2,   setLine2]   = useState('');
+  const [suburb,  setSuburb]  = useState('');
+  const [state,   setState]   = useState('');
+  const [postcode,setPost]    = useState('');
+  const [submitting,setSubmitting] = useState(false);
+  const [error,   setError]   = useState('');
+  const [success, setSuccess] = useState<{ orderId: string } | null>(null);
 
-  // Load all products + variants once via /api/admin/stock (uses admin_session cookie)
   useEffect(() => {
     fetch('/api/admin/stock', { credentials: 'include' })
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
@@ -335,31 +329,52 @@ export default function AdminCheckoutPage() {
   if (success) return <SuccessScreen orderId={success.orderId} customerName={name} customerEmail={email} total={grandTotal} paymentMethod={paymentMethod} onNewOrder={resetForm} />;
 
   return (
-    <div style={{ padding: '2rem', maxWidth: 1100, margin: '0 auto', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
-      <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+    <div style={{ padding: '1rem', maxWidth: 1100, margin: '0 auto', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
+      <style>{`
+        .checkout-grid { display: grid; grid-template-columns: 1fr 380px; gap: 1.5rem; align-items: start; }
+        .customer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .address-grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+        .sidebar-sticky { position: sticky; top: 1.5rem; }
+        @media (max-width: 767px) {
+          .checkout-grid { grid-template-columns: 1fr !important; }
+          .customer-grid { grid-template-columns: 1fr !important; }
+          .address-grid  { grid-template-columns: 1fr !important; }
+          .sidebar-sticky { position: static !important; }
+          .checkout-header h1 { font-size: 1.25rem !important; }
+        }
+      `}</style>
+
+      <div className="checkout-header" style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontFamily: 'Georgia, serif', color: '#9d174d', margin: 0, fontSize: '1.75rem' }}>🛒 In-Store Checkout</h1>
-          <p style={{ margin: '4px 0 0', color: '#9ca3af', fontSize: '.85rem' }}>Create orders for cash, EFTPOS, or PayID payments</p>
+          <p style={{ margin: '4px 0 0', color: '#9ca3af', fontSize: '.82rem' }}>Create orders for cash, EFTPOS, or PayID payments</p>
         </div>
-        <a href="/admin/orders" style={{ marginLeft: 'auto', padding: '8px 18px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, fontWeight: 600, fontSize: '.85rem', textDecoration: 'none', color: '#374151' }}>← Orders</a>
+        <a href="/admin/orders" style={{ marginLeft: 'auto', padding: '8px 16px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, fontWeight: 600, fontSize: '.85rem', textDecoration: 'none', color: '#374151' }}>← Orders</a>
       </div>
 
       <form onSubmit={handleSubmit}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '1.5rem', alignItems: 'start' }}>
+        <div className="checkout-grid">
+
+          {/* ── Left column: product picker + cart + customer ── */}
           <div>
             <ProductPicker allProducts={allProducts} onAdd={addItem} />
-            <Cart items={cartItems} onQtyChange={(idx, q) => setCartItems(prev => prev.map((i, n) => n === idx ? { ...i, quantity: q } : i))} onRemove={idx => setCartItems(prev => prev.filter((_, n) => n !== idx))} />
+            <Cart
+              items={cartItems}
+              onQtyChange={(idx, q) => setCartItems(prev => prev.map((i, n) => n === idx ? { ...i, quantity: q } : i))}
+              onRemove={idx => setCartItems(prev => prev.filter((_, n) => n !== idx))}
+            />
 
+            {/* Customer details */}
             <div style={{ background: '#fff', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: '1rem' }}>
               <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#9ca3af', marginBottom: '.75rem' }}>Customer details</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div className="customer-grid">
                 <div><label style={labelSm}>Full name *</label><input value={name} onChange={e => setName(e.target.value)} placeholder="Jane Smith" style={inputSm} required /></div>
                 <div><label style={labelSm}>Email *</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="jane@example.com" style={inputSm} required /></div>
                 <div><label style={labelSm}>Phone</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="04XX XXX XXX" style={inputSm} /></div>
               </div>
               <details style={{ marginTop: '1rem' }}>
                 <summary style={{ cursor: 'pointer', fontSize: '.82rem', fontWeight: 600, color: '#6b7280', userSelect: 'none' }}>+ Shipping address (optional)</summary>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+                <div className="address-grid">
                   <div style={{ gridColumn: '1/-1' }}><label style={labelSm}>Street</label><input value={line1} onChange={e => setLine1(e.target.value)} placeholder="12 Collins St" style={inputSm} /></div>
                   <div style={{ gridColumn: '1/-1' }}><label style={labelSm}>Unit / Apartment</label><input value={line2} onChange={e => setLine2(e.target.value)} placeholder="Unit 4" style={inputSm} /></div>
                   <div><label style={labelSm}>Suburb</label><input value={suburb} onChange={e => setSuburb(e.target.value)} placeholder="Melbourne" style={inputSm} /></div>
@@ -374,12 +389,16 @@ export default function AdminCheckoutPage() {
               </details>
               <div style={{ marginTop: '1rem' }}>
                 <label style={labelSm}>Internal notes</label>
-                <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="e.g. customer picked up in store…" style={{ ...inputSm, resize: 'vertical', fontFamily: 'inherit' } as React.CSSProperties} />
+                <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+                  placeholder="e.g. customer picked up in store…"
+                  style={{ ...inputSm, resize: 'vertical', fontFamily: 'inherit' } as React.CSSProperties} />
               </div>
             </div>
           </div>
 
-          <div style={{ position: 'sticky', top: '1.5rem' }}>
+          {/* ── Right column / mobile bottom: payment + totals + submit ── */}
+          <div className="sidebar-sticky">
+            {/* Payment method */}
             <div style={{ background: '#fff', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: '1rem' }}>
               <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#9ca3af', marginBottom: '.75rem' }}>Payment method</div>
               {PAYMENT_OPTIONS.map(opt => (
@@ -397,6 +416,7 @@ export default function AdminCheckoutPage() {
               )}
             </div>
 
+            {/* Shipping */}
             <div style={{ background: '#fff', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '.75rem' }}>
                 <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#9ca3af' }}>Shipping</div>
@@ -407,11 +427,14 @@ export default function AdminCheckoutPage() {
               {shippingEnabled && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
                   <span style={{ color: '#9ca3af', fontSize: '.9rem' }}>A$</span>
-                  <input type="number" min={0} step={0.01} value={shippingCost} onChange={e => setShipping(parseFloat(e.target.value) || 0)} style={{ flex: 1, padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: '.9rem' }} />
+                  <input type="number" min={0} step={0.01} value={shippingCost}
+                    onChange={e => setShipping(parseFloat(e.target.value) || 0)}
+                    style={{ flex: 1, padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: '.9rem' }} />
                 </div>
               )}
             </div>
 
+            {/* Order total */}
             <div style={{ background: '#fdf2f8', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem', fontSize: '.88rem', color: '#6b7280' }}><span>Subtotal</span><span>{fmt(subtotal)}</span></div>
               {shippingEnabled && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem', fontSize: '.88rem', color: '#6b7280' }}><span>Shipping</span><span>{fmt(shippingCost)}</span></div>}
@@ -424,7 +447,7 @@ export default function AdminCheckoutPage() {
               style={{ width: '100%', padding: '14px', background: cartItems.length === 0 ? '#e5e7eb' : '#9d174d', color: cartItems.length === 0 ? '#9ca3af' : '#fff', border: 'none', borderRadius: 10, cursor: cartItems.length === 0 ? 'not-allowed' : 'pointer', fontWeight: 800, fontSize: '1rem', letterSpacing: '.02em', transition: 'all .15s' }}>
               {submitting ? 'Placing order…' : `✔ Confirm & send receipt · ${fmt(grandTotal)}`}
             </button>
-            <p style={{ fontSize: '.75rem', color: '#9ca3af', textAlign: 'center', marginTop: '.5rem' }}>Order confirmation email sent to customer automatically.</p>
+            <p style={{ fontSize: '.75rem', color: '#9ca3af', textAlign: 'center', marginTop: '.5rem' }}>Invoice emailed to customer automatically.</p>
           </div>
         </div>
       </form>

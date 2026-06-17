@@ -41,7 +41,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 };
 
 const PAYMENT_LABELS: Record<string, string> = {
-  card: '\uD83D\uDCB3 Card', cash: '\uD83D\uDCB5 Cash', eftpos: '\uD83C\uDFE7 EFTPOS', payid: '\uD83D\uDCF2 PayID',
+  card: '💳 Card', cash: '💵 Cash', eftpos: '🏧 EFTPOS', payid: '📲 PayID',
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -108,7 +108,6 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 640, maxHeight: '92vh', overflowY: 'auto', padding: '1.5rem', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
 
-        {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
           <div>
             <h2 style={{ margin: 0, fontFamily: 'Georgia, serif', color: '#9d174d', fontSize: '1.2rem' }}>
@@ -118,18 +117,16 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
               {new Date(order.created_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>
-          <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: '1.1rem' }}>\u2715</button>
+          <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
         </div>
 
-        {/* Customer */}
         <Section title="Customer">
-          <Row label="Name"    value={order.customer_name  ?? '\u2014'} />
-          <Row label="Email"   value={order.customer_email ?? '\u2014'} />
-          <Row label="Phone"   value={order.customer_phone ?? '\u2014'} />
+          <Row label="Name"    value={order.customer_name  ?? '—'} />
+          <Row label="Email"   value={order.customer_email ?? '—'} />
+          <Row label="Phone"   value={order.customer_phone ?? '—'} />
           {addrStr && <Row label="Ship to" value={addrStr} />}
         </Section>
 
-        {/* Items */}
         <Section title="Items">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.85rem' }}>
             <thead>
@@ -142,9 +139,7 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
             <tbody>
               {items.map((item, i) => {
                 const variant = [item.size, item.colour].filter(Boolean).join(' / ');
-                const productUrl = item.slug
-                  ? `https://ethnicstory.com.au/products/${item.slug}`
-                  : `https://ethnicstory.com.au/products/${item.id}`;
+                const productUrl = `/admin/products/${item.id}`;
                 return (
                   <tr key={i} style={{ borderBottom: '1px solid #f9fafb' }}>
                     <td style={{ padding: '8px 0' }}>
@@ -153,9 +148,8 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{ fontWeight: 600, color: '#9d174d', textDecoration: 'none', fontSize: '.88rem' }}
-                        title="View product page"
                       >
-                        {item.name} \u2197
+                        {item.name} ↗
                       </a>
                       {variant && <div style={{ fontSize: '.75rem', color: '#9ca3af', marginTop: 2 }}>{variant}</div>}
                     </td>
@@ -178,13 +172,12 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
               </tr>
               <tr>
                 <td colSpan={2} style={{ paddingTop: 4, fontSize: '.78rem', color: '#9ca3af' }}>Payment</td>
-                <td style={{ paddingTop: 4, textAlign: 'right', fontSize: '.78rem', color: '#9ca3af' }}>{PAYMENT_LABELS[order.payment_method ?? ''] ?? (order.payment_method ?? '\u2014')}</td>
+                <td style={{ paddingTop: 4, textAlign: 'right', fontSize: '.78rem', color: '#9ca3af' }}>{PAYMENT_LABELS[order.payment_method ?? ''] ?? (order.payment_method ?? '—')}</td>
               </tr>
             </tfoot>
           </table>
         </Section>
 
-        {/* Fulfilment controls */}
         <Section title="Fulfilment">
           <label style={labelStyle}>Status</label>
           <select value={status} onChange={e => setStatus(e.target.value)} style={inputStyle}>
@@ -195,7 +188,7 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
           <label style={{ ...labelStyle, marginTop: 12 }}>Tracking number</label>
           <input value={tracking} onChange={e => setTracking(e.target.value)} placeholder="e.g. 7X0000000000" style={inputStyle} />
           <label style={{ ...labelStyle, marginTop: 12 }}>Internal notes</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes visible only to admin\u2026" rows={3}
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes visible only to admin…" rows={3}
             style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
         </Section>
 
@@ -205,7 +198,7 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
           <button onClick={onClose} style={{ padding: '10px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
           <button onClick={handleSave} disabled={saving}
             style={{ padding: '10px 24px', borderRadius: 8, background: '#9d174d', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, opacity: saving ? .6 : 1 }}>
-            {saving ? 'Saving\u2026' : 'Save changes'}
+            {saving ? 'Saving…' : 'Save changes'}
           </button>
         </div>
       </div>
@@ -214,13 +207,13 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
 }
 
 export default function AdminOrdersPage() {
-  const [orders,       setOrders]   = useState<Order[]>([]);
-  const [loading,      setLoading]  = useState(true);
-  const [error,        setError]    = useState('');
-  const [search,       setSearch]   = useState('');
-  const [filterStatus, setFilter]   = useState('all');
-  const [filterPayment,setFilterP]  = useState('all');
-  const [selected,     setSelected] = useState<Order | null>(null);
+  const [orders,        setOrders]   = useState<Order[]>([]);
+  const [loading,       setLoading]  = useState(true);
+  const [error,         setError]    = useState('');
+  const [search,        setSearch]   = useState('');
+  const [filterStatus,  setFilter]   = useState('all');
+  const [filterPayment, setFilterP]  = useState('all');
+  const [selected,      setSelected] = useState<Order | null>(null);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -241,7 +234,7 @@ export default function AdminOrdersPage() {
     const matchStatus  = filterStatus  === 'all' || fs === filterStatus;
     const matchPayment = filterPayment === 'all' || (o.payment_method ?? 'card') === filterPayment;
     const q = search.toLowerCase();
-    const matchSearch  = !q || (o.customer_name?.toLowerCase().includes(q)) || (o.customer_email?.toLowerCase().includes(q)) || o.id.toLowerCase().includes(q);
+    const matchSearch = !q || (o.customer_name?.toLowerCase().includes(q)) || (o.customer_email?.toLowerCase().includes(q)) || o.id.toLowerCase().includes(q);
     return matchStatus && matchPayment && matchSearch;
   });
 
@@ -256,21 +249,20 @@ export default function AdminOrdersPage() {
         @media (max-width: 640px) {
           .orders-table-row { grid-template-columns: 1fr 1fr !important; gap: .5rem !important; }
           .orders-table-row .col-customer { grid-column: 1 / -1; }
-          .orders-table-row .col-items { display: none; }
+          .orders-table-row .col-items { display: none !important; }
           .orders-table-header { display: none !important; }
           .status-cards { gap: .4rem !important; }
-          .status-card { padding: 8px 10px !important; }
+          .status-card { padding: 8px 10px !important; min-width: 0 !important; }
           .filter-row { flex-direction: column !important; }
-          .filter-row input, .filter-row select { width: 100% !important; }
+          .filter-row input, .filter-row select, .filter-row button { width: 100% !important; box-sizing: border-box; }
         }
       `}</style>
 
-      {/* Page header */}
       <div style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '.5rem' }}>
         <div>
           <h1 style={{ fontFamily: 'Georgia, serif', color: '#9d174d', margin: 0, fontSize: '1.5rem' }}>Orders</h1>
           <p style={{ margin: '4px 0 0', color: '#9ca3af', fontSize: '.8rem' }}>
-            {orders.length} total \u00b7 {new Date().toLocaleTimeString('en-AU')}
+            {orders.length} total · {new Date().toLocaleTimeString('en-AU')}
           </p>
         </div>
         <a href="/admin/checkout" style={{ padding: '9px 18px', background: '#9d174d', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700, fontSize: '.85rem' }}>
@@ -278,7 +270,6 @@ export default function AdminOrdersPage() {
         </a>
       </div>
 
-      {/* Status summary cards */}
       <div className="status-cards" style={{ display: 'flex', gap: '.75rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
         {FULFILLMENT_STATUSES.map(s => {
           const c = STATUS_COLORS[s];
@@ -292,31 +283,34 @@ export default function AdminOrdersPage() {
         })}
       </div>
 
-      {/* Filters */}
       <div className="filter-row" style={{ display: 'flex', gap: '.75rem', marginBottom: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        <input placeholder="Search name, email, order ID\u2026" value={search} onChange={e => setSearch(e.target.value)}
-          style={{ flex: '1 1 200px', padding: '9px 14px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: '.9rem', minWidth: 0 }} />
+        <input
+          placeholder="Search name, email, order ID…"
+          value={search} onChange={e => setSearch(e.target.value)}
+          style={{ flex: '1 1 200px', padding: '9px 14px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: '.9rem', minWidth: 0 }}
+        />
         <select value={filterPayment} onChange={e => setFilterP(e.target.value)}
           style={{ padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: '.88rem', flexShrink: 0 }}>
           <option value="all">All payments</option>
-          <option value="card">\uD83D\uDCB3 Card</option>
-          <option value="cash">\uD83D\uDCB5 Cash</option>
-          <option value="eftpos">\uD83C\uDFE7 EFTPOS</option>
-          <option value="payid">\uD83D\uDCF2 PayID</option>
+          <option value="card">💳 Card</option>
+          <option value="cash">💵 Cash</option>
+          <option value="eftpos">🏧 EFTPOS</option>
+          <option value="payid">📲 PayID</option>
         </select>
-        <button onClick={fetchOrders} style={{ padding: '9px 16px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: '.85rem', flexShrink: 0 }}>\u21BB Refresh</button>
+        <button onClick={fetchOrders}
+          style={{ padding: '9px 16px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: '.85rem', flexShrink: 0 }}>
+          ↻ Refresh
+        </button>
       </div>
 
-      {/* Orders list */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '4rem 0', color: '#9ca3af' }}>Loading orders\u2026</div>
+        <div style={{ textAlign: 'center', padding: '4rem 0', color: '#9ca3af' }}>Loading orders…</div>
       ) : error ? (
         <div style={{ background: '#fee2e2', color: '#991b1b', padding: '1rem', borderRadius: 8 }}>{error}</div>
       ) : filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '4rem 0', color: '#9ca3af' }}>No orders match your filters.</div>
       ) : (
         <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)', overflow: 'hidden' }}>
-          {/* Desktop header */}
           <div className="orders-table-header" style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr .9fr .8fr .7fr auto', gap: '1rem', padding: '10px 16px', background: '#fdf8f4', fontSize: '.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: '#9ca3af', borderBottom: '1px solid #f3f4f6' }}>
             <span>Order</span><span>Customer</span><span>Items</span><span>Total</span><span>Status</span><span></span>
           </div>
@@ -345,7 +339,7 @@ export default function AdminOrdersPage() {
                 </div>
 
                 <div className="col-customer">
-                  <div style={{ fontWeight: 600, fontSize: '.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.customer_name ?? '\u2014'}</div>
+                  <div style={{ fontWeight: 600, fontSize: '.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.customer_name ?? '—'}</div>
                   <div style={{ fontSize: '.72rem', color: '#9ca3af', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.customer_email ?? ''}</div>
                 </div>
 
