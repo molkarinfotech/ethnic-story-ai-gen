@@ -2,15 +2,27 @@
 import { useState, useEffect, useCallback } from 'react';
 
 // ─── Types ───────────────────────────────────────────────────────────
+type Variant = { id: string; size: string; stock_count: number; price?: number };
+
 type Product = {
-  id: string; name: string; slug: string; price: number;
-  image?: string; in_stock?: boolean;
-  variants?: { id: string; size: string; stock_count: number }[];
+  id: string;
+  name: string;
+  price: number;
+  image?: string;
+  in_stock?: boolean;
+  stock_count?: number;
+  variants?: Variant[];
 };
 
 type CartItem = {
-  productId: string; name: string; price: number;
-  quantity: number; size?: string; image?: string;
+  productId: string;
+  name: string;
+  price: number;
+  quantity: number;
+  variantLabel?: string; // e.g. "Red / M" shown in cart
+  size?: string;         // kept for stock-decrement lookup
+  colour?: string;
+  image?: string;
 };
 
 type PaymentMethod = 'cash' | 'eftpos' | 'payid';
@@ -18,13 +30,31 @@ type PaymentMethod = 'cash' | 'eftpos' | 'payid';
 const AU_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'];
 
 const PAYMENT_OPTIONS: { value: PaymentMethod; icon: string; label: string; colour: string }[] = [
-  { value: 'cash',   icon: '💵', label: 'Cash',         colour: '#16a34a' },
-  { value: 'eftpos', icon: '🏧', label: 'EFTPOS',       colour: '#2563eb' },
-  { value: 'payid',  icon: '📲', label: 'PayID / Bank', colour: '#7c3aed' },
+  { value: 'cash',   icon: '\uD83D\uDCB5', label: 'Cash',         colour: '#16a34a' },
+  { value: 'eftpos', icon: '\uD83C\uDFE7', label: 'EFTPOS',       colour: '#2563eb' },
+  { value: 'payid',  icon: '\uD83D\uDCF2', label: 'PayID / Bank', colour: '#7c3aed' },
 ];
 
-function formatAUD(n: number) {
+function fmt(n: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(n);
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────
+const labelSm: React.CSSProperties = {
+  display: 'block', fontSize: '.72rem', fontWeight: 700,
+  color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 3,
+};
+const inputSm: React.CSSProperties = {
+  width: '100%', padding: '8px 10px', border: '1px solid #e5e7eb',
+  borderRadius: 7, fontSize: '.88rem', boxSizing: 'border-box',
+};
+
+// Derive distinct values for a given attribute key from variants
+// Variants may look like: size="Red / M" or size="XL" (we keep whatever string is stored)
+function variantField(variants: Variant[], field: 'size'): string[] {
+  const seen = new Set<string>();
+  variants.forEach(v => { if (v[field]) seen.add(v[field]); });
+  return Array.from(seen);
 }
 
 // ─── Product search panel ────────────────────────────────────────────────
@@ -33,16 +63,21 @@ function ProductSearch({ onAdd }: { onAdd: (item: CartItem) => void }) {
   const [results, setResults]   = useState<Product[]>([]);
   const [loading, setLoading]   = useState(false);
   const [selected, setSelected] = useState<Product | null>(null);
-  const [size, setSize]         = useState('');
+  const [variants, setVariants] = useState<Variant[]>([]);
+  const [varLoading, setVarLoading] = useState(false);
+  const [selectedVariant, setSelectedVariant] = useState<string>(''); // variant id
   const [qty, setQty]           = useState(1);
-  const [variants, setVariants] = useState<{ id: string; size: string; stock_count: number }[]>([]);
 
+  // Debounced search
   const search = useCallback(async (q: string) => {
     if (!q.trim()) { setResults([]); return; }
     setLoading(true);
-    const res = await fetch(`/api/admin/products?search=${encodeURIComponent(q)}`);
-    if (res.ok) setResults(await res.json());
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/admin/products?search=${encodeURIComponent(q)}`);
+      if (res.ok) setResults(await res.json());
+    } catch { /* ignore */ } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -50,33 +85,54 @@ function ProductSearch({ onAdd }: { onAdd: (item: CartItem) => void }) {
     return () => clearTimeout(t);
   }, [query, search]);
 
+  // When a product is clicked: fetch its full detail (with variants)
   async function selectProduct(p: Product) {
     setSelected(p);
-    setQty(1); setSize('');
-    // Fetch variants for size selection
-    const res = await fetch(`/api/admin/products/${p.id}`);
-    if (res.ok) {
-      const detail = await res.json();
-      setVariants(detail.variants ?? []);
-    } else {
-      setVariants([]);
-    }
+    setVariants([]);
+    setSelectedVariant('');
+    setQty(1);
     setResults([]);
     setQuery('');
+    setVarLoading(true);
+    try {
+      const res = await fetch(`/api/admin/products/${p.id}`);
+      if (res.ok) {
+        const detail: Product = await res.json();
+        const v = detail.variants ?? [];
+        setVariants(v);
+        // Pre-select the first variant
+        if (v.length > 0) setSelectedVariant(v[0].id);
+        // Use variant price if available
+        setSelected({ ...detail });
+      }
+    } catch { /* ignore */ } finally {
+      setVarLoading(false);
+    }
   }
 
   function addToCart() {
     if (!selected) return;
+
+    const chosenVariant = variants.find(v => v.id === selectedVariant);
+    const price = chosenVariant?.price ?? selected.price;
+
     onAdd({
-      productId: selected.id,
-      name:      selected.name,
-      price:     selected.price,
-      quantity:  qty,
-      size:      size || undefined,
-      image:     selected.image,
+      productId:     selected.id,
+      name:          selected.name,
+      price,
+      quantity:      qty,
+      size:          chosenVariant?.size,
+      variantLabel:  chosenVariant?.size ?? undefined,
+      image:         selected.image,
     });
-    setSelected(null); setSize(''); setQty(1);
+    setSelected(null);
+    setVariants([]);
+    setSelectedVariant('');
+    setQty(1);
   }
+
+  const chosenVariant = variants.find(v => v.id === selectedVariant);
+  const stockForChosen = chosenVariant?.stock_count ?? selected?.stock_count ?? null;
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: '1rem' }}>
@@ -86,71 +142,127 @@ function ProductSearch({ onAdd }: { onAdd: (item: CartItem) => void }) {
       <div style={{ position: 'relative' }}>
         <input
           value={query} onChange={e => setQuery(e.target.value)}
-          placeholder="Search by product name…"
+          placeholder="Search by product name\u2026"
           style={{ width: '100%', padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: '.9rem', boxSizing: 'border-box' }}
         />
-        {loading && <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '.75rem', color: '#9ca3af' }}>searching…</span>}
+        {loading && (
+          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '.75rem', color: '#9ca3af' }}>searching\u2026</span>
+        )}
       </div>
 
-      {/* Search results dropdown */}
+      {/* Dropdown results */}
       {results.length > 0 && (
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 4, overflow: 'hidden', maxHeight: 260, overflowY: 'auto' }}>
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 4, overflow: 'hidden', maxHeight: 280, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,.08)' }}>
           {results.map(p => (
             <div key={p.id}
               onClick={() => selectProduct(p)}
-              style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f9fafb', background: '#fff' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f9fafb', background: '#fff', transition: 'background .1s' }}
               onMouseEnter={e => (e.currentTarget.style.background = '#fdf8f4')}
               onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
               {p.image
-                ? <img src={p.image} alt={p.name} style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
-                : <div style={{ width: 40, height: 40, borderRadius: 6, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🧵</div>
+                ? <img src={p.image} alt={p.name} style={{ width: 42, height: 42, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+                : <div style={{ width: 42, height: 42, borderRadius: 6, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '1.2rem' }}>&#x1F9F5;</div>
               }
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: '.88rem' }}>{p.name}</div>
-                <div style={{ fontSize: '.75rem', color: '#9ca3af' }}>{formatAUD(p.price)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: '.88rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                <div style={{ fontSize: '.75rem', color: '#9ca3af' }}>{fmt(p.price)}</div>
               </div>
-              {!p.in_stock && <span style={{ fontSize: '.7rem', background: '#fee2e2', color: '#991b1b', borderRadius: 4, padding: '2px 7px', fontWeight: 700 }}>Out of stock</span>}
+              {!p.in_stock && (
+                <span style={{ fontSize: '.7rem', background: '#fee2e2', color: '#991b1b', borderRadius: 4, padding: '2px 7px', fontWeight: 700, flexShrink: 0 }}>Out of stock</span>
+              )}
             </div>
           ))}
         </div>
       )}
 
-      {/* Selected product row */}
+      {/* Selected product + variant picker */}
       {selected && (
-        <div style={{ marginTop: '1rem', padding: '1rem', background: '#fdf8f4', borderRadius: 10, border: '1px solid #fce7f3' }}>
+        <div style={{ marginTop: '1rem', padding: '1rem 1.25rem', background: '#fdf8f4', borderRadius: 10, border: '1px solid #fce7f3' }}>
+
+          {/* Product header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
             {selected.image
-              ? <img src={selected.image} alt={selected.name} style={{ width: 52, height: 52, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
-              : <div style={{ width: 52, height: 52, borderRadius: 8, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>🧵</div>
+              ? <img src={selected.image} alt={selected.name} style={{ width: 54, height: 54, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
+              : <div style={{ width: 54, height: 54, borderRadius: 8, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.6rem', flexShrink: 0 }}>&#x1F9F5;</div>
             }
-            <div>
-              <div style={{ fontWeight: 700 }}>{selected.name}</div>
-              <div style={{ fontSize: '.85rem', color: '#9d174d', fontWeight: 700 }}>{formatAUD(selected.price)}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: '.95rem' }}>{selected.name}</div>
+              <div style={{ fontSize: '.82rem', color: '#9d174d', fontWeight: 700 }}>{fmt(chosenVariant?.price ?? selected.price)}</div>
             </div>
-            <button onClick={() => setSelected(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '1.1rem' }}>✕</button>
+            <button onClick={() => { setSelected(null); setVariants([]); setSelectedVariant(''); }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '1.2rem', lineHeight: 1, padding: '4px' }}>\u00D7</button>
           </div>
 
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            {/* Size selector */}
-            {variants.length > 0 && (
-              <div style={{ flex: '1 1 120px' }}>
-                <label style={labelSm}>Size</label>
-                <select value={size} onChange={e => setSize(e.target.value)} style={inputSm}>
-                  <option value="">No size</option>
-                  {variants.map(v => (
-                    <option key={v.id} value={v.size}>{v.size} (stock: {v.stock_count})</option>
-                  ))}
-                </select>
+          {/* Loading variants */}
+          {varLoading && (
+            <div style={{ fontSize: '.82rem', color: '#9ca3af', marginBottom: '1rem' }}>Loading variants\u2026</div>
+          )}
+
+          {/* Variant selector — shown when variants exist */}
+          {!varLoading && variants.length > 0 && (
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={labelSm}>Variant / Size</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5rem' }}>
+                {variants.map(v => {
+                  const isSelected = v.id === selectedVariant;
+                  const outOfStock = (v.stock_count ?? 0) <= 0;
+                  return (
+                    <button
+                      key={v.id}
+                      type="button"
+                      disabled={outOfStock}
+                      onClick={() => setSelectedVariant(v.id)}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: 7,
+                        border: `2px solid ${isSelected ? '#9d174d' : outOfStock ? '#f3f4f6' : '#e5e7eb'}`,
+                        background: isSelected ? '#9d174d' : outOfStock ? '#f9fafb' : '#fff',
+                        color: isSelected ? '#fff' : outOfStock ? '#d1d5db' : '#1a1a1a',
+                        cursor: outOfStock ? 'not-allowed' : 'pointer',
+                        fontWeight: isSelected ? 700 : 500,
+                        fontSize: '.82rem',
+                        transition: 'all .12s',
+                      }}>
+                      {v.size}
+                      {outOfStock && <span style={{ fontSize: '.7rem', marginLeft: 4, opacity: .6 }}>(sold out)</span>}
+                    </button>
+                  );
+                })}
               </div>
-            )}
-            {/* Qty */}
-            <div style={{ flex: '0 0 80px' }}>
-              <label style={labelSm}>Qty</label>
-              <input type="number" min={1} max={99} value={qty} onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))} style={inputSm} />
+              {stockForChosen !== null && stockForChosen > 0 && (
+                <div style={{ fontSize: '.72rem', color: '#16a34a', marginTop: 5, fontWeight: 600 }}>
+                  \u2713 {stockForChosen} in stock
+                </div>
+              )}
             </div>
-            {/* Add button */}
-            <button onClick={addToCart}
-              style={{ flex: '0 0 auto', padding: '9px 20px', background: '#9d174d', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '.88rem' }}>
+          )}
+
+          {/* No variants — show flat stock count */}
+          {!varLoading && variants.length === 0 && selected.stock_count != null && (
+            <div style={{ fontSize: '.78rem', color: (selected.stock_count ?? 0) > 0 ? '#16a34a' : '#dc2626', marginBottom: '1rem', fontWeight: 600 }}>
+              {(selected.stock_count ?? 0) > 0 ? `\u2713 ${selected.stock_count} in stock` : '\u26A0\uFE0F Out of stock'}
+            </div>
+          )}
+
+          {/* Qty + add row */}
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
+            <div style={{ flex: '0 0 90px' }}>
+              <label style={labelSm}>Quantity</label>
+              <input
+                type="number" min={1} max={stockForChosen ?? 99} value={qty}
+                onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))}
+                style={inputSm}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={addToCart}
+              disabled={variants.length > 0 && !selectedVariant}
+              style={{
+                flex: 1, padding: '9px 0', background: '#9d174d', color: '#fff',
+                border: 'none', borderRadius: 8, cursor: 'pointer',
+                fontWeight: 700, fontSize: '.9rem',
+              }}>
               + Add to order
             </button>
           </div>
@@ -160,10 +272,7 @@ function ProductSearch({ onAdd }: { onAdd: (item: CartItem) => void }) {
   );
 }
 
-const labelSm: React.CSSProperties = { display: 'block', fontSize: '.72rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 3 };
-const inputSm: React.CSSProperties = { width: '100%', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: '.88rem', boxSizing: 'border-box' };
-
-// ─── Cart panel ─────────────────────────────────────────────────────────────────
+// ─── Cart ────────────────────────────────────────────────────────────────────
 function Cart({
   items, onQtyChange, onRemove,
 }: {
@@ -174,7 +283,7 @@ function Cart({
   if (items.length === 0) {
     return (
       <div style={{ background: '#fff', borderRadius: 12, padding: '2rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', textAlign: 'center', color: '#9ca3af', marginBottom: '1rem' }}>
-        <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>🛒</div>
+        <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>&#x1F6D2;</div>
         <div style={{ fontSize: '.88rem' }}>No items added yet</div>
       </div>
     );
@@ -190,24 +299,28 @@ function Cart({
         <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '10px 0', borderBottom: '1px solid #f9fafb' }}>
           {item.image
             ? <img src={item.image} alt={item.name} style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
-            : <div style={{ width: 40, height: 40, borderRadius: 6, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🧵</div>
+            : <div style={{ width: 40, height: 40, borderRadius: 6, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>&#x1F9F5;</div>
           }
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: '.88rem' }}>{item.name}</div>
-            {item.size && <div style={{ fontSize: '.72rem', color: '#9ca3af' }}>Size: {item.size}</div>}
+            {item.variantLabel && (
+              <div style={{ fontSize: '.72rem', color: '#6b7280', marginTop: 2 }}>{item.variantLabel}</div>
+            )}
           </div>
-          <input type="number" min={1} max={99} value={item.quantity}
+          <input
+            type="number" min={1} max={99} value={item.quantity}
             onChange={e => onQtyChange(idx, Math.max(1, parseInt(e.target.value) || 1))}
             style={{ width: 54, padding: '6px 8px', border: '1px solid #e5e7eb', borderRadius: 6, textAlign: 'center', fontSize: '.88rem', flexShrink: 0 }}
           />
-          <div style={{ fontWeight: 700, color: '#9d174d', fontSize: '.9rem', flexShrink: 0, minWidth: 64, textAlign: 'right' }}>{formatAUD(item.price * item.quantity)}</div>
-          <button onClick={() => onRemove(idx)} style={{ background: '#fee2e2', border: 'none', color: '#991b1b', borderRadius: 6, padding: '5px 9px', cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>✕</button>
+          <div style={{ fontWeight: 700, color: '#9d174d', fontSize: '.9rem', flexShrink: 0, minWidth: 64, textAlign: 'right' }}>{fmt(item.price * item.quantity)}</div>
+          <button onClick={() => onRemove(idx)}
+            style={{ background: '#fee2e2', border: 'none', color: '#991b1b', borderRadius: 6, padding: '5px 9px', cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>\u00D7</button>
         </div>
       ))}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem', fontWeight: 800, fontSize: '1.05rem' }}>
         <span>Subtotal</span>
-        <span style={{ color: '#9d174d' }}>{formatAUD(subtotal)}</span>
+        <span style={{ color: '#9d174d' }}>{fmt(subtotal)}</span>
       </div>
     </div>
   );
@@ -227,9 +340,9 @@ function SuccessScreen({
   const pm = PAYMENT_OPTIONS.find(o => o.value === paymentMethod);
   return (
     <div style={{ maxWidth: 540, margin: '4rem auto', background: '#fff', borderRadius: 16, padding: '2.5rem', boxShadow: '0 4px 24px rgba(0,0,0,.1)', textAlign: 'center' }}>
-      <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#dcfce7', border: '2px solid #16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', margin: '0 auto 1.5rem' }}>✔️</div>
+      <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#dcfce7', border: '2px solid #16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', margin: '0 auto 1.5rem' }}>&#x2714;&#xFE0F;</div>
       <h2 style={{ fontFamily: 'Georgia, serif', color: '#9d174d', margin: '0 0 .5rem' }}>Order placed!</h2>
-      <p style={{ color: '#6b7280', margin: '0 0 1.5rem' }}>Order confirmation sent to <strong>{customerEmail}</strong></p>
+      <p style={{ color: '#6b7280', margin: '0 0 1.5rem' }}>Confirmation sent to <strong>{customerEmail}</strong></p>
 
       <div style={{ background: '#fdf8f4', borderRadius: 10, padding: '1rem 1.5rem', marginBottom: '1.5rem', textAlign: 'left' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem' }}>
@@ -242,7 +355,7 @@ function SuccessScreen({
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem' }}>
           <span style={{ color: '#9ca3af', fontSize: '.85rem' }}>Total</span>
-          <span style={{ fontWeight: 800, fontSize: '1rem', color: '#9d174d' }}>{formatAUD(total)}</span>
+          <span style={{ fontWeight: 800, fontSize: '1rem', color: '#9d174d' }}>{fmt(total)}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span style={{ color: '#9ca3af', fontSize: '.85rem' }}>Payment</span>
@@ -251,9 +364,9 @@ function SuccessScreen({
       </div>
 
       <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-        <a href={`/admin/orders`}
+        <a href="/admin/orders"
           style={{ padding: '10px 24px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, fontWeight: 700, fontSize: '.88rem', textDecoration: 'none', color: '#1a1a1a' }}>
-          View in orders →
+          View in orders \u2192
         </a>
         <button onClick={onNewOrder}
           style={{ padding: '10px 24px', background: '#9d174d', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '.88rem' }}>
@@ -266,21 +379,20 @@ function SuccessScreen({
 
 // ─── Main page ─────────────────────────────────────────────────────────────────
 export default function AdminCheckoutPage() {
-  const [cartItems, setCartItems]       = useState<CartItem[]>([]);
-  const [paymentMethod, setPayment]     = useState<PaymentMethod>('cash');
-  const [shippingCost, setShipping]     = useState<number>(0);
-  const [shippingEnabled, setShipEn]    = useState(false);
-  const [notes, setNotes]               = useState('');
+  const [cartItems, setCartItems]   = useState<CartItem[]>([]);
+  const [paymentMethod, setPayment] = useState<PaymentMethod>('cash');
+  const [shippingCost, setShipping] = useState<number>(0);
+  const [shippingEnabled, setShipEn] = useState(false);
+  const [notes, setNotes]           = useState('');
 
-  // Customer fields
-  const [name, setName]       = useState('');
-  const [email, setEmail]     = useState('');
-  const [phone, setPhone]     = useState('');
-  const [line1, setLine1]     = useState('');
-  const [line2, setLine2]     = useState('');
-  const [suburb, setSuburb]   = useState('');
-  const [state, setState]     = useState('');
-  const [postcode, setPost]   = useState('');
+  const [name, setName]     = useState('');
+  const [email, setEmail]   = useState('');
+  const [phone, setPhone]   = useState('');
+  const [line1, setLine1]   = useState('');
+  const [line2, setLine2]   = useState('');
+  const [suburb, setSuburb] = useState('');
+  const [state, setState]   = useState('');
+  const [postcode, setPost] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]           = useState('');
@@ -291,9 +403,10 @@ export default function AdminCheckoutPage() {
 
   function addItem(item: CartItem) {
     setCartItems(prev => {
-      const existing = prev.findIndex(i => i.productId === item.productId && i.size === item.size);
-      if (existing >= 0) {
-        return prev.map((i, idx) => idx === existing ? { ...i, quantity: i.quantity + item.quantity } : i);
+      const key = `${item.productId}__${item.size ?? ''}`;
+      const existingIdx = prev.findIndex(i => `${i.productId}__${i.size ?? ''}` === key);
+      if (existingIdx >= 0) {
+        return prev.map((i, idx) => idx === existingIdx ? { ...i, quantity: i.quantity + item.quantity } : i);
       }
       return [...prev, item];
     });
@@ -322,7 +435,10 @@ export default function AdminCheckoutPage() {
     setSubmitting(true); setError('');
 
     const orderItems = cartItems.map(i => ({
-      id: i.productId, name: i.name, quantity: i.quantity, price: i.price,
+      id:       i.productId,
+      name:     i.name,
+      quantity: i.quantity,
+      price:    i.price,
       ...(i.size ? { size: i.size } : {}),
     }));
 
@@ -334,15 +450,15 @@ export default function AdminCheckoutPage() {
         items:             orderItems,
         customer_name:     name,
         customer_email:    email,
-        customer_phone:    phone || undefined,
-        shipping_line1:    line1  || undefined,
-        shipping_line2:    line2  || undefined,
-        shipping_suburb:   suburb || undefined,
-        shipping_state:    state  || undefined,
+        customer_phone:    phone    || undefined,
+        shipping_line1:    line1    || undefined,
+        shipping_line2:    line2    || undefined,
+        shipping_suburb:   suburb   || undefined,
+        shipping_state:    state    || undefined,
         shipping_postcode: postcode || undefined,
         amount_aud:        grandTotal,
         shipping_cost:     shippingEnabled ? shippingCost : 0,
-        notes:             notes || undefined,
+        notes:             notes    || undefined,
       }),
     });
 
@@ -376,18 +492,18 @@ export default function AdminCheckoutPage() {
       {/* Header */}
       <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ fontFamily: 'Georgia, serif', color: '#9d174d', margin: 0, fontSize: '1.75rem' }}>🛒 In-Store Checkout</h1>
+          <h1 style={{ fontFamily: 'Georgia, serif', color: '#9d174d', margin: 0, fontSize: '1.75rem' }}>&#x1F6D2; In-Store Checkout</h1>
           <p style={{ margin: '4px 0 0', color: '#9ca3af', fontSize: '.85rem' }}>Create orders for cash, EFTPOS, or PayID payments</p>
         </div>
         <a href="/admin/orders" style={{ marginLeft: 'auto', padding: '8px 18px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, fontWeight: 600, fontSize: '.85rem', textDecoration: 'none', color: '#374151' }}>
-          ← Orders
+          \u2190 Orders
         </a>
       </div>
 
       <form onSubmit={handleSubmit}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '1.5rem', alignItems: 'start' }}>
 
-          {/* Left column — product search + cart + customer */}
+          {/* Left column */}
           <div>
             <ProductSearch onAdd={addItem} />
             <Cart items={cartItems} onQtyChange={updateQty} onRemove={removeItem} />
@@ -395,7 +511,6 @@ export default function AdminCheckoutPage() {
             {/* Customer details */}
             <div style={{ background: '#fff', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: '1rem' }}>
               <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#9ca3af', marginBottom: '.75rem' }}>Customer details</div>
-
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={labelSm}>Full name *</label>
@@ -411,7 +526,6 @@ export default function AdminCheckoutPage() {
                 </div>
               </div>
 
-              {/* Optional address */}
               <details style={{ marginTop: '1rem' }}>
                 <summary style={{ cursor: 'pointer', fontSize: '.82rem', fontWeight: 600, color: '#6b7280', userSelect: 'none' }}>+ Shipping address (optional)</summary>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
@@ -430,7 +544,7 @@ export default function AdminCheckoutPage() {
                   <div>
                     <label style={labelSm}>State</label>
                     <select value={state} onChange={e => setState(e.target.value)} style={inputSm}>
-                      <option value="">Select…</option>
+                      <option value="">Select\u2026</option>
                       {AU_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
@@ -441,44 +555,41 @@ export default function AdminCheckoutPage() {
                 </div>
               </details>
 
-              {/* Internal notes */}
               <div style={{ marginTop: '1rem' }}>
                 <label style={labelSm}>Internal notes</label>
                 <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-                  placeholder="e.g. customer picked up in store, awaiting PayID confirmation…"
+                  placeholder="e.g. customer picked up in store, awaiting PayID confirmation\u2026"
                   style={{ ...inputSm, resize: 'vertical', fontFamily: 'inherit' }} />
               </div>
             </div>
           </div>
 
-          {/* Right column — payment + total */}
+          {/* Right column — sticky payment + total */}
           <div style={{ position: 'sticky', top: '1.5rem' }}>
             <div style={{ background: '#fff', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: '1rem' }}>
               <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#9ca3af', marginBottom: '.75rem' }}>Payment method</div>
-
               {PAYMENT_OPTIONS.map(opt => (
                 <button key={opt.value} type="button" onClick={() => setPayment(opt.value)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '1rem',
-                    width: '100%', padding: '12px 16px', border: `2px solid ${paymentMethod === opt.value ? opt.colour : '#e5e7eb'}`,
-                    borderRadius: 10, background: paymentMethod === opt.value ? `${opt.colour}12` : '#fff',
+                    width: '100%', padding: '12px 16px',
+                    border: `2px solid ${paymentMethod === opt.value ? opt.colour : '#e5e7eb'}`,
+                    borderRadius: 10, background: paymentMethod === opt.value ? `${opt.colour}18` : '#fff',
                     cursor: 'pointer', marginBottom: '.5rem', textAlign: 'left', transition: 'all .15s',
                   }}>
-                  <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>{opt.icon}</span>
+                  <span style={{ fontSize: '1.4rem', lineHeight: 1 }}>{opt.icon}</span>
                   <span style={{ fontWeight: 700, fontSize: '.92rem', color: paymentMethod === opt.value ? opt.colour : '#1a1a1a' }}>{opt.label}</span>
-                  {paymentMethod === opt.value && <span style={{ marginLeft: 'auto', color: opt.colour, fontWeight: 700 }}>✓</span>}
+                  {paymentMethod === opt.value && <span style={{ marginLeft: 'auto', color: opt.colour, fontWeight: 700, fontSize: '1.1rem' }}>\u2713</span>}
                 </button>
               ))}
-
-              {/* PayID instructions reminder */}
               {paymentMethod === 'payid' && (
-                <div style={{ background: '#fdf4ff', border: '1px solid #e9d5ff', borderRadius: 8, padding: '10px 14px', fontSize: '.8rem', color: '#7c3aed', marginTop: '.25rem', lineHeight: 1.5 }}>
-                  Remind customer to transfer to <strong>orders@ethnicstory.com.au</strong> using their email as reference.
+                <div style={{ background: '#fdf4ff', border: '1px solid #e9d5ff', borderRadius: 8, padding: '10px 14px', fontSize: '.8rem', color: '#7c3aed', lineHeight: 1.5 }}>
+                  Remind customer to transfer to <strong>orders@ethnicstory.com.au</strong> using their email as the reference.
                 </div>
               )}
             </div>
 
-            {/* Shipping line */}
+            {/* Shipping */}
             <div style={{ background: '#fff', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '.75rem' }}>
                 <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#9ca3af' }}>Shipping</div>
@@ -498,18 +609,18 @@ export default function AdminCheckoutPage() {
               )}
             </div>
 
-            {/* Order total */}
+            {/* Total */}
             <div style={{ background: '#fdf2f8', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem', fontSize: '.88rem', color: '#6b7280' }}>
-                <span>Subtotal</span><span>{formatAUD(subtotal)}</span>
+                <span>Subtotal</span><span>{fmt(subtotal)}</span>
               </div>
               {shippingEnabled && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem', fontSize: '.88rem', color: '#6b7280' }}>
-                  <span>Shipping</span><span>{formatAUD(shippingCost)}</span>
+                  <span>Shipping</span><span>{fmt(shippingCost)}</span>
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '.75rem', borderTop: '2px solid #fce7f3', fontWeight: 800, fontSize: '1.2rem', color: '#9d174d' }}>
-                <span>Total</span><span>{formatAUD(grandTotal)}</span>
+                <span>Total</span><span>{fmt(grandTotal)}</span>
               </div>
             </div>
 
@@ -519,15 +630,17 @@ export default function AdminCheckoutPage() {
 
             <button type="submit" disabled={submitting || cartItems.length === 0}
               style={{
-                width: '100%', padding: '14px', background: cartItems.length === 0 ? '#e5e7eb' : '#9d174d',
-                color: cartItems.length === 0 ? '#9ca3af' : '#fff', border: 'none',
-                borderRadius: 10, cursor: cartItems.length === 0 ? 'not-allowed' : 'pointer',
+                width: '100%', padding: '14px',
+                background: cartItems.length === 0 ? '#e5e7eb' : '#9d174d',
+                color: cartItems.length === 0 ? '#9ca3af' : '#fff',
+                border: 'none', borderRadius: 10,
+                cursor: cartItems.length === 0 ? 'not-allowed' : 'pointer',
                 fontWeight: 800, fontSize: '1rem', letterSpacing: '.02em', transition: 'all .15s',
               }}>
-              {submitting ? 'Placing order…' : `✔ Confirm & send receipt · ${formatAUD(grandTotal)}`}
+              {submitting ? 'Placing order\u2026' : `\u2714 Confirm & send receipt \u00B7 ${fmt(grandTotal)}`}
             </button>
             <p style={{ fontSize: '.75rem', color: '#9ca3af', textAlign: 'center', marginTop: '.5rem' }}>
-              Order confirmation email will be sent to customer automatically.
+              Order confirmation email sent to customer automatically.
             </p>
           </div>
         </div>
