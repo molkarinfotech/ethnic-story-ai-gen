@@ -21,7 +21,7 @@ export type ShippingAddress = {
 };
 
 function PaymentForm({
-  grandTotal, items, clearCart, shipping_address, paymentIntentId, accessToken,
+  grandTotal, items, clearCart, shipping_address, paymentIntentId, accessToken, isLoggedIn,
 }: {
   grandTotal: number;
   items: ReturnType<typeof useCart>['items'];
@@ -29,6 +29,7 @@ function PaymentForm({
   shipping_address: ShippingAddress;
   paymentIntentId: string;
   accessToken: string | null;
+  isLoggedIn: boolean;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -106,6 +107,11 @@ function PaymentForm({
   return (
     <form className="checkout-form" onSubmit={handleSubmit}>
       <h2 className="checkout-section-title">Contact information</h2>
+      {isLoggedIn && (
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)', marginTop: '-var(--space-2)' }}>
+          ✓ Signed in — your details have been pre-filled.
+        </p>
+      )}
       <div className="checkout-fields">
         <div className="checkout-field">
           <label htmlFor="co-name" className="checkout-label">Full name *</label>
@@ -113,9 +119,22 @@ function PaymentForm({
             value={shipping_address.name} onChange={e => { shipping_address.name = e.target.value; }} />
         </div>
         <div className="checkout-field">
-          <label htmlFor="co-email" className="checkout-label">Email address *</label>
-          <input id="co-email" type="email" placeholder="jane@example.com.au" className="checkout-input" required
-            value={shipping_address.email} onChange={e => { shipping_address.email = e.target.value; }} />
+          <label htmlFor="co-email" className="checkout-label">
+            Email address *
+            {isLoggedIn && <span style={{ marginLeft: '0.4rem', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>(linked to your account)</span>}
+          </label>
+          <input
+            id="co-email"
+            type="email"
+            placeholder="jane@example.com.au"
+            className="checkout-input"
+            required
+            value={shipping_address.email}
+            onChange={e => { if (!isLoggedIn) { shipping_address.email = e.target.value; } }}
+            readOnly={isLoggedIn}
+            style={isLoggedIn ? { background: 'var(--color-surface-offset)', color: 'var(--color-text-muted)', cursor: 'not-allowed' } : {}}
+            title={isLoggedIn ? 'Email is linked to your account and cannot be changed here.' : undefined}
+          />
         </div>
         <div className="checkout-field">
           <label htmlFor="co-phone" className="checkout-label">Mobile number *</label>
@@ -183,10 +202,11 @@ function PaymentForm({
 
 export function CheckoutForm() {
   const { items, totalPrice, totalItems, clearCart, hydrated } = useCart();
-  const { session } = useAuth();
+  const { user, session } = useAuth();
   const [clientSecret, setClientSecret] = useState('');
   const [paymentIntentId, setPaymentIntentId] = useState('');
   const [intentError, setIntentError] = useState('');
+  const [prefillLoaded, setPrefillLoaded] = useState(false);
 
   const [addr, setAddr] = useState<ShippingAddress>({
     name: '', email: '', phone: '',
@@ -195,6 +215,40 @@ export function CheckoutForm() {
 
   const shipping = totalPrice >= 150 ? 0 : 12.95;
   const grandTotal = totalPrice + shipping;
+
+  // Pre-fill details for logged-in users from their most recent order
+  useEffect(() => {
+    if (!user || !session || prefillLoaded) return;
+    setPrefillLoaded(true);
+
+    // Start with what we know from auth
+    const authName = user.name ?? '';
+    const authEmail = user.email ?? '';
+
+    setAddr(prev => ({ ...prev, name: authName, email: authEmail }));
+
+    // Fetch most recent order to pre-fill phone + shipping address
+    fetch('/api/account/orders', {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
+      .then(r => r.json())
+      .then((orders: any[]) => {
+        if (!Array.isArray(orders) || orders.length === 0) return;
+        const latest = orders[0];
+        const addr = latest.shipping_address ?? {};
+        setAddr(prev => ({
+          name:     prev.name     || latest.customer_name  || authName,
+          email:    authEmail,                               // always locked to auth email
+          phone:    prev.phone    || latest.customer_phone || '',
+          line1:    prev.line1    || addr.line1             || '',
+          line2:    prev.line2    || addr.line2             || '',
+          suburb:   prev.suburb   || addr.suburb            || '',
+          state:    prev.state    || addr.state             || '',
+          postcode: prev.postcode || addr.postcode          || '',
+        }));
+      })
+      .catch(() => { /* non-fatal — just don't pre-fill address */ });
+  }, [user, session, prefillLoaded]);
 
   useEffect(() => {
     if (!hydrated || totalItems === 0) return;
@@ -261,6 +315,7 @@ export function CheckoutForm() {
           shipping_address={addrProxy}
           paymentIntentId={paymentIntentId}
           accessToken={session?.access_token ?? null}
+          isLoggedIn={!!user}
         />
         <aside className="order-summary">
           <h2 className="checkout-section-title">Order summary</h2>
