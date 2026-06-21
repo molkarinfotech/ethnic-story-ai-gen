@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { formatAUD } from '../../lib/products';
@@ -24,20 +24,37 @@ export default function AccountPage() {
   const { user, session, loading: authLoading, signOut } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState('');
+
+  const fetchOrders = useCallback(async (token: string, isManual = false) => {
+    if (isManual) setRefreshing(true);
+    else setOrdersLoading(true);
+    setError('');
+    try {
+      // cache: 'no-store' is critical — Next.js App Router caches fetch() by default,
+      // which means returning users would see a stale order list without it.
+      const res = await fetch('/api/account/orders', {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      });
+      const data = await res.json();
+      if (Array.isArray(data)) setOrders(data);
+      else setError(data.error ?? 'Failed to load orders');
+    } catch {
+      setError('Network error — please try again.');
+    } finally {
+      setOrdersLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (authLoading) return;
     if (!user || !session) { router.push('/login'); return; }
-    fetch('/api/account/orders', {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    })
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setOrders(data); else setError(data.error ?? 'Failed to load orders'); })
-      .catch(() => setError('Network error — please try again.'))
-      .finally(() => setOrdersLoading(false));
-  }, [authLoading, user, session, router]);
+    fetchOrders(session.access_token);
+  }, [authLoading, user, session, router, fetchOrders]);
 
   if (authLoading || ordersLoading) return (
     <main style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)' }}>Loading your account…</main>
@@ -54,7 +71,26 @@ export default function AccountPage() {
       </div>
 
       <div style={{ maxWidth: '860px', margin: '0 auto', padding: '2rem 1rem 4rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1.5rem' }}>My Orders</h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>My Orders</h1>
+          <button
+            onClick={() => session && fetchOrders(session.access_token, true)}
+            disabled={refreshing}
+            style={{
+              fontSize: '0.8rem', fontWeight: 600, padding: '0.4rem 0.9rem',
+              border: '1px solid var(--color-border)', borderRadius: '2rem',
+              background: 'white', color: 'var(--color-text-muted)',
+              cursor: refreshing ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', gap: '0.35rem',
+              opacity: refreshing ? 0.6 : 1, transition: 'opacity 180ms',
+            }}>
+            <span style={{ display: 'inline-block', animation: refreshing ? 'spin 0.7s linear infinite' : 'none' }}>↻</span>
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
+
+        {/* Spinner keyframe injected inline */}
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
         {error && (
           <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.75rem', padding: '1rem', marginBottom: '1.5rem', color: '#dc2626' }}>{error}</div>
