@@ -7,7 +7,7 @@ const CATEGORIES = [
     slug: 'women',
     label: 'Women',
     desc: 'Sarees, lehengas, kurtas & more',
-    emoji: '🥻',
+    emoji: '\uD83E\uDD3B',
     subcategories: ['sarees', 'lehengas', 'kurtas'],
     bgClass: 'one',
     type: 'gender' as const,
@@ -16,7 +16,7 @@ const CATEGORIES = [
     slug: 'men',
     label: 'Men',
     desc: 'Kurtas, sherwanis & festive sets',
-    emoji: '🧣',
+    emoji: '\uD83E\uDDE3',
     subcategories: ['kurtas', 'sherwanis'],
     bgClass: 'two',
     type: 'gender' as const,
@@ -25,7 +25,7 @@ const CATEGORIES = [
     slug: 'kids',
     label: 'Kids',
     desc: 'Ethnic joy for little ones',
-    emoji: '🎠',
+    emoji: '\uD83C\uDFA0',
     subcategories: ['lehengas', 'kurtas', 'sherwanis'],
     bgClass: 'three',
     type: 'gender' as const,
@@ -34,7 +34,7 @@ const CATEGORIES = [
     slug: 'accessories',
     label: 'Accessories',
     desc: 'Jewellery, dupattas, footwear & more',
-    emoji: '💎',
+    emoji: '\uD83D\uDC8E',
     subcategories: ['jewellery', 'dupattas', 'footwear'],
     bgClass: 'four',
     type: 'category' as const,
@@ -49,7 +49,7 @@ export default async function CollectionsPage() {
       <div className="page-header">
         <p className="page-header__eyebrow">Browse All</p>
         <h1>Our Collections</h1>
-        <p>{products.length} curated styles — handcrafted in India, delivered across Australia</p>
+        <p>{products.length} curated styles \u2014 handcrafted in India, delivered across Australia</p>
       </div>
 
       <section className="section">
@@ -58,16 +58,11 @@ export default async function CollectionsPage() {
             {CATEGORIES.map(cat => {
               let count: number;
               if (cat.type === 'category') {
-                // Accessories: filter by category field
                 count = products.filter(
                   p => p.category?.toLowerCase() === cat.slug
                 ).length;
-              } else if (cat.slug === 'women') {
-                // Women: also count NULL-gender products (legacy items default to women)
-                count = products.filter(
-                  p => p.gender === 'women' || p.gender === 'unisex' || !p.gender
-                ).length;
               } else {
+                // Gender collections: only count products with an explicit gender match
                 count = products.filter(
                   p => p.gender === cat.slug || p.gender === 'unisex'
                 ).length;
@@ -75,7 +70,6 @@ export default async function CollectionsPage() {
 
               return (
                 <a key={cat.slug} href={`/collections/${cat.slug}`} className="collection-card">
-                  {/* Coloured background layer — matches .bg.one/.two/.three/.four in globals.css */}
                   <div className={`bg ${cat.bgClass}`}></div>
                   <div className="ornament"></div>
                   <div className="collection-content">

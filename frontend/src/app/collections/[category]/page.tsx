@@ -7,7 +7,7 @@ export const revalidate = 60;
 const GENDER_META: Record<string, { label: string; desc: string; subcategories: string[] }> = {
   women: {
     label: 'Women',
-    desc: 'Sarees, lehengas, kurtas and more — handcrafted for every occasion.',
+    desc: 'Sarees, lehengas, kurtas and more \u2014 handcrafted for every occasion.',
     subcategories: ['sarees', 'lehengas', 'kurtas'],
   },
   men: {
@@ -17,16 +17,16 @@ const GENDER_META: Record<string, { label: string; desc: string; subcategories: 
   },
   kids: {
     label: 'Kids',
-    desc: 'Festive and everyday ethnic looks for little ones aged 1–14.',
+    desc: 'Festive and everyday ethnic looks for little ones aged 1\u201314.',
     subcategories: ['lehengas', 'kurtas', 'sherwanis', 'sarees'],
   },
 };
 
 const CATEGORY_META: Record<string, { label: string; desc: string }> = {
-  sarees:      { label: 'Sarees',      desc: 'Timeless drapes — handwoven silk, cotton, and georgette styles for every occasion.' },
+  sarees:      { label: 'Sarees',      desc: 'Timeless drapes \u2014 handwoven silk, cotton, and georgette styles for every occasion.' },
   lehengas:    { label: 'Lehengas',    desc: 'From grand bridal sets to festive occasion wear, crafted in rich fabrics.' },
-  kurtas:      { label: 'Kurtas',      desc: 'Everyday ethnic elegance — block prints, chikankari, and more.' },
-  sherwanis:   { label: 'Sherwanis',   desc: 'Regal occasion wear for men — from grand wedding sherwanis to festive sets.' },
+  kurtas:      { label: 'Kurtas',      desc: 'Everyday ethnic elegance \u2014 block prints, chikankari, and more.' },
+  sherwanis:   { label: 'Sherwanis',   desc: 'Regal occasion wear for men \u2014 from grand wedding sherwanis to festive sets.' },
   accessories: { label: 'Accessories', desc: 'Jewellery, dupattas, footwear and finishing touches to complete every ethnic look.' },
 };
 
@@ -44,9 +44,12 @@ export default async function CollectionSlugPage({ params }: { params: { categor
   // ── Audience page (women / men / kids) ────────────────────────────────
   const genderMeta = GENDER_META[category];
   if (genderMeta) {
-    const filtered = category === 'women'
-      ? allProducts.filter(p => p.gender === 'women' || p.gender === 'unisex' || !p.gender)
-      : allProducts.filter(p => p.gender === category || p.gender === 'unisex');
+    // Only show products that explicitly match this gender (or unisex).
+    // Products with gender=null are uncategorised and won't appear in any
+    // gender collection until the admin sets their gender field.
+    const filtered = allProducts.filter(
+      p => p.gender === category || p.gender === 'unisex'
+    );
 
     return (
       <main>
@@ -86,7 +89,6 @@ export default async function CollectionSlugPage({ params }: { params: { categor
 
   const products = allProducts.filter(p => p.category === category);
 
-  // Use Array.from instead of [...Set] to avoid TS downlevelIteration requirement
   const isAccessories = category === 'accessories';
   const accessorySubcats: string[] = isAccessories
     ? Array.from(new Set(products.map(p => (p as any).subcategory).filter(Boolean)))
