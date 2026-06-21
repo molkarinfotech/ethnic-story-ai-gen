@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const sb = getServiceSupabase();
   let query = sb
     .from('products')
-    .select('id, name, slug, category, price, original_price, badge, image, in_stock, stock_count, created_at')
+    .select('id, name, slug, category, subcategory, price, original_price, badge, image, in_stock, stock_count, created_at')
     .order('created_at', { ascending: false });
 
   if (search) {
@@ -55,8 +55,10 @@ export async function POST(req: NextRequest) {
   if (existing) slug = `${slug}-${Date.now().toString(36)}`;
 
   const row = { ...body, id, slug };
-  for (const key of ['original_price', 'badge', 'image', 'subtitle', 'description']) {
-    if (row[key] === '' || row[key] === undefined) delete row[key];
+
+  // Strip empty/undefined optional fields so Supabase uses column defaults
+  for (const key of ['original_price', 'badge', 'image', 'subtitle', 'description', 'subcategory']) {
+    if (row[key] === '' || row[key] === undefined || row[key] === null) delete row[key];
   }
 
   const { data, error } = await sb.from('products').insert([row]).select().single();

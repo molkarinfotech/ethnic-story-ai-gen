@@ -14,9 +14,8 @@ function sortVariants(variants: { id: string; size: string; colour?: string; sto
 }
 
 // Whitelist of product fields an admin is allowed to update.
-// Prevents raw body pass-through which could overwrite id, created_at, etc.
 const ALLOWED_UPDATE_FIELDS = new Set([
-  'name', 'slug', 'category', 'price', 'original_price', 'badge',
+  'name', 'slug', 'category', 'subcategory', 'price', 'original_price', 'badge',
   'image', 'in_stock', 'stock_count', 'subtitle', 'description',
   'genders', 'tags', 'sort_order', 'is_featured', 'meta_title', 'meta_description',
 ]);
@@ -28,7 +27,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   const { data: product, error: prodErr } = await sb
     .from('products')
-    .select('id, name, slug, category, price, original_price, badge, image, in_stock, stock_count, created_at')
+    .select('id, name, slug, category, subcategory, price, original_price, badge, image, in_stock, stock_count, created_at')
     .eq('id', params.id)
     .single();
 
