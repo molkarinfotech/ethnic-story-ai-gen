@@ -1,5 +1,6 @@
 'use client';
 
+// Gender is not applicable for accessories — the dropdown hides it in that case.
 const GENDERS = ['women', 'men', 'kids', 'unisex'];
 const BADGES  = ['', 'Bestseller', 'New', 'Sale', 'Premium', 'Test'];
 
@@ -14,6 +15,8 @@ export function ProductFields({
   set: (field: string, value: string) => void;
   categories: CategoryOption[];
 }) {
+  const isAccessories = form.category === 'accessories';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {[
@@ -37,20 +40,22 @@ export function ProductFields({
         </div>
       ))}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.75rem' }}>
-        <div className="checkout-field">
-          <label className="checkout-label">Gender *</label>
-          <select
-            className="checkout-input"
-            value={form.gender ?? 'women'}
-            onChange={e => set('gender', e.target.value)}
-            required
-          >
-            {GENDERS.map(g => (
-              <option key={g} value={g}>{g.charAt(0).toUpperCase() + g.slice(1)}</option>
-            ))}
-          </select>
-        </div>
+      <div style={{ display: 'grid', gridTemplateColumns: isAccessories ? '1fr' : '1fr 1fr', gap: '.75rem' }}>
+        {!isAccessories && (
+          <div className="checkout-field">
+            <label className="checkout-label">Gender *</label>
+            <select
+              className="checkout-input"
+              value={form.gender ?? 'women'}
+              onChange={e => set('gender', e.target.value)}
+              required
+            >
+              {GENDERS.map(g => (
+                <option key={g} value={g}>{g.charAt(0).toUpperCase() + g.slice(1)}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="checkout-field">
           <label className="checkout-label">Category *</label>
@@ -66,6 +71,22 @@ export function ProductFields({
           </select>
         </div>
       </div>
+
+      {isAccessories && (
+        <div className="checkout-field">
+          <label className="checkout-label">Subcategory</label>
+          <input
+            type="text"
+            className="checkout-input"
+            placeholder="e.g. jewellery, dupattas, footwear"
+            value={form.subcategory ?? ''}
+            onChange={e => set('subcategory', e.target.value)}
+          />
+          <p style={{ fontSize: '.75rem', color: 'var(--color-text-muted)', marginTop: '.25rem' }}>
+            Used to filter accessories on the shop page.
+          </p>
+        </div>
+      )}
 
       <div className="checkout-field">
         <label className="checkout-label">Badge</label>

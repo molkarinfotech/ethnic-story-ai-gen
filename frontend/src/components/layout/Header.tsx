@@ -11,7 +11,7 @@ export function Header() {
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener('scroll', onScroll, { passive: true });
-    onScroll(); // set initial state
+    onScroll();
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
@@ -39,8 +39,15 @@ export function Header() {
             Ethnic Story
           </a>
 
-          <nav style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
-            {[['Collections', '/collections'], ['Sarees', '/collections/sarees'], ['Lehengas', '/collections/lehengas'], ['Kurtas', '/collections/kurtas'], ['Kids', '/collections/kids']].map(([label, href]) => (
+          <nav style={{ display: 'flex', gap: '1.6rem', alignItems: 'center' }}>
+            {[
+              ['Collections', '/collections'],
+              ['Sarees', '/collections/sarees'],
+              ['Lehengas', '/collections/lehengas'],
+              ['Kurtas', '/collections/kurtas'],
+              ['Kids', '/collections/kids'],
+              ['Accessories', '/collections/accessories'],
+            ].map(([label, href]) => (
               <a key={href} href={href}
                 style={{ fontFamily: 'system-ui, sans-serif', fontSize: '0.875rem', fontWeight: 500, color: 'var(--color-text)', transition: 'color 0.15s', position: 'relative', paddingBottom: '2px' }}
                 onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-primary)')}

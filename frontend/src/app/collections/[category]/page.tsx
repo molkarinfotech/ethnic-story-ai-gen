@@ -23,10 +23,11 @@ const GENDER_META: Record<string, { label: string; desc: string; subcategories: 
 };
 
 const CATEGORY_META: Record<string, { label: string; desc: string }> = {
-  sarees:    { label: 'Sarees',     desc: 'Timeless drapes — handwoven silk, cotton, and georgette styles for every occasion.' },
-  lehengas:  { label: 'Lehengas',  desc: 'From grand bridal sets to festive occasion wear, crafted in rich fabrics.' },
-  kurtas:    { label: 'Kurtas',    desc: 'Everyday ethnic elegance — block prints, chikankari, and more.' },
-  sherwanis: { label: 'Sherwanis', desc: 'Regal occasion wear for men — from grand wedding sherwanis to festive sets.' },
+  sarees:      { label: 'Sarees',      desc: 'Timeless drapes — handwoven silk, cotton, and georgette styles for every occasion.' },
+  lehengas:    { label: 'Lehengas',    desc: 'From grand bridal sets to festive occasion wear, crafted in rich fabrics.' },
+  kurtas:      { label: 'Kurtas',      desc: 'Everyday ethnic elegance — block prints, chikankari, and more.' },
+  sherwanis:   { label: 'Sherwanis',   desc: 'Regal occasion wear for men — from grand wedding sherwanis to festive sets.' },
+  accessories: { label: 'Accessories', desc: 'Jewellery, dupattas, footwear and finishing touches to complete every ethnic look.' },
 };
 
 export function generateStaticParams() {
@@ -43,11 +44,6 @@ export default async function CollectionSlugPage({ params }: { params: { categor
   // ── Audience page (women / men / kids) ────────────────────────────────
   const genderMeta = GENDER_META[category];
   if (genderMeta) {
-    const products = allProducts.filter(
-      p => p.gender === category || p.gender === 'unisex' || !p.gender
-    );
-
-    // For men / kids, only show their own gender (not the null fallback that mostly holds women's items)
     const filtered = category === 'women'
       ? allProducts.filter(p => p.gender === 'women' || p.gender === 'unisex' || !p.gender)
       : allProducts.filter(p => p.gender === category || p.gender === 'unisex');
@@ -84,12 +80,17 @@ export default async function CollectionSlugPage({ params }: { params: { categor
     );
   }
 
-  // ── Legacy garment page (sarees / lehengas / kurtas / sherwanis) ───────────
+  // ── Category page (sarees / lehengas / kurtas / sherwanis / accessories) ──
   const catMeta = CATEGORY_META[category];
   if (!catMeta) notFound();
 
-  // Include products regardless of gender value (NULL-safe)
   const products = allProducts.filter(p => p.category === category);
+
+  // For accessories, show subcategory filter chips based on what's in stock
+  const isAccessories = category === 'accessories';
+  const accessorySubcats = isAccessories
+    ? [...new Set(products.map(p => p.subcategory).filter(Boolean))] as string[]
+    : [];
 
   return (
     <main>
@@ -98,6 +99,24 @@ export default async function CollectionSlugPage({ params }: { params: { categor
         <h1>{catMeta.label}</h1>
         <p>{catMeta.desc}</p>
       </div>
+
+      {isAccessories && accessorySubcats.length > 0 && (
+        <div style={{ background: 'white', borderBottom: '1px solid var(--color-border)', padding: '.75rem 0' }}>
+          <div className="container" style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <a href="/collections/accessories"
+              style={{ padding: '.35rem .85rem', borderRadius: '2rem', background: 'var(--color-primary)', color: 'white', fontSize: '.8rem', fontWeight: 700, textDecoration: 'none' }}>
+              All
+            </a>
+            {accessorySubcats.map(sub => (
+              <a key={sub} href={`/collections/accessories/${sub}`}
+                style={{ padding: '.35rem .85rem', borderRadius: '2rem', background: 'var(--color-surface-offset)', color: 'var(--color-text)', fontSize: '.8rem', fontWeight: 600, textDecoration: 'none', textTransform: 'capitalize' }}>
+                {sub} ({products.filter(p => p.subcategory === sub).length})
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       <FilteredCollection products={products} category={catMeta.label} />
     </main>
   );
