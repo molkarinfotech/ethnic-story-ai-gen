@@ -1,22 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { isAdminAuthed } from '../../../lib/admin-auth';
 
 export const maxDuration = 60;
 
 const BUCKET = 'product-images';
 
-export async function GET() {
-  return NextResponse.json({
-    ok: true,
-    env: {
-      HUGGINGFACE_API_TOKEN:    !!process.env.HUGGINGFACE_API_TOKEN    ? '✅ set' : '❌ MISSING',
-      NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL  ? '✅ set' : '❌ MISSING',
-      SUPABASE_SERVICE_ROLE_KEY:!!process.env.SUPABASE_SERVICE_ROLE_KEY ? '✅ set' : '❌ MISSING',
-    },
-  });
-}
+// GET handler removed — it previously exposed environment variable status publicly.
+// If you need to check env health, use your hosting dashboard.
 
 export async function POST(req: NextRequest) {
+  // Only admin users may trigger image enhancement
+  if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   try {
     const hfToken = process.env.HUGGINGFACE_API_TOKEN;
     if (!hfToken) {
@@ -26,13 +22,10 @@ export async function POST(req: NextRequest) {
     const { imageUrl, productId } = await req.json();
     if (!imageUrl) return NextResponse.json({ error: 'imageUrl is required' }, { status: 400 });
 
-    // 1. Fetch original image as bytes
     const srcRes = await fetch(imageUrl);
     if (!srcRes.ok) throw new Error(`Could not fetch source image (${srcRes.status})`);
     const srcBuffer = await srcRes.arrayBuffer();
 
-    // 2. Send to HuggingFace Real-ESRGAN (returns enhanced image bytes directly)
-    // Retries once in case of model cold-start (503)
     let hfRes = await fetch(
       'https://api-inference.huggingface.co/models/ai-forever/Real-ESRGAN',
       {
@@ -45,7 +38,6 @@ export async function POST(req: NextRequest) {
       }
     );
 
-    // Cold-start: model loading — wait 20s and retry once
     if (hfRes.status === 503) {
       await new Promise(r => setTimeout(r, 20000));
       hfRes = await fetch(
@@ -63,30 +55,31 @@ export async function POST(req: NextRequest) {
 
     if (!hfRes.ok) {
       const errText = await hfRes.text();
-      throw new Error(`HuggingFace error (${hfRes.status}): ${errText}`);
+      throw new Error(`HuggingFace error ${hfRes.status}: ${errText.slice(0, 200)}`);
     }
 
-    // 3. Get enhanced image bytes
     const enhancedBuffer = await hfRes.arrayBuffer();
-    const contentType = hfRes.headers.get('content-type') ?? 'image/png';
-    const ext = contentType.includes('webp') ? 'webp' : contentType.includes('jpeg') ? 'jpg' : 'png';
-    const storagePath = `${(productId ?? 'product').replace(/[^a-z0-9-]/gi, '-')}-enhanced-${Date.now()}.${ext}`;
 
-    // 4. Upload to Supabase Storage
-    const sb = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-    const { error: uploadErr } = await sb.storage
+    const supabaseUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const serviceKey   = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const sb = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
+
+    const fileName = productId
+      ? `enhanced/${productId}-${Date.now()}.jpg`
+      : `enhanced/${Date.now()}.jpg`;
+
+    const { error: uploadError } = await sb.storage
       .from(BUCKET)
-      .upload(storagePath, enhancedBuffer, { contentType, upsert: true });
-    if (uploadErr) throw new Error(`Supabase upload: ${uploadErr.message}`);
+      .upload(fileName, enhancedBuffer, { contentType: 'image/jpeg', upsert: true });
 
-    const { data } = sb.storage.from(BUCKET).getPublicUrl(storagePath);
-    return NextResponse.json({ url: data.publicUrl });
+    if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
 
-  } catch (e: any) {
-    console.error('[enhance-image]', e?.message);
-    return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 });
+    const { data: { publicUrl } } = sb.storage.from(BUCKET).getPublicUrl(fileName);
+
+    return NextResponse.json({ url: publicUrl });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal error';
+    console.error('[enhance-image]', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

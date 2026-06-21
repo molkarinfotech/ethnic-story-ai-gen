@@ -13,7 +13,14 @@ function sortVariants(variants: { id: string; size: string; colour?: string; sto
   return [...letter, ...numeric, ...other];
 }
 
-// ── GET: return a single product with its variants ─────────────────────────────
+// Whitelist of product fields an admin is allowed to update.
+// Prevents raw body pass-through which could overwrite id, created_at, etc.
+const ALLOWED_UPDATE_FIELDS = new Set([
+  'name', 'slug', 'category', 'price', 'original_price', 'badge',
+  'image', 'in_stock', 'stock_count', 'subtitle', 'description',
+  'genders', 'tags', 'sort_order', 'is_featured', 'meta_title', 'meta_description',
+]);
+
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -31,23 +38,33 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   const { data: variants } = await sb
     .from('product_variants')
-    .select('id, size, colour, stock_count, price')   // ← colour was missing
+    .select('id, size, colour, stock_count, price')
     .eq('product_id', params.id);
 
   return NextResponse.json({ ...product, variants: sortVariants(variants ?? []) });
 }
 
-// ── PATCH: update product fields ───────────────────────────────────────────────
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const body = await req.json();
+
+  // Only pass through whitelisted fields to prevent mass-assignment
+  const safeUpdate: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(body)) {
+    if (ALLOWED_UPDATE_FIELDS.has(key)) safeUpdate[key] = value;
+  }
+
+  if (Object.keys(safeUpdate).length === 0) {
+    return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
+  }
+
   const sb = getServiceSupabase();
-  const { data, error } = await sb.from('products').update(body).eq('id', params.id).select().single();
+  const { data, error } = await sb.from('products').update(safeUpdate).eq('id', params.id).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }
 
-// ── DELETE: remove product ─────────────────────────────────────────────────────
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const sb = getServiceSupabase();

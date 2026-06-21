@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '../../../lib/supabase';
 import { sendEmail, buildInstoreInvoiceEmail } from '../../../lib/resend';
+import { isAdminAuthed } from '../../../lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,9 @@ function genId(): string {
 }
 
 export async function POST(req: NextRequest) {
+  // Only authenticated admin staff (instore checkout) may create manual orders
+  if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const body = await req.json();
   const {
     payment_method, items, customer_name, customer_email, customer_phone,
@@ -59,7 +63,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Fetch product images for all unique product IDs
   const seen: Record<string, boolean> = {};
   const productIds: string[] = [];
   for (const i of items) {
@@ -74,7 +77,6 @@ export async function POST(req: NextRequest) {
     if (row.image) imageMap[row.id] = row.image;
   }
 
-  // Insert — write BOTH status and fulfillment_status as 'delivered'
   const manualPiId = `manual_${genId()}`;
   const { data: orderData, error: insertError } = await sb
     .from('orders')
