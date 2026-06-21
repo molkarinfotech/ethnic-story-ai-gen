@@ -16,14 +16,13 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
   });
 
   useEffect(() => {
-    // Load categories and product in parallel
     Promise.all([
       fetch('/api/admin/categories').then(r => r.json()),
-      fetch('/api/admin/products').then(r => r.json()),
-    ]).then(([cats, products]: [CategoryOption[], ProductRow[]]) => {
+      // Load the individual product directly — this returns gender + resolved image
+      fetch(`/api/admin/products/${params.id}`).then(r => r.json()),
+    ]).then(([cats, p]: [CategoryOption[], ProductRow]) => {
       setCategories(cats);
-      const p = products.find(x => x.id === params.id);
-      if (p) {
+      if (p && !('error' in p)) {
         setForm({
           slug:           String(p.slug           ?? ''),
           name:           String(p.name           ?? ''),
@@ -82,12 +81,10 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
             <ProductFields form={form} set={set} categories={categories} />
             {error && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '1rem' }}>{error}</p>}
             <div style={{ display: 'flex', gap: '.75rem', marginTop: '1.5rem' }}>
-              <button type="submit" disabled={saving} className="btn btn-primary"
-                style={{ flex: 1, justifyContent: 'center', minHeight: '44px' }}>
+              <button type="submit" disabled={saving} className="btn btn-primary" style={{ flex: 1, justifyContent: 'center', minHeight: '44px' }}>
                 {saving ? 'Saving…' : 'Update product'}
               </button>
-              <a href="/admin" className="btn btn--outline"
-                style={{ flex: 1, justifyContent: 'center', minHeight: '44px', textDecoration: 'none', display: 'flex', alignItems: 'center' }}>Cancel</a>
+              <a href="/admin" className="btn btn--outline" style={{ flex: 1, justifyContent: 'center', minHeight: '44px', textDecoration: 'none', display: 'flex', alignItems: 'center' }}>Cancel</a>
             </div>
           </form>
         </div>

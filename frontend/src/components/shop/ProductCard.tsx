@@ -14,10 +14,24 @@ function uniqueColours(variants: Variant[]): string[] {
   return out;
 }
 
+/** Build a deduplicated image list from a fresh /api/products/[id] response.
+ *  prod.image  = resolved first gallery image (server already picks this)
+ *  prod.images = flat array of ALL gallery images
+ *  fallback    = the stale prop value passed from the parent (used only when API returns nothing)
+ */
+function normaliseImageList(prod: any, fallback?: string | null): string[] {
+  const ordered = [
+    prod?.image,
+    ...(Array.isArray(prod?.images) ? prod.images : []),
+    fallback,
+  ].filter((u): u is string => typeof u === 'string' && u.trim().length > 0);
+  return Array.from(new Set(ordered));
+}
+
 export function ProductCard({ id, slug, name, subtitle, price, originalPrice, badge, image, category }: Product & { images?: string[] }) {
   const { addItem }                     = useCart();
-  const [allVariants, setAllVariants]   = useState<Variant[]>([]); // all variants incl. OOS, loaded once
-  const [variants, setVariants]         = useState<Variant[]>([]); // in-stock only, loaded on expand
+  const [allVariants, setAllVariants]   = useState<Variant[]>([]);
+  const [variants, setVariants]         = useState<Variant[]>([]);
   const [selectedColour, setColour]     = useState<string>('');
   const [selectedSize, setSize]         = useState<string>('');
   const [qty, setQty]                   = useState(1);
@@ -25,12 +39,11 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
   const [added, setAdded]               = useState(false);
   const [loading, setLoading]           = useState(false);
   const [stockLoaded, setStockLoaded]   = useState(false);
-  // Multi-image carousel state
   const [images, setImages]             = useState<string[]>(image ? [image] : []);
   const [imgIdx, setImgIdx]             = useState(0);
   const timerRef                        = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Pre-fetch ALL variants (incl. OOS) once on mount to know global stock state ──
+  // Pre-fetch variants (for OOS state) + fresh images on mount
   useEffect(() => {
     fetch(`/api/variants/${id}`)
       .then(r => r.json())
@@ -42,16 +55,15 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
       })
       .catch(() => setStockLoaded(true));
 
-    // Pre-fetch images for hover cycle
+    // Always replace card image with the fresh resolved gallery image
     fetch(`/api/products/${id}`)
       .then(r => r.json())
       .then(prod => {
-        if (prod && Array.isArray(prod.images) && prod.images.length > 0) {
-          setImages([prod.image, ...prod.images].filter(Boolean) as string[]);
-        }
+        const next = normaliseImageList(prod, image);
+        if (next.length > 0) { setImages(next); setImgIdx(0); }
       })
       .catch(() => {});
-  }, [id]);
+  }, [id, image]);
 
   // Fetch variants + images on expand (in-stock only for the picker)
   useEffect(() => {
@@ -65,13 +77,11 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
       setVariants(vars);
       const firstColour = vars.find(v => v.colour)?.colour ?? '';
       setColour(firstColour);
-      if (prodData && Array.isArray(prodData.images) && prodData.images.length > 0) {
-        setImages([prodData.image, ...prodData.images].filter(Boolean) as string[]);
-      }
+      const next = normaliseImageList(prodData, image);
+      if (next.length > 0) { setImages(next); setImgIdx(0); }
     }).catch(() => setVariants([])).finally(() => setLoading(false));
-  }, [expanded, id]);
+  }, [expanded, id, image]);
 
-  // Auto-cycle images on tile hover
   function startCycle() {
     if (images.length <= 1) return;
     timerRef.current = setInterval(() => setImgIdx(i => (i + 1) % images.length), 1200);
@@ -84,12 +94,12 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
 
   function handleAddClick(e: React.MouseEvent) {
     e.preventDefault();
-    // If all variants are OOS, do nothing
     if (stockLoaded && totallyOutOfStock) return;
     if (!expanded) { setExpanded(true); return; }
     if (!selectedSize) return;
-    addItem({ id, slug, name, subtitle, price, originalPrice, badge, image, category, selectedSize, selectedColour } as any);
-    for (let i = 1; i < qty; i++) addItem({ id, slug, name, subtitle, price, originalPrice, badge, image, category, selectedSize, selectedColour } as any);
+    const resolvedImage = images[0] ?? image;
+    addItem({ id, slug, name, subtitle, price, originalPrice, badge, image: resolvedImage, category, selectedSize, selectedColour } as any);
+    for (let i = 1; i < qty; i++) addItem({ id, slug, name, subtitle, price, originalPrice, badge, image: resolvedImage, category, selectedSize, selectedColour } as any);
     setAdded(true);
     setExpanded(false);
     setSize('');
@@ -105,44 +115,23 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
   const selectedVariant = filteredVariants.find(v => v.size === selectedSize);
   const maxQty = selectedVariant?.stock_count ?? 10;
   const currentImage = images[imgIdx] ?? image;
-
-  // Determine out-of-stock state from the pre-fetched allVariants
   const totallyOutOfStock = stockLoaded && allVariants.length > 0 && allVariants.every(v => v.stock_count === 0);
-  // Also OOS if stockLoaded and no variants at all (never been stocked)
   const noVariants = stockLoaded && allVariants.length === 0;
-
   const isOOS = totallyOutOfStock || noVariants;
 
   return (
-    <div
-      className="product-card"
-      style={{ position: 'relative' }}
-      onMouseEnter={startCycle}
-      onMouseLeave={stopCycle}
-    >
+    <div className="product-card" style={{ position: 'relative' }} onMouseEnter={startCycle} onMouseLeave={stopCycle}>
       <a href={`/products/${slug}`} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
         <div className="product-card__image" style={{ position: 'relative', overflow: 'hidden' }}>
           {currentImage
-            ? <img src={currentImage} alt={name} loading="lazy"
-                style={{ transition: 'opacity .3s', width: '100%', height: '100%', objectFit: 'cover' }} />
+            ? <img src={currentImage} alt={name} loading="lazy" style={{ transition: 'opacity .3s', width: '100%', height: '100%', objectFit: 'cover' }} />
             : <span style={{ fontSize: '4rem' }}>🥻</span>}
           {badge && <span className="product-card__badge">{badge}</span>}
-          {/* Out-of-stock overlay on image */}
           {isOOS && (
-            <div style={{
-              position: 'absolute', inset: 0,
-              background: 'rgba(0,0,0,0.35)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <span style={{
-                background: 'rgba(255,255,255,0.92)', color: '#dc2626',
-                fontWeight: 700, fontSize: '.75rem', letterSpacing: '.06em',
-                textTransform: 'uppercase', padding: '.35rem .8rem',
-                borderRadius: '.4rem', border: '1px solid #fca5a5',
-              }}>Out of Stock</span>
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ background: 'rgba(255,255,255,0.92)', color: '#dc2626', fontWeight: 700, fontSize: '.75rem', letterSpacing: '.06em', textTransform: 'uppercase', padding: '.35rem .8rem', borderRadius: '.4rem', border: '1px solid #fca5a5' }}>Out of Stock</span>
             </div>
           )}
-          {/* Dot indicators */}
           {images.length > 1 && (
             <div style={{ position: 'absolute', bottom: '6px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '4px' }}>
               {images.map((_, i) => (
@@ -170,48 +159,26 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
               <p style={{ fontSize: '.75rem', color: '#dc2626', margin: '.25rem 0' }}>Out of stock</p>
             ) : (
               <>
-                {/* Colour pills */}
                 {hasColours && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.3rem', marginBottom: '.5rem' }}>
                     <span style={{ fontSize: '.7rem', color: 'var(--color-text-muted)', fontWeight: 600, alignSelf: 'center', marginRight: '.2rem' }}>Colour:</span>
                     {colours.map(c => (
                       <button key={c} onClick={e => { e.preventDefault(); setColour(c); setSize(''); }}
-                        style={{
-                          padding: '.2rem .55rem', fontSize: '.7rem', fontWeight: 600,
-                          borderRadius: '.4rem',
-                          border: `1.5px solid ${selectedColour === c ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                          background: selectedColour === c ? 'var(--color-primary)' : 'white',
-                          color: selectedColour === c ? 'white' : 'var(--color-text)',
-                          cursor: 'pointer',
-                        }}>{c}</button>
+                        style={{ padding: '.2rem .55rem', fontSize: '.7rem', fontWeight: 600, borderRadius: '.4rem', border: `1.5px solid ${selectedColour === c ? 'var(--color-primary)' : 'var(--color-border)'}`, background: selectedColour === c ? 'var(--color-primary)' : 'white', color: selectedColour === c ? 'white' : 'var(--color-text)', cursor: 'pointer' }}>{c}</button>
                     ))}
                   </div>
                 )}
-
-                {/* Size pills */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', marginBottom: '.5rem' }}>
                   {filteredVariants.map(v => (
                     <button key={v.size} onClick={e => { e.preventDefault(); setSize(v.size); }}
-                      style={{
-                        padding: '.2rem .6rem', fontSize: '.72rem', fontWeight: 600,
-                        borderRadius: '.4rem',
-                        border: `1.5px solid ${selectedSize === v.size ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                        background: selectedSize === v.size ? 'var(--color-primary)' : 'white',
-                        color: selectedSize === v.size ? 'white' : 'var(--color-text)',
-                        cursor: 'pointer',
-                      }}>{v.size}</button>
+                      style={{ padding: '.2rem .6rem', fontSize: '.72rem', fontWeight: 600, borderRadius: '.4rem', border: `1.5px solid ${selectedSize === v.size ? 'var(--color-primary)' : 'var(--color-border)'}`, background: selectedSize === v.size ? 'var(--color-primary)' : 'white', color: selectedSize === v.size ? 'white' : 'var(--color-text)', cursor: 'pointer' }}>{v.size}</button>
                   ))}
                 </div>
-
-                {/* Qty stepper */}
                 {selectedSize && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '.4rem', marginBottom: '.5rem' }}>
-                    <button onClick={e => { e.preventDefault(); setQty(q => Math.max(1, q - 1)); }}
-                      style={{ width: '26px', height: '26px', borderRadius: '.35rem', border: '1px solid var(--color-border)', background: 'white', cursor: 'pointer', fontWeight: 700 }}>−</button>
+                    <button onClick={e => { e.preventDefault(); setQty(q => Math.max(1, q - 1)); }} style={{ width: '26px', height: '26px', borderRadius: '.35rem', border: '1px solid var(--color-border)', background: 'white', cursor: 'pointer', fontWeight: 700 }}>−</button>
                     <span style={{ fontSize: '.85rem', fontWeight: 600, minWidth: '1.5rem', textAlign: 'center' }}>{qty}</span>
-                    <button onClick={e => { e.preventDefault(); setQty(q => Math.min(maxQty, q + 1)); }}
-                      disabled={qty >= maxQty}
-                      style={{ width: '26px', height: '26px', borderRadius: '.35rem', border: '1px solid var(--color-border)', background: 'white', cursor: qty >= maxQty ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: qty >= maxQty ? 0.35 : 1 }}>+</button>
+                    <button onClick={e => { e.preventDefault(); setQty(q => Math.min(maxQty, q + 1)); }} disabled={qty >= maxQty} style={{ width: '26px', height: '26px', borderRadius: '.35rem', border: '1px solid var(--color-border)', background: 'white', cursor: qty >= maxQty ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: qty >= maxQty ? 0.35 : 1 }}>+</button>
                     <span style={{ fontSize: '.7rem', color: 'var(--color-text-muted)' }}>{maxQty} left</span>
                   </div>
                 )}
@@ -224,10 +191,7 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
           className={`add-to-cart-btn${added ? ' add-to-cart-btn--added' : ''}`}
           onClick={handleAddClick}
           disabled={isOOS || (expanded && (!inStock || (variants.length > 0 && !selectedSize) || (hasColours && !selectedColour)))}
-          style={{
-            width: '100%',
-            ...(isOOS ? { background: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb', cursor: 'not-allowed' } : {}),
-          }}
+          style={{ width: '100%', ...(isOOS ? { background: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb', cursor: 'not-allowed' } : {}) }}
         >
           {added ? '✓ Added to Bag'
             : isOOS ? 'Out of Stock'
