@@ -86,10 +86,10 @@ export default async function CollectionSlugPage({ params }: { params: { categor
 
   const products = allProducts.filter(p => p.category === category);
 
-  // For accessories, show subcategory filter chips based on what's in stock
+  // Use Array.from instead of [...Set] to avoid TS downlevelIteration requirement
   const isAccessories = category === 'accessories';
-  const accessorySubcats = isAccessories
-    ? [...new Set(products.map(p => p.subcategory).filter(Boolean))] as string[]
+  const accessorySubcats: string[] = isAccessories
+    ? Array.from(new Set(products.map(p => (p as any).subcategory).filter(Boolean)))
     : [];
 
   return (
@@ -110,7 +110,7 @@ export default async function CollectionSlugPage({ params }: { params: { categor
             {accessorySubcats.map(sub => (
               <a key={sub} href={`/collections/accessories/${sub}`}
                 style={{ padding: '.35rem .85rem', borderRadius: '2rem', background: 'var(--color-surface-offset)', color: 'var(--color-text)', fontSize: '.8rem', fontWeight: 600, textDecoration: 'none', textTransform: 'capitalize' }}>
-                {sub} ({products.filter(p => p.subcategory === sub).length})
+                {sub} ({products.filter(p => (p as any).subcategory === sub).length})
               </a>
             ))}
           </div>
