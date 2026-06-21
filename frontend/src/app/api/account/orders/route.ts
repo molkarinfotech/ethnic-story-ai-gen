@@ -12,22 +12,22 @@ export async function GET(req: NextRequest) {
   const { data: { user }, error: authError } = await sb.auth.getUser(token);
   if (authError || !user) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 });
 
-  // Query by user_id first
+  // 1. Orders directly linked by user_id
   const { data: byId } = await sb
     .from('orders')
     .select('id, created_at, amount_aud, status, items, customer_name, customer_email, customer_phone, shipping_address, stripe_payment_intent_id')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
-  // Fallback: orders placed before user_id was stamped (matched by email)
+  // 2. Orders with no user_id but matching the auth email (pre-user_id-stamp legacy orders)
   const { data: byEmail } = await sb
     .from('orders')
     .select('id, created_at, amount_aud, status, items, customer_name, customer_email, customer_phone, shipping_address, stripe_payment_intent_id')
     .is('user_id', null)
-    .eq('customer_email', user.email)
+    .ilike('customer_email', user.email ?? '')
     .order('created_at', { ascending: false });
 
-  // Merge + deduplicate
+  // 3. Merge + deduplicate
   const seen = new Set<string>();
   const orders = [...(byId ?? []), ...(byEmail ?? [])].filter(o => {
     if (seen.has(o.id)) return false;
@@ -35,10 +35,10 @@ export async function GET(req: NextRequest) {
     return true;
   });
 
-  // Back-fill user_id on legacy orders
+  // 4. Back-fill user_id on any email-matched orders so future queries find them by user_id
   const legacyIds = (byEmail ?? []).map(o => o.id);
   if (legacyIds.length > 0) {
-    await sb.from('orders').update({ user_id: user.id }).in('id', legacyIds);
+    sb.from('orders').update({ user_id: user.id }).in('id', legacyIds).then(() => {});
   }
 
   return NextResponse.json(orders);

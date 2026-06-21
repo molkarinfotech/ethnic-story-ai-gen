@@ -8,15 +8,16 @@ export type CartItem = Product & { quantity: number; selectedSize?: string };
 type CartState = { items: CartItem[]; isOpen: boolean };
 
 type CartAction =
-  | { type: 'ADD';     product: Product }
-  | { type: 'REMOVE';  id: string; size: string | undefined }
-  | { type: 'UPDATE';  id: string; size: string | undefined; quantity: number }
+  | { type: 'ADD';          product: Product }
+  | { type: 'REMOVE';       id: string; size: string | undefined }
+  | { type: 'REMOVE_KEYS';  keys: string[] }  // remove a specific subset by "id__size" key
+  | { type: 'UPDATE';       id: string; size: string | undefined; quantity: number }
   | { type: 'CLEAR' }
   | { type: 'OPEN' }
   | { type: 'CLOSE' }
-  | { type: 'HYDRATE'; items: CartItem[] };
+  | { type: 'HYDRATE';      items: CartItem[] };
 
-function itemKey(id: string, size: string | undefined) { return size ? `${id}__${size}` : id; }
+export function itemKey(id: string, size: string | undefined) { return size ? `${id}__${size}` : id; }
 function matchItem(i: CartItem, id: string, size: string | undefined) {
   return i.id === id && i.selectedSize === size;
 }
@@ -34,6 +35,10 @@ function cartReducer(state: CartState, action: CartAction): CartState {
     }
     case 'REMOVE':
       return { ...state, items: state.items.filter(i => !matchItem(i, action.id, action.size)) };
+    case 'REMOVE_KEYS': {
+      const keySet = new Set(action.keys);
+      return { ...state, items: state.items.filter(i => !keySet.has(itemKey(i.id, i.selectedSize))) };
+    }
     case 'UPDATE': {
       if (action.quantity < 1) return { ...state, items: state.items.filter(i => !matchItem(i, action.id, action.size)) };
       return { ...state, items: state.items.map(i => matchItem(i, action.id, action.size) ? { ...i, quantity: action.quantity } : i) };
@@ -53,6 +58,7 @@ type CartContextType = {
   totalPrice: number;
   addItem: (product: Product) => void;
   removeItem:     (id: string, size: string | undefined) => void;
+  removeItems:    (keys: string[]) => void;
   updateQuantity: (id: string, size: string | undefined, quantity: number) => void;
   clearCart: () => void;
   openCart:  () => void;
@@ -99,7 +105,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     await sb.from('carts').upsert({ user_id: uid, items, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
   }
 
-  // Keep a ref in sync so clearCart can read it without stale closure
   useEffect(() => { userIdRef.current = userId; }, [userId]);
 
   useEffect(() => {
@@ -154,21 +159,26 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const addItem        = useCallback((product: Product) => dispatch({ type: 'ADD', product }), []);
   const removeItem     = useCallback((id: string, size: string | undefined) => dispatch({ type: 'REMOVE', id, size }), []);
+
+  // Remove only the paid subset — bypasses debounce so Supabase is updated immediately
+  const removeItems = useCallback((keys: string[]) => {
+    dispatch({ type: 'REMOVE_KEYS', keys });
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    // Persist happens via the useEffect above on next render after state update
+  }, []);
+
   const updateQuantity = useCallback((id: string, size: string | undefined, quantity: number) => dispatch({ type: 'UPDATE', id, size, quantity }), []);
 
-  // Immediately persist empty cart — bypass the 600ms debounce
   const clearCart = useCallback(() => {
     dispatch({ type: 'CLEAR' });
     if (syncTimer.current) clearTimeout(syncTimer.current);
     const uid = userIdRef.current;
     if (uid) saveToSupabase(uid, []);
-    else {
-      try { localStorage.removeItem(LOCAL_KEY); } catch {}
-    }
+    else { try { localStorage.removeItem(LOCAL_KEY); } catch {} }
   }, []);
 
-  const openCart       = useCallback(() => dispatch({ type: 'OPEN' }), []);
-  const closeCart      = useCallback(() => dispatch({ type: 'CLOSE' }), []);
+  const openCart  = useCallback(() => dispatch({ type: 'OPEN' }), []);
+  const closeCart = useCallback(() => dispatch({ type: 'CLOSE' }), []);
 
   const totalItems = state.items.reduce((s, i) => s + i.quantity, 0);
   const totalPrice = state.items.reduce((s, i) => s + i.price * i.quantity, 0);
@@ -177,7 +187,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     <CartContext.Provider value={{
       items: state.items, isOpen: state.isOpen, hydrated,
       totalItems, totalPrice,
-      addItem, removeItem, updateQuantity, clearCart, openCart, closeCart,
+      addItem, removeItem, removeItems, updateQuantity, clearCart, openCart, closeCart,
     }}>
       {children}
     </CartContext.Provider>

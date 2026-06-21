@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -7,7 +7,7 @@ import {
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js';
-import { useCart } from '../../context/CartContext';
+import { useCart, CartItem, itemKey } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatAUD } from '../../lib/products';
 
@@ -20,16 +20,42 @@ export type ShippingAddress = {
   line1: string; line2: string; suburb: string; state: string; postcode: string;
 };
 
+// ─── Stock check ─────────────────────────────────────────────────────────────
+type Variant = { id: string; size: string; stock_count: number };
+type StockMap = Record<string, number>;
+
+async function fetchStockForItems(items: CartItem[]): Promise<StockMap> {
+  const uniqueIds = Array.from(new Set(items.map(i => i.id)));
+  const results = await Promise.all(
+    uniqueIds.map(pid =>
+      fetch(`/api/variants/${pid}`)
+        .then(r => r.json())
+        .then((variants: Variant[]) => ({ pid, variants }))
+        .catch(() => ({ pid, variants: [] as Variant[] }))
+    )
+  );
+  const map: StockMap = {};
+  for (const { pid, variants } of results) {
+    for (const v of variants) {
+      map[itemKey(pid, v.size)] = v.stock_count;
+      map[pid] = Math.max(map[pid] ?? 0, v.stock_count); // fallback no-size key
+    }
+  }
+  return map;
+}
+
+// ─── Inner payment form ───────────────────────────────────────────────────────
 function PaymentForm({
-  grandTotal, items, clearCart, shipping_address, paymentIntentId, accessToken, isLoggedIn,
+  grandTotal, selectedItems, paymentIntentId, accessToken, isLoggedIn,
+  shipping_address, stockMap,
 }: {
   grandTotal: number;
-  items: ReturnType<typeof useCart>['items'];
-  clearCart: () => void;
-  shipping_address: ShippingAddress;
+  selectedItems: CartItem[];
   paymentIntentId: string;
   accessToken: string | null;
   isLoggedIn: boolean;
+  shipping_address: ShippingAddress;
+  stockMap: StockMap;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -45,11 +71,24 @@ function PaymentForm({
       setErrorMsg('Please fill in all required fields before paying.');
       return;
     }
+    if (selectedItems.length === 0) {
+      setErrorMsg('Please select at least one item to pay for.');
+      return;
+    }
+
+    // Final stock guard
+    for (const item of selectedItems) {
+      const stock = stockMap[itemKey(item.id, item.selectedSize)] ?? stockMap[item.id] ?? 99;
+      if (item.quantity > stock) {
+        setErrorMsg(`"${item.name}" ${item.selectedSize ? `(${item.selectedSize})` : ''} only has ${stock} in stock. Please update your quantity.`);
+        return;
+      }
+    }
 
     setLoading(true);
     setErrorMsg('');
 
-    const orderItems = items.map(i => ({
+    const orderItems = selectedItems.map(i => ({
       id: i.id, name: i.name, quantity: i.quantity, price: i.price, size: i.selectedSize,
     }));
 
@@ -108,7 +147,7 @@ function PaymentForm({
     <form className="checkout-form" onSubmit={handleSubmit}>
       <h2 className="checkout-section-title">Contact information</h2>
       {isLoggedIn && (
-        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)', marginTop: '-var(--space-2)' }}>
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)', marginTop: '-2px' }}>
           ✓ Signed in — your details have been pre-filled.
         </p>
       )}
@@ -124,16 +163,12 @@ function PaymentForm({
             {isLoggedIn && <span style={{ marginLeft: '0.4rem', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>(linked to your account)</span>}
           </label>
           <input
-            id="co-email"
-            type="email"
-            placeholder="jane@example.com.au"
-            className="checkout-input"
-            required
+            id="co-email" type="email" placeholder="jane@example.com.au" className="checkout-input" required
             value={shipping_address.email}
             onChange={e => { if (!isLoggedIn) { shipping_address.email = e.target.value; } }}
             readOnly={isLoggedIn}
             style={isLoggedIn ? { background: 'var(--color-surface-offset)', color: 'var(--color-text-muted)', cursor: 'not-allowed' } : {}}
-            title={isLoggedIn ? 'Email is linked to your account and cannot be changed here.' : undefined}
+            title={isLoggedIn ? 'Email is linked to your account.' : undefined}
           />
         </div>
         <div className="checkout-field">
@@ -189,7 +224,7 @@ function PaymentForm({
       </div>
       {errorMsg && <div className="stripe-error" role="alert">{errorMsg}</div>}
       <button type="submit" className="btn btn-primary"
-        disabled={!stripe || loading}
+        disabled={!stripe || loading || selectedItems.length === 0}
         style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-6)', minHeight: '52px', fontSize: 'var(--text-base)' }}>
         {loading ? 'Processing…' : `Pay ${formatAUD(grandTotal)}`}
       </button>
@@ -200,34 +235,131 @@ function PaymentForm({
   );
 }
 
+// ─── Item selector ────────────────────────────────────────────────────────────
+function ItemSelector({
+  items, stockMap, selectedKeys, onToggle,
+}: {
+  items: CartItem[];
+  stockMap: StockMap;
+  selectedKeys: Set<string>;
+  onToggle: (key: string) => void;
+}) {
+  return (
+    <div style={{ marginBottom: 'var(--space-6)' }}>
+      <h2 className="checkout-section-title">Items to pay for</h2>
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)' }}>
+        Select the items you want to pay for now. Unselected items stay in your bag.
+      </p>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+        {items.map(item => {
+          const key = itemKey(item.id, item.selectedSize);
+          const stock = stockMap[key] ?? stockMap[item.id] ?? 99;
+          const outOfStock = stock === 0;
+          const overStock = !outOfStock && item.quantity > stock;
+          const checked = selectedKeys.has(key) && !outOfStock;
+
+          return (
+            <li key={key} style={{
+              display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+              padding: 'var(--space-3) var(--space-4)',
+              background: outOfStock ? 'var(--color-surface-offset)' : checked ? 'var(--color-primary-highlight)' : 'var(--color-surface)',
+              border: `1px solid ${outOfStock ? 'var(--color-border)' : checked ? 'var(--color-primary)' : 'var(--color-border)'}`,
+              borderRadius: 'var(--radius-md)',
+              opacity: outOfStock ? 0.65 : 1,
+              transition: 'background 180ms, border-color 180ms',
+            }}>
+              <input
+                type="checkbox"
+                id={`item-sel-${key}`}
+                checked={checked}
+                disabled={outOfStock}
+                onChange={() => !outOfStock && onToggle(key)}
+                style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary)', cursor: outOfStock ? 'not-allowed' : 'pointer', flexShrink: 0 }}
+              />
+              <label htmlFor={`item-sel-${key}`} style={{ flex: 1, cursor: outOfStock ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                {item.image && <img src={item.image} alt={item.name} style={{ width: '44px', height: '44px', objectFit: 'cover', borderRadius: 'var(--radius-sm)', flexShrink: 0 }} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                    {item.selectedSize && <span>Size: {item.selectedSize} · </span>}
+                    Qty: {item.quantity}
+                    {outOfStock && <span style={{ color: '#dc2626', fontWeight: 700, marginLeft: '0.5rem' }}>· Out of stock</span>}
+                    {overStock && !outOfStock && <span style={{ color: '#d97706', fontWeight: 600, marginLeft: '0.5rem' }}>· Only {stock} left</span>}
+                  </div>
+                </div>
+                <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', flexShrink: 0, color: outOfStock ? 'var(--color-text-muted)' : 'var(--color-text)' }}>
+                  {formatAUD(item.price * item.quantity)}
+                </span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+// ─── Root export ──────────────────────────────────────────────────────────────
 export function CheckoutForm() {
-  const { items, totalPrice, totalItems, clearCart, hydrated } = useCart();
+  const { items, totalItems, clearCart, hydrated } = useCart();
   const { user, session } = useAuth();
+
   const [clientSecret, setClientSecret] = useState('');
   const [paymentIntentId, setPaymentIntentId] = useState('');
   const [intentError, setIntentError] = useState('');
   const [prefillLoaded, setPrefillLoaded] = useState(false);
+  const [stockMap, setStockMap] = useState<StockMap>({});
+
+  // Which item keys are selected for this payment
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 
   const [addr, setAddr] = useState<ShippingAddress>({
     name: '', email: '', phone: '',
     line1: '', line2: '', suburb: '', state: '', postcode: '',
   });
 
-  const shipping = totalPrice >= 150 ? 0 : 12.95;
-  const grandTotal = totalPrice + shipping;
+  // Pre-select all in-stock items by default once stock is loaded
+  useEffect(() => {
+    if (items.length === 0 || Object.keys(stockMap).length === 0) return;
+    setSelectedKeys(prev => {
+      if (prev.size > 0) return prev; // don't override user's manual selection
+      const keys = items
+        .filter(i => (stockMap[itemKey(i.id, i.selectedSize)] ?? stockMap[i.id] ?? 99) > 0)
+        .map(i => itemKey(i.id, i.selectedSize));
+      return new Set(keys);
+    });
+  }, [stockMap, items]);
 
-  // Pre-fill details for logged-in users from their most recent order
+  const toggleItem = (key: string) => {
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const selectedItems = useMemo(
+    () => items.filter(i => selectedKeys.has(itemKey(i.id, i.selectedSize))),
+    [items, selectedKeys]
+  );
+
+  const selectedPrice = selectedItems.reduce((s, i) => s + i.price * i.quantity, 0);
+  const shipping = selectedPrice >= 150 ? 0 : selectedPrice > 0 ? 12.95 : 0;
+  const grandTotal = selectedPrice + shipping;
+
+  // Load stock for all cart items
+  useEffect(() => {
+    if (!hydrated || items.length === 0) return;
+    fetchStockForItems(items).then(setStockMap);
+  }, [hydrated, items]);
+
+  // Pre-fill address for logged-in users
   useEffect(() => {
     if (!user || !session || prefillLoaded) return;
     setPrefillLoaded(true);
-
-    // Start with what we know from auth
-    const authName = user.name ?? '';
+    const authName = (user as any).name ?? '';
     const authEmail = user.email ?? '';
-
     setAddr(prev => ({ ...prev, name: authName, email: authEmail }));
-
-    // Fetch most recent order to pre-fill phone + shipping address
     fetch('/api/account/orders', {
       headers: { Authorization: `Bearer ${session.access_token}` },
     })
@@ -235,23 +367,24 @@ export function CheckoutForm() {
       .then((orders: any[]) => {
         if (!Array.isArray(orders) || orders.length === 0) return;
         const latest = orders[0];
-        const addr = latest.shipping_address ?? {};
+        const a = latest.shipping_address ?? {};
         setAddr(prev => ({
           name:     prev.name     || latest.customer_name  || authName,
-          email:    authEmail,                               // always locked to auth email
+          email:    authEmail,
           phone:    prev.phone    || latest.customer_phone || '',
-          line1:    prev.line1    || addr.line1             || '',
-          line2:    prev.line2    || addr.line2             || '',
-          suburb:   prev.suburb   || addr.suburb            || '',
-          state:    prev.state    || addr.state             || '',
-          postcode: prev.postcode || addr.postcode          || '',
+          line1:    prev.line1    || a.line1               || '',
+          line2:    prev.line2    || a.line2               || '',
+          suburb:   prev.suburb   || a.suburb              || '',
+          state:    prev.state    || a.state               || '',
+          postcode: prev.postcode || a.postcode            || '',
         }));
       })
-      .catch(() => { /* non-fatal — just don't pre-fill address */ });
+      .catch(() => {});
   }, [user, session, prefillLoaded]);
 
+  // Create payment intent (re-creates whenever grand total changes)
   useEffect(() => {
-    if (!hydrated || totalItems === 0) return;
+    if (!hydrated || grandTotal < 0.5) return;
     fetch('/api/create-payment-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -262,12 +395,13 @@ export function CheckoutForm() {
         if (data.clientSecret) {
           setClientSecret(data.clientSecret);
           setPaymentIntentId(data.clientSecret.split('_secret_')[0]);
+          setIntentError('');
         } else {
           setIntentError(data.error ?? 'Could not initialise payment.');
         }
       })
       .catch(() => setIntentError('Network error — please refresh and try again.'));
-  }, [hydrated, totalItems, grandTotal, session]);
+  }, [hydrated, grandTotal, session]);
 
   if (!hydrated) return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Loading your bag…</div>;
   if (totalItems === 0) return (
@@ -308,42 +442,51 @@ export function CheckoutForm() {
   return (
     <Elements stripe={stripePromise} options={{ clientSecret, appearance: stripeAppearance }}>
       <div className="checkout-grid">
-        <PaymentForm
-          grandTotal={grandTotal}
-          items={items}
-          clearCart={clearCart}
-          shipping_address={addrProxy}
-          paymentIntentId={paymentIntentId}
-          accessToken={session?.access_token ?? null}
-          isLoggedIn={!!user}
-        />
+        <div>
+          {/* Item selection */}
+          <ItemSelector items={items} stockMap={stockMap} selectedKeys={selectedKeys} onToggle={toggleItem} />
+          {/* Contact + payment form */}
+          <PaymentForm
+            grandTotal={grandTotal}
+            selectedItems={selectedItems}
+            paymentIntentId={paymentIntentId}
+            accessToken={session?.access_token ?? null}
+            isLoggedIn={!!user}
+            shipping_address={addrProxy}
+            stockMap={stockMap}
+          />
+        </div>
         <aside className="order-summary">
           <h2 className="checkout-section-title">Order summary</h2>
-          <ul className="order-items">
-            {items.map(item => (
-              <li key={item.id} className="order-item">
-                <div className="order-item__image">
-                  {item.image ? <img src={item.image} alt={item.name} /> : <span>🧵</span>}
-                  <span className="order-item__qty">{item.quantity}</span>
-                </div>
-                <div className="order-item__details">
-                  <div className="order-item__name">{item.name}</div>
-                  {item.subtitle && <div className="order-item__sub">{item.subtitle}</div>}
-                  {item.selectedSize && <div className="order-item__sub">Size: {item.selectedSize}</div>}
-                </div>
-                <div className="order-item__price">{formatAUD(item.price * item.quantity)}</div>
-              </li>
-            ))}
-          </ul>
+          {selectedItems.length === 0 ? (
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', padding: 'var(--space-4) 0' }}>No items selected — tick items above to see your total.</p>
+          ) : (
+            <ul className="order-items">
+              {selectedItems.map(item => (
+                <li key={itemKey(item.id, item.selectedSize)} className="order-item">
+                  <div className="order-item__image">
+                    {item.image ? <img src={item.image} alt={item.name} /> : <span>🧵</span>}
+                    <span className="order-item__qty">{item.quantity}</span>
+                  </div>
+                  <div className="order-item__details">
+                    <div className="order-item__name">{item.name}</div>
+                    {item.subtitle && <div className="order-item__sub">{item.subtitle}</div>}
+                    {item.selectedSize && <div className="order-item__sub">Size: {item.selectedSize}</div>}
+                  </div>
+                  <div className="order-item__price">{formatAUD(item.price * item.quantity)}</div>
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="order-totals">
-            <div className="order-total-row"><span>Subtotal</span><span>{formatAUD(totalPrice)}</span></div>
+            <div className="order-total-row"><span>Subtotal</span><span>{formatAUD(selectedPrice)}</span></div>
             <div className="order-total-row">
               <span>Shipping</span>
-              <span>{shipping === 0 ? <span style={{ color: '#16a34a', fontWeight: 700 }}>Free</span> : formatAUD(shipping)}</span>
+              <span>{shipping === 0 && selectedPrice > 0 ? <span style={{ color: '#16a34a', fontWeight: 700 }}>Free</span> : selectedPrice > 0 ? formatAUD(shipping) : '—'}</span>
             </div>
-            {shipping > 0 && (
+            {shipping > 0 && selectedPrice > 0 && (
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '-.5rem' }}>
-                Add {formatAUD(150 - totalPrice)} more for free shipping
+                Add {formatAUD(150 - selectedPrice)} more for free shipping
               </p>
             )}
             <div className="order-total-row order-total-row--grand">
