@@ -19,9 +19,17 @@ export type Product = {
 };
 
 function normalise(p: Record<string, unknown>): Product {
+  // Resolve the display image: first gallery image takes priority over
+  // the legacy products.image column.
+  const imgs = (p.product_images as { url: string; sort_order: number }[] | undefined) ?? [];
+  imgs.sort((a, b) => a.sort_order - b.sort_order);
+  const firstGalleryImage = imgs[0]?.url ?? null;
+
   return {
     ...p,
+    image: firstGalleryImage ?? (p.image as string | undefined) ?? undefined,
     originalPrice: (p.original_price as number) ?? undefined,
+    gender: (p.gender as Gender) ?? undefined,
   } as Product;
 }
 
@@ -30,7 +38,13 @@ export async function getProducts(): Promise<Product[]> {
     const sb = getServiceSupabase();
     const { data, error } = await sb
       .from('products')
-      .select('*')
+      .select(`
+        *,
+        product_images (
+          url,
+          sort_order
+        )
+      `)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -51,7 +65,13 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
     const sb = getServiceSupabase();
     const { data, error } = await sb
       .from('products')
-      .select('*')
+      .select(`
+        *,
+        product_images (
+          url,
+          sort_order
+        )
+      `)
       .eq('slug', slug)
       .single();
 
