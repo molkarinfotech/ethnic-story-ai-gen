@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const sb = getServiceSupabase();
   let query = sb
     .from('products')
-    .select('id, name, slug, category, subcategory, price, original_price, badge, image, in_stock, stock_count, created_at')
+    .select('id, name, slug, category, subcategory, gender, price, original_price, badge, image, in_stock, stock_count, created_at')
     .order('created_at', { ascending: false });
 
   if (search) {
@@ -27,7 +27,29 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data ?? []);
+
+  const products = data ?? [];
+  if (products.length === 0) return NextResponse.json([]);
+
+  // Resolve first gallery image for each product
+  const ids = products.map((p: any) => p.id as string);
+  const { data: imgRows } = await sb
+    .from('product_images')
+    .select('product_id, url, sort_order')
+    .in('product_id', ids)
+    .order('sort_order', { ascending: true });
+
+  const firstImageMap = new Map<string, string>();
+  for (const row of imgRows ?? []) {
+    if (!firstImageMap.has(row.product_id)) firstImageMap.set(row.product_id, row.url);
+  }
+
+  const resolved = products.map((p: any) => ({
+    ...p,
+    image: firstImageMap.get(p.id) ?? p.image ?? null,
+  }));
+
+  return NextResponse.json(resolved);
 }
 
 export async function POST(req: NextRequest) {

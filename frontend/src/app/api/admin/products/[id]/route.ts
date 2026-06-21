@@ -15,7 +15,7 @@ function sortVariants(variants: { id: string; size: string; colour?: string; sto
 
 // Whitelist of product fields an admin is allowed to update.
 const ALLOWED_UPDATE_FIELDS = new Set([
-  'name', 'slug', 'category', 'subcategory', 'price', 'original_price', 'badge',
+  'name', 'slug', 'category', 'subcategory', 'gender', 'price', 'original_price', 'badge',
   'image', 'in_stock', 'stock_count', 'subtitle', 'description',
   'genders', 'tags', 'sort_order', 'is_featured', 'meta_title', 'meta_description',
 ]);
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   const { data: product, error: prodErr } = await sb
     .from('products')
-    .select('id, name, slug, category, subcategory, price, original_price, badge, image, in_stock, stock_count, created_at')
+    .select('id, name, slug, category, subcategory, gender, price, original_price, badge, image, in_stock, stock_count, created_at')
     .eq('id', params.id)
     .single();
 
@@ -35,12 +35,26 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ error: prodErr?.message ?? 'Not found' }, { status: 404 });
   }
 
+  // Resolve first gallery image
+  const { data: imgRows } = await sb
+    .from('product_images')
+    .select('url, sort_order')
+    .eq('product_id', params.id)
+    .order('sort_order', { ascending: true })
+    .limit(1);
+
+  const firstGalleryImage = imgRows?.[0]?.url ?? null;
+
   const { data: variants } = await sb
     .from('product_variants')
     .select('id, size, colour, stock_count, price')
     .eq('product_id', params.id);
 
-  return NextResponse.json({ ...product, variants: sortVariants(variants ?? []) });
+  return NextResponse.json({
+    ...product,
+    image: firstGalleryImage ?? product.image ?? null,
+    variants: sortVariants(variants ?? []),
+  });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
