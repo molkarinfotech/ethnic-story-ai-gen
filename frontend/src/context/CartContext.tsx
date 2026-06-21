@@ -10,7 +10,7 @@ type CartState = { items: CartItem[]; isOpen: boolean };
 type CartAction =
   | { type: 'ADD';          product: Product }
   | { type: 'REMOVE';       id: string; size: string | undefined }
-  | { type: 'REMOVE_KEYS';  keys: string[] }  // remove a specific subset by "id__size" key
+  | { type: 'REMOVE_KEYS';  keys: string[] }
   | { type: 'UPDATE';       id: string; size: string | undefined; quantity: number }
   | { type: 'CLEAR' }
   | { type: 'OPEN' }
@@ -74,6 +74,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const userIdRef = useRef<string | null>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Always mirrors state.items so callbacks can read the latest without stale closures
+  const itemsRef = useRef<CartItem[]>([]);
 
   function readLocal(): CartItem[] {
     try { return JSON.parse(localStorage.getItem(LOCAL_KEY) ?? '[]'); } catch { return []; }
@@ -105,6 +107,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     await sb.from('carts').upsert({ user_id: uid, items, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
   }
 
+  // Keep refs in sync
+  useEffect(() => { itemsRef.current = state.items; }, [state.items]);
   useEffect(() => { userIdRef.current = userId; }, [userId]);
 
   useEffect(() => {
@@ -147,6 +151,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
+  // Debounced sync for normal add/update mutations
   useEffect(() => {
     if (!hydrated) return;
     if (syncTimer.current) clearTimeout(syncTimer.current);
@@ -159,15 +164,26 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const addItem        = useCallback((product: Product) => dispatch({ type: 'ADD', product }), []);
   const removeItem     = useCallback((id: string, size: string | undefined) => dispatch({ type: 'REMOVE', id, size }), []);
-
-  // Remove only the paid subset — bypasses debounce so Supabase is updated immediately
-  const removeItems = useCallback((keys: string[]) => {
-    dispatch({ type: 'REMOVE_KEYS', keys });
-    if (syncTimer.current) clearTimeout(syncTimer.current);
-    // Persist happens via the useEffect above on next render after state update
-  }, []);
-
   const updateQuantity = useCallback((id: string, size: string | undefined, quantity: number) => dispatch({ type: 'UPDATE', id, size, quantity }), []);
+
+  /**
+   * Remove only the paid subset and persist IMMEDIATELY (no debounce)
+   * so the cart is saved before the browser navigates to /checkout/success.
+   */
+  const removeItems = useCallback((keys: string[]) => {
+    const keySet = new Set(keys);
+    // Compute next items from the ref — always current, avoids stale closure
+    const nextItems = itemsRef.current.filter(i => !keySet.has(itemKey(i.id, i.selectedSize)));
+    dispatch({ type: 'REMOVE_KEYS', keys });
+    // Cancel pending debounced write and persist immediately
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    const uid = userIdRef.current;
+    if (uid) {
+      saveToSupabase(uid, nextItems);
+    } else {
+      try { localStorage.setItem(LOCAL_KEY, JSON.stringify(nextItems)); } catch {}
+    }
+  }, []);
 
   const clearCart = useCallback(() => {
     dispatch({ type: 'CLEAR' });

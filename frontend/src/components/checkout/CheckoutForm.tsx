@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -20,7 +20,6 @@ export type ShippingAddress = {
   line1: string; line2: string; suburb: string; state: string; postcode: string;
 };
 
-// ─── Stock check ─────────────────────────────────────────────────────────────
 type Variant = { id: string; size: string; stock_count: number };
 type StockMap = Record<string, number>;
 
@@ -38,7 +37,7 @@ async function fetchStockForItems(items: CartItem[]): Promise<StockMap> {
   for (const { pid, variants } of results) {
     for (const v of variants) {
       map[itemKey(pid, v.size)] = v.stock_count;
-      map[pid] = Math.max(map[pid] ?? 0, v.stock_count); // fallback no-size key
+      map[pid] = Math.max(map[pid] ?? 0, v.stock_count);
     }
   }
   return map;
@@ -47,14 +46,15 @@ async function fetchStockForItems(items: CartItem[]): Promise<StockMap> {
 // ─── Inner payment form ───────────────────────────────────────────────────────
 function PaymentForm({
   grandTotal, selectedItems, paymentIntentId, accessToken, isLoggedIn,
-  shipping_address, stockMap,
+  addr, setAddr, stockMap,
 }: {
   grandTotal: number;
   selectedItems: CartItem[];
   paymentIntentId: string;
   accessToken: string | null;
   isLoggedIn: boolean;
-  shipping_address: ShippingAddress;
+  addr: ShippingAddress;
+  setAddr: React.Dispatch<React.SetStateAction<ShippingAddress>>;
   stockMap: StockMap;
 }) {
   const stripe = useStripe();
@@ -62,11 +62,20 @@ function PaymentForm({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Convenience helper — returns value + onChange for a controlled input
+  function field(key: keyof ShippingAddress) {
+    return {
+      value: addr[key],
+      onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+        setAddr(prev => ({ ...prev, [key]: e.target.value })),
+    };
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!stripe || !elements) return;
 
-    const { name, email, phone, line1, suburb, state, postcode } = shipping_address;
+    const { name, email, phone, line1, line2, suburb, state, postcode } = addr;
     if (!name || !email || !phone || !line1 || !suburb || !state || !postcode) {
       setErrorMsg('Please fill in all required fields before paying.');
       return;
@@ -75,12 +84,10 @@ function PaymentForm({
       setErrorMsg('Please select at least one item to pay for.');
       return;
     }
-
-    // Final stock guard
     for (const item of selectedItems) {
       const stock = stockMap[itemKey(item.id, item.selectedSize)] ?? stockMap[item.id] ?? 99;
       if (item.quantity > stock) {
-        setErrorMsg(`"${item.name}" ${item.selectedSize ? `(${item.selectedSize})` : ''} only has ${stock} in stock. Please update your quantity.`);
+        setErrorMsg(`"${item.name}"${item.selectedSize ? ` (${item.selectedSize})` : ''} only has ${stock} in stock.`);
         return;
       }
     }
@@ -92,6 +99,8 @@ function PaymentForm({
       id: i.id, name: i.name, quantity: i.quantity, price: i.price, size: i.selectedSize,
     }));
 
+    // Update PI metadata with full customer + order details before confirming.
+    // This is what the webhook reads to save the order.
     try {
       await fetch('/api/update-payment-intent', {
         method: 'POST',
@@ -103,25 +112,18 @@ function PaymentForm({
             customer_name:     name,
             customer_email:    email,
             customer_phone:    phone,
-            shipping_line1:    shipping_address.line1,
-            shipping_line2:    shipping_address.line2,
+            shipping_line1:    line1,
+            shipping_line2:    line2,
             shipping_suburb:   suburb,
             shipping_state:    state,
             shipping_postcode: postcode,
-            items: JSON.stringify(orderItems),
+            items:             JSON.stringify(orderItems),
           },
         }),
       });
     } catch { /* non-fatal */ }
 
-    const snap = {
-      name, email, phone,
-      line1: shipping_address.line1,
-      line2: shipping_address.line2,
-      suburb, state, postcode,
-      total: grandTotal,
-      items: orderItems,
-    };
+    const snap = { name, email, phone, line1, line2, suburb, state, postcode, total: grandTotal, items: orderItems };
     const snapParam = btoa(encodeURIComponent(JSON.stringify(snap)));
 
     const { error } = await stripe.confirmPayment({
@@ -131,7 +133,7 @@ function PaymentForm({
         payment_method_data: {
           billing_details: {
             name, email, phone,
-            address: { line1, line2: shipping_address.line2 || undefined, city: suburb, state, postal_code: postcode, country: 'AU' },
+            address: { line1, line2: line2 || undefined, city: suburb, state, postal_code: postcode, country: 'AU' },
           },
         },
       },
@@ -154,8 +156,7 @@ function PaymentForm({
       <div className="checkout-fields">
         <div className="checkout-field">
           <label htmlFor="co-name" className="checkout-label">Full name *</label>
-          <input id="co-name" type="text" placeholder="Jane Smith" className="checkout-input" required
-            value={shipping_address.name} onChange={e => { shipping_address.name = e.target.value; }} />
+          <input id="co-name" type="text" placeholder="Jane Smith" className="checkout-input" required {...field('name')} />
         </div>
         <div className="checkout-field">
           <label htmlFor="co-email" className="checkout-label">
@@ -164,8 +165,8 @@ function PaymentForm({
           </label>
           <input
             id="co-email" type="email" placeholder="jane@example.com.au" className="checkout-input" required
-            value={shipping_address.email}
-            onChange={e => { if (!isLoggedIn) { shipping_address.email = e.target.value; } }}
+            value={addr.email}
+            onChange={e => { if (!isLoggedIn) setAddr(prev => ({ ...prev, email: e.target.value })); }}
             readOnly={isLoggedIn}
             style={isLoggedIn ? { background: 'var(--color-surface-offset)', color: 'var(--color-text-muted)', cursor: 'not-allowed' } : {}}
             title={isLoggedIn ? 'Email is linked to your account.' : undefined}
@@ -173,8 +174,7 @@ function PaymentForm({
         </div>
         <div className="checkout-field">
           <label htmlFor="co-phone" className="checkout-label">Mobile number *</label>
-          <input id="co-phone" type="tel" placeholder="04XX XXX XXX" className="checkout-input" required
-            value={shipping_address.phone} onChange={e => { shipping_address.phone = e.target.value; }} />
+          <input id="co-phone" type="tel" placeholder="04XX XXX XXX" className="checkout-input" required {...field('phone')} />
         </div>
       </div>
 
@@ -182,31 +182,27 @@ function PaymentForm({
       <div className="checkout-fields checkout-fields--halves">
         <div className="checkout-field">
           <label htmlFor="co-addr1" className="checkout-label">Street address *</label>
-          <input id="co-addr1" type="text" placeholder="12 Collins Street" className="checkout-input" required
-            value={shipping_address.line1} onChange={e => { shipping_address.line1 = e.target.value; }} />
+          <input id="co-addr1" type="text" placeholder="12 Collins Street" className="checkout-input" required {...field('line1')} />
         </div>
         <div className="checkout-field">
           <label htmlFor="co-addr2" className="checkout-label">Apartment / unit (optional)</label>
-          <input id="co-addr2" type="text" placeholder="Unit 4" className="checkout-input"
-            value={shipping_address.line2} onChange={e => { shipping_address.line2 = e.target.value; }} />
+          <input id="co-addr2" type="text" placeholder="Unit 4" className="checkout-input" {...field('line2')} />
         </div>
         <div className="checkout-field checkout-field--half">
           <label htmlFor="co-suburb" className="checkout-label">Suburb *</label>
-          <input id="co-suburb" type="text" placeholder="Melbourne" className="checkout-input" required
-            value={shipping_address.suburb} onChange={e => { shipping_address.suburb = e.target.value; }} />
+          <input id="co-suburb" type="text" placeholder="Melbourne" className="checkout-input" required {...field('suburb')} />
         </div>
         <div className="checkout-field checkout-field--half">
           <label htmlFor="co-state" className="checkout-label">State / Territory *</label>
-          <select id="co-state" className="checkout-input" required
-            value={shipping_address.state} onChange={e => { shipping_address.state = e.target.value; }}>
+          <select id="co-state" className="checkout-input" required value={addr.state}
+            onChange={e => setAddr(prev => ({ ...prev, state: e.target.value }))}>
             <option value="">Select state…</option>
             {AU_STATES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div className="checkout-field checkout-field--half">
           <label htmlFor="co-postcode" className="checkout-label">Postcode *</label>
-          <input id="co-postcode" type="text" placeholder="3000" maxLength={4} pattern="[0-9]{4}" className="checkout-input" required
-            value={shipping_address.postcode} onChange={e => { shipping_address.postcode = e.target.value; }} />
+          <input id="co-postcode" type="text" placeholder="3000" maxLength={4} pattern="[0-9]{4}" className="checkout-input" required {...field('postcode')} />
         </div>
         <div className="checkout-field checkout-field--half">
           <label htmlFor="co-country" className="checkout-label">Country</label>
@@ -257,22 +253,17 @@ function ItemSelector({
           const outOfStock = stock === 0;
           const overStock = !outOfStock && item.quantity > stock;
           const checked = selectedKeys.has(key) && !outOfStock;
-
           return (
             <li key={key} style={{
               display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
               padding: 'var(--space-3) var(--space-4)',
               background: outOfStock ? 'var(--color-surface-offset)' : checked ? 'var(--color-primary-highlight)' : 'var(--color-surface)',
-              border: `1px solid ${outOfStock ? 'var(--color-border)' : checked ? 'var(--color-primary)' : 'var(--color-border)'}`,
+              border: `1px solid ${checked && !outOfStock ? 'var(--color-primary)' : 'var(--color-border)'}`,
               borderRadius: 'var(--radius-md)',
               opacity: outOfStock ? 0.65 : 1,
               transition: 'background 180ms, border-color 180ms',
             }}>
-              <input
-                type="checkbox"
-                id={`item-sel-${key}`}
-                checked={checked}
-                disabled={outOfStock}
+              <input type="checkbox" id={`item-sel-${key}`} checked={checked} disabled={outOfStock}
                 onChange={() => !outOfStock && onToggle(key)}
                 style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary)', cursor: outOfStock ? 'not-allowed' : 'pointer', flexShrink: 0 }}
               />
@@ -309,25 +300,23 @@ export function CheckoutForm() {
   const [intentError, setIntentError] = useState('');
   const [prefillLoaded, setPrefillLoaded] = useState(false);
   const [stockMap, setStockMap] = useState<StockMap>({});
-
-  // Which item keys are selected for this payment
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const initialSelectionDone = useRef(false);
 
   const [addr, setAddr] = useState<ShippingAddress>({
     name: '', email: '', phone: '',
     line1: '', line2: '', suburb: '', state: '', postcode: '',
   });
 
-  // Pre-select all in-stock items by default once stock is loaded
+  // Pre-select all in-stock items once — only on first stock load
   useEffect(() => {
     if (items.length === 0 || Object.keys(stockMap).length === 0) return;
-    setSelectedKeys(prev => {
-      if (prev.size > 0) return prev; // don't override user's manual selection
-      const keys = items
-        .filter(i => (stockMap[itemKey(i.id, i.selectedSize)] ?? stockMap[i.id] ?? 99) > 0)
-        .map(i => itemKey(i.id, i.selectedSize));
-      return new Set(keys);
-    });
+    if (initialSelectionDone.current) return;
+    initialSelectionDone.current = true;
+    const keys = items
+      .filter(i => (stockMap[itemKey(i.id, i.selectedSize)] ?? stockMap[i.id] ?? 99) > 0)
+      .map(i => itemKey(i.id, i.selectedSize));
+    setSelectedKeys(new Set(keys));
   }, [stockMap, items]);
 
   const toggleItem = (key: string) => {
@@ -357,12 +346,10 @@ export function CheckoutForm() {
   useEffect(() => {
     if (!user || !session || prefillLoaded) return;
     setPrefillLoaded(true);
-    const authName = (user as any).name ?? '';
+    const authName  = (user as any).user_metadata?.full_name ?? (user as any).name ?? '';
     const authEmail = user.email ?? '';
     setAddr(prev => ({ ...prev, name: authName, email: authEmail }));
-    fetch('/api/account/orders', {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    })
+    fetch('/api/account/orders', { headers: { Authorization: `Bearer ${session.access_token}` } })
       .then(r => r.json())
       .then((orders: any[]) => {
         if (!Array.isArray(orders) || orders.length === 0) return;
@@ -382,7 +369,7 @@ export function CheckoutForm() {
       .catch(() => {});
   }, [user, session, prefillLoaded]);
 
-  // Create payment intent (re-creates whenever grand total changes)
+  // Create / recreate payment intent whenever grand total changes
   useEffect(() => {
     if (!hydrated || grandTotal < 0.5) return;
     fetch('/api/create-payment-intent', {
@@ -431,28 +418,19 @@ export function CheckoutForm() {
     },
   };
 
-  const addrProxy = new Proxy(addr, {
-    get: (target, prop) => target[prop as keyof ShippingAddress],
-    set: (target, prop, value) => {
-      setAddr(prev => ({ ...prev, [prop as keyof ShippingAddress]: value }));
-      return true;
-    },
-  });
-
   return (
     <Elements stripe={stripePromise} options={{ clientSecret, appearance: stripeAppearance }}>
       <div className="checkout-grid">
         <div>
-          {/* Item selection */}
           <ItemSelector items={items} stockMap={stockMap} selectedKeys={selectedKeys} onToggle={toggleItem} />
-          {/* Contact + payment form */}
           <PaymentForm
             grandTotal={grandTotal}
             selectedItems={selectedItems}
             paymentIntentId={paymentIntentId}
             accessToken={session?.access_token ?? null}
             isLoggedIn={!!user}
-            shipping_address={addrProxy}
+            addr={addr}
+            setAddr={setAddr}
             stockMap={stockMap}
           />
         </div>
