@@ -13,13 +13,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   const navItems = [
-    { href: '/admin',            label: 'Dashboard',  icon: '📊' },
-    { href: '/admin/orders',     label: 'Orders',     icon: '📦' },
-    { href: '/admin/products',   label: 'Products',   icon: '👗' },
-    { href: '/admin/categories', label: 'Categories', icon: '🏷️' },
-    { href: '/admin/checkout',   label: 'Checkout',   icon: '🛒' },
-    { href: '/admin/scan',       label: 'Scan',       icon: '📷' },
-    { href: '/admin/import',     label: 'Import',     icon: '📥' },
+    { href: '/admin',              label: 'Dashboard',  icon: '📊' },
+    { href: '/admin/orders',       label: 'Orders',     icon: '📦' },
+    { href: '/admin/products',     label: 'Products',   icon: '👗' },
+    { href: '/admin/categories',   label: 'Categories', icon: '🏷️' },
+    { href: '/admin/checkout',     label: 'Checkout',   icon: '🛒' },
+    { href: '/admin/scan',         label: 'Scan',       icon: '📷' },
+    { href: '/admin/import',       label: 'Import',     icon: '📥' },
+    { href: '/admin/appearance',   label: 'Appearance', icon: '🎨' },
   ];
 
   if (isLoginPage) return <>{children}</>;

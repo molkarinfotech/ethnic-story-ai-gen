@@ -5,6 +5,7 @@ import { CartDrawer } from '../cart/CartDrawer';
 import { CartIcon } from '../cart/CartIcon';
 import { AuthNav } from '../AuthNav';
 import { PageTransition } from './PageTransition';
+import { DarkModeToggle } from './DarkModeToggle';
 
 export function StorefrontShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -40,6 +41,7 @@ export function StorefrontShell({ children }: { children: React.ReactNode }) {
             <a href="/collections/kids">Kids</a>
           </nav>
           <div className="site-header__actions">
+            <DarkModeToggle />
             <AuthNav />
             <CartIcon />
             <a href="/collections" className="btn btn-primary site-header__shop-btn" style={{ minHeight: '38px', padding: '.6rem 1.2rem', fontSize: 'var(--text-xs)' }}>Shop Now</a>
