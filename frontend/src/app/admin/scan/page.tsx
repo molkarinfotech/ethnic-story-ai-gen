@@ -8,7 +8,9 @@ type VisionResult = {
   visionSkipped: boolean;
   visionError: string | null;
   labels: string[];
+  objectNames?: string[];
   detectedCategory: string | null;
+  detectedProductType: { type: string; category: string } | null;
   detectedColours: { name: string; score: number }[];
   primaryColour: string | null;
   detectedSize: string | null;
@@ -101,10 +103,11 @@ function slugify(str: string) {
 
 function buildDefaultPrompt(visionResult: VisionResult | null, form: FormState): string {
   const parts: string[] = [];
-  if (form.colour)                        parts.push(form.colour);
-  if (visionResult?.detectedCategory)     parts.push(visionResult.detectedCategory);
-  if (visionResult?.labels?.length)       parts.push(visionResult.labels.slice(0, 4).join(', '));
-  if (form.productName)                   parts.push(form.productName);
+  if (form.colour)                                    parts.push(form.colour);
+  if (visionResult?.detectedProductType?.type)        parts.push(visionResult.detectedProductType.type);
+  else if (visionResult?.detectedCategory)            parts.push(visionResult.detectedCategory);
+  if (visionResult?.labels?.length)                   parts.push(visionResult.labels.slice(0, 4).join(', '));
+  if (form.productName)                               parts.push(form.productName);
   const garmentDesc = parts.filter(Boolean).join(' ') || 'ethnic Indian garment';
   return `A South Asian female model wearing a ${garmentDesc}. Full-body portrait, professional fashion photography, sharp focus on the garment details.`;
 }
@@ -136,9 +139,9 @@ export default function ScanPage() {
   });
 
   // Step 2b — extra images
-  const [extraImages,        setExtraImages]        = useState<ExtraImageItem[]>([]);
-  const [uploadingExtras,    setUploadingExtras]    = useState(false);
-  const [extraUploadDone,    setExtraUploadDone]    = useState(false);
+  const [extraImages,     setExtraImages]     = useState<ExtraImageItem[]>([]);
+  const [uploadingExtras, setUploadingExtras] = useState(false);
+  const [extraUploadDone, setExtraUploadDone] = useState(false);
 
   // Step 3 — AI Model Gen
   const [showModelGen,    setShowModelGen]    = useState(false);
@@ -181,6 +184,14 @@ export default function ScanPage() {
         colour: data.primaryColour ?? f.colour,
         size:   data.detectedSize  ?? f.size,
       }));
+      // Pre-fill new product form if a product type was detected
+      if (data.detectedProductType) {
+        setNewProduct(p => ({
+          ...p,
+          name:     p.name     || `${data.primaryColour ? data.primaryColour + ' ' : ''}${data.detectedProductType!.type}`,
+          category: p.category || data.detectedProductType!.category,
+        }));
+      }
     } catch {
       setLoadingProducts(true);
       try {
@@ -213,7 +224,6 @@ export default function ScanPage() {
     }));
     setExtraImages(prev => [...prev, ...items]);
     setExtraUploadDone(false);
-    // reset file input so same file can be picked again
     if (extraFileRef.current) extraFileRef.current.value = '';
   }
 
@@ -228,7 +238,6 @@ export default function ScanPage() {
   async function handleUploadExtras() {
     if (!extraImages.length) return;
     setUploadingExtras(true);
-    // sort_order starts at 1 (0 is reserved for the main scanned photo)
     let sortOrder = 1;
     for (let i = 0; i < extraImages.length; i++) {
       const item = extraImages[i];
@@ -475,7 +484,14 @@ export default function ScanPage() {
                     {visionResult.detectedColours.map(c => (
                       <span key={c.name} style={{ background: '#dcfce7', color: '#166534', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem', fontWeight: 600 }}>🎨 {c.name}</span>
                     ))}
-                    {visionResult.detectedCategory && (
+                    {/* Amber badge for detected product type */}
+                    {visionResult.detectedProductType && (
+                      <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem', fontWeight: 700, border: '1px solid #fde68a' }}>
+                        👗 {visionResult.detectedProductType.type}
+                      </span>
+                    )}
+                    {/* Purple category badge (only if no product type, or if different from type category) */}
+                    {visionResult.detectedCategory && !visionResult.detectedProductType && (
                       <span style={{ background: '#ede9fe', color: '#6d28d9', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem', fontWeight: 600 }}>📂 {visionResult.detectedCategory}</span>
                     )}
                     {visionResult.detectedSize && (
@@ -555,6 +571,12 @@ export default function ScanPage() {
                   {showNewProduct && (
                     <div style={{ background: '#fdf2f8', borderRadius: '.75rem', padding: '1rem', border: '1.5px solid #fbcfe8' }}>
                       <div style={{ fontWeight: 700, marginBottom: '.75rem', color: '#9d174d', fontSize: '.9rem' }}>🆕 New Product</div>
+                      {/* Pre-fill hint */}
+                      {visionResult?.detectedProductType && (
+                        <div style={{ marginBottom: '.65rem', padding: '.45rem .75rem', background: '#fef3c7', borderRadius: '.5rem', border: '1px solid #fde68a', fontSize: '.78rem', color: '#92400e', fontWeight: 600 }}>
+                          👗 Detected: <strong>{visionResult.detectedProductType.type}</strong> — fields pre-filled from Vision
+                        </div>
+                      )}
                       <div style={{ marginBottom: '.6rem' }}>
                         <label style={fieldLabel}>Name *</label>
                         <input value={newProduct.name} onChange={e => setNewProduct(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Red Bridal Lehenga" style={inputStyle} />
@@ -638,25 +660,15 @@ export default function ScanPage() {
                 style={{ padding: '.35rem .85rem', borderRadius: '2rem', border: '1.5px solid #6366f1', background: '#eef2ff', color: '#4338ca', fontSize: '.8rem', fontWeight: 700, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>
                 + Add Photos
               </button>
-              <input
-                ref={extraFileRef}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={onExtraFilesChange}
-                style={{ display: 'none' }}
-              />
+              <input ref={extraFileRef} type="file" accept="image/*" multiple onChange={onExtraFilesChange} style={{ display: 'none' }} />
             </div>
 
             {extraImages.length > 0 && (
               <>
-                {/* Image grid */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '.5rem', marginBottom: '1rem' }}>
                   {extraImages.map((item, idx) => (
                     <div key={idx} style={{ position: 'relative', borderRadius: '.6rem', overflow: 'hidden', border: item.status === 'done' ? '2px solid #16a34a' : item.status === 'error' ? '2px solid #dc2626' : '1.5px solid #e5e7eb' }}>
                       <img src={item.preview} alt={`Extra ${idx + 1}`} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
-
-                      {/* Status overlay */}
                       {item.status === 'uploading' && (
                         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite', fontSize: '1.3rem' }}>⏳</span>
@@ -670,8 +682,6 @@ export default function ScanPage() {
                           <span style={{ fontSize: '.6rem', color: '#dc2626', fontWeight: 700, background: 'white', borderRadius: '.3rem', padding: '0 .3rem' }}>Error</span>
                         </div>
                       )}
-
-                      {/* Remove button — only when pending/error */}
                       {(item.status === 'pending' || item.status === 'error') && (
                         <button
                           onClick={() => removeExtraImage(idx)}
@@ -683,7 +693,6 @@ export default function ScanPage() {
                   ))}
                 </div>
 
-                {/* Per-image colour — editable inline */}
                 <div style={{ marginBottom: '.85rem' }}>
                   <label style={fieldLabel}>Colour per image (tap to edit)</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '.35rem' }}>
