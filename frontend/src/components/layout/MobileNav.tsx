@@ -7,7 +7,7 @@ const SECTIONS = [
   {
     href: '/collections/women',
     label: 'Women',
-    emoji: '🥕',
+    emoji: '🥻',
     children: [
       { href: '/collections/women/sarees',   label: 'Sarees' },
       { href: '/collections/women/lehengas', label: 'Lehengas' },
@@ -33,6 +33,7 @@ const SECTIONS = [
       { href: '/collections/kids/sherwanis', label: 'Sherwanis' },
     ],
   },
+  { href: '/collections/accessories', label: 'Accessories', emoji: '💍', children: [] },
   { href: '/collections', label: 'All Collections', emoji: '✨', children: [] },
 ];
 
@@ -69,8 +70,12 @@ export function MobileNav() {
 
       {open && <div className="mobile-nav-overlay" aria-hidden="true" onClick={close} />}
 
-      <nav className={`mobile-nav-drawer ${open ? 'open' : ''}`} aria-label="Mobile navigation">
-        <div className="mobile-nav-drawer__header">
+      <nav
+        className={`mobile-nav-drawer ${open ? 'open' : ''}`}
+        aria-label="Mobile navigation"
+        style={{ background: '#fff9f5' }}
+      >
+        <div className="mobile-nav-drawer__header" style={{ background: '#fff9f5', borderBottom: '1px solid #fce7f3' }}>
           <a className="site-header__logo" href="/" onClick={close}>
             <span className="brand-mark" aria-hidden="true">
               <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
@@ -83,29 +88,29 @@ export function MobileNav() {
           <button className="mobile-nav-drawer__close" aria-label="Close menu" onClick={close}>✕</button>
         </div>
 
-        <ul className="mobile-nav-drawer__links" style={{ paddingBottom: '6rem' }}>
+        <ul className="mobile-nav-drawer__links" style={{ paddingBottom: '6rem', background: '#fff9f5' }}>
           {SECTIONS.map(item => (
-            <li key={item.href}>
+            <li key={item.href} style={{ borderBottom: '1px solid #fce7f3' }}>
               {item.children.length > 0 ? (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <a href={item.href} onClick={close} style={{ flex: 1 }}>
+                    <a href={item.href} onClick={close} style={{ flex: 1, display: 'block', padding: '.85rem 1.25rem', color: '#1a1a1a', textDecoration: 'none', fontWeight: 600, fontSize: '.95rem' }}>
                       {item.emoji} {item.label}
                     </a>
                     <button
                       aria-label={`Toggle ${item.label}`}
                       onClick={() => setExpanded(e => e === item.href ? null : item.href)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '.5rem .75rem', fontSize: '.85rem', color: 'var(--color-text-muted)' }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '.5rem 1.25rem', fontSize: '.85rem', color: '#9d174d' }}
                     >
                       {expanded === item.href ? '▲' : '▼'}
                     </button>
                   </div>
                   {expanded === item.href && (
-                    <ul style={{ listStyle: 'none', padding: '0 0 .25rem 1.5rem', margin: 0 }}>
+                    <ul style={{ listStyle: 'none', padding: '0 0 .5rem 0', margin: 0, background: '#fdf2f8' }}>
                       {item.children.map(child => (
-                        <li key={child.href} style={{ borderTop: '1px solid var(--color-border)' }}>
+                        <li key={child.href}>
                           <a href={child.href} onClick={close}
-                            style={{ display: 'block', padding: '.6rem .75rem', fontSize: '.9rem', color: 'var(--color-text-muted)', textDecoration: 'none', textTransform: 'capitalize' }}>
+                            style={{ display: 'block', padding: '.65rem 2.5rem', fontSize: '.9rem', color: '#6b0f2e', textDecoration: 'none', fontWeight: 500 }}>
                             {child.label}
                           </a>
                         </li>
@@ -114,13 +119,16 @@ export function MobileNav() {
                   )}
                 </>
               ) : (
-                <a href={item.href} onClick={close}>{item.emoji} {item.label}</a>
+                <a href={item.href} onClick={close}
+                  style={{ display: 'block', padding: '.85rem 1.25rem', color: '#1a1a1a', textDecoration: 'none', fontWeight: 600, fontSize: '.95rem' }}>
+                  {item.emoji} {item.label}
+                </a>
               )}
             </li>
           ))}
         </ul>
 
-        <div className="mobile-nav-drawer__footer">
+        <div className="mobile-nav-drawer__footer" style={{ background: '#fff9f5', borderTop: '1px solid #fce7f3' }}>
           <a href="/collections" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={close}>
             Shop Now
           </a>

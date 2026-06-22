@@ -10,13 +10,22 @@ const SORT_OPTIONS = [
   { value: 'name',       label: 'Name A–Z' },
 ];
 
+function uniqueBadges(products: Product[]): string[] {
+  const seen: Record<string, true> = {};
+  const out: string[] = [];
+  for (const p of products) {
+    if (p.badge && !seen[p.badge]) { seen[p.badge] = true; out.push(p.badge); }
+  }
+  return out;
+}
+
 export function FilteredCollection({ products, category }: { products: Product[]; category: string }) {
-  const [sort, setSort]       = useState('default');
-  const [filter, setFilter]   = useState<string | null>(null);
+  const [sort, setSort]         = useState('default');
+  const [filter, setFilter]     = useState<string | null>(null);
   const [carousel, setCarousel] = useState(false);
   const trackRef = useRef<HTMLDivElement>(null);
 
-  const badges = Array.from(new Set(products.map(p => p.badge).filter(Boolean))) as string[];
+  const badges = uniqueBadges(products);
 
   const sorted = [...products]
     .filter(p => !filter || p.badge === filter)

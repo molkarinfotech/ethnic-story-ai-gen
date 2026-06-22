@@ -37,6 +37,16 @@ export function generateStaticParams() {
   ];
 }
 
+function uniqueSubcats(products: { subcategory?: string }[]): string[] {
+  const seen: Record<string, true> = {};
+  const out: string[] = [];
+  for (const p of products) {
+    const s = (p as any).subcategory;
+    if (s && !seen[s]) { seen[s] = true; out.push(s); }
+  }
+  return out;
+}
+
 export default async function CollectionSlugPage({ params }: { params: { category: string } }) {
   const { category } = params;
   const allProducts  = await getProducts();
@@ -45,8 +55,7 @@ export default async function CollectionSlugPage({ params }: { params: { categor
   const genderMeta = GENDER_META[category];
   if (genderMeta) {
     // Only show products that explicitly match this gender (or unisex).
-    // Products with gender=null are uncategorised and won't appear in any
-    // gender collection until the admin sets their gender field.
+    // Products with gender=null are uncategorised and won't appear here.
     const filtered = allProducts.filter(
       p => p.gender === category || p.gender === 'unisex'
     );
@@ -84,15 +93,15 @@ export default async function CollectionSlugPage({ params }: { params: { categor
   }
 
   // ── Category page (sarees / lehengas / kurtas / sherwanis / accessories) ──
+  // No gender filter here — accessories and category pages show ALL products
+  // matching that category regardless of gender field.
   const catMeta = CATEGORY_META[category];
   if (!catMeta) notFound();
 
   const products = allProducts.filter(p => p.category === category);
 
   const isAccessories = category === 'accessories';
-  const accessorySubcats: string[] = isAccessories
-    ? Array.from(new Set(products.map(p => (p as any).subcategory).filter(Boolean)))
-    : [];
+  const accessorySubcats = isAccessories ? uniqueSubcats(products) : [];
 
   return (
     <main>
