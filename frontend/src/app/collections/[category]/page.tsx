@@ -1,6 +1,7 @@
 import { getProducts } from '../../../lib/fetchProducts';
 import { notFound } from 'next/navigation';
 import { FilteredCollection } from '../../../components/shop/FilteredCollection';
+import { Product } from '../../../lib/products';
 
 export const revalidate = 60;
 
@@ -37,11 +38,12 @@ export function generateStaticParams() {
   ];
 }
 
-function uniqueSubcats(products: { subcategory?: string }[]): string[] {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function uniqueSubcats(products: Product[]): string[] {
   const seen: Record<string, true> = {};
   const out: string[] = [];
   for (const p of products) {
-    const s = (p as any).subcategory;
+    const s = (p as any).subcategory as string | undefined;
     if (s && !seen[s]) { seen[s] = true; out.push(s); }
   }
   return out;
@@ -51,11 +53,9 @@ export default async function CollectionSlugPage({ params }: { params: { categor
   const { category } = params;
   const allProducts  = await getProducts();
 
-  // ── Audience page (women / men / kids) ────────────────────────────────
+  // -- Audience page (women / men / kids) --
   const genderMeta = GENDER_META[category];
   if (genderMeta) {
-    // Only show products that explicitly match this gender (or unisex).
-    // Products with gender=null are uncategorised and won't appear here.
     const filtered = allProducts.filter(
       p => p.gender === category || p.gender === 'unisex'
     );
@@ -92,9 +92,8 @@ export default async function CollectionSlugPage({ params }: { params: { categor
     );
   }
 
-  // ── Category page (sarees / lehengas / kurtas / sherwanis / accessories) ──
-  // No gender filter here — accessories and category pages show ALL products
-  // matching that category regardless of gender field.
+  // -- Category page (sarees / lehengas / kurtas / sherwanis / accessories) --
+  // No gender filter -- shows ALL products matching the category.
   const catMeta = CATEGORY_META[category];
   if (!catMeta) notFound();
 
