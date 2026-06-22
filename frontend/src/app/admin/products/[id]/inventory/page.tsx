@@ -17,6 +17,13 @@ function sortVariants(vs: Variant[]) {
   return [...letter, ...numeric, ...other];
 }
 
+function uniqueSorted(arr: string[]): string[] {
+  const seen: Record<string, true> = {};
+  const out: string[] = [];
+  for (const s of arr) { if (s && !seen[s]) { seen[s] = true; out.push(s); } }
+  return out.sort();
+}
+
 export default function InventoryPage({ params }: { params: { id: string } }) {
   const productId = params.id;
 
@@ -52,10 +59,10 @@ export default function InventoryPage({ params }: { params: { id: string } }) {
 
   /* ── Helpers ── */
   const colours = product
-    ? [...new Set([
-        ...product.variants.map(v => v.colour).filter(Boolean),
-        ...images.map(i => i.colour).filter(Boolean),
-      ])].sort()
+    ? uniqueSorted([
+        ...product.variants.map(v => v.colour).filter(Boolean) as string[],
+        ...images.map(i => i.colour).filter(Boolean) as string[],
+      ])
     : [];
 
   function imagesByColour(colour: string) {
@@ -67,12 +74,12 @@ export default function InventoryPage({ params }: { params: { id: string } }) {
   const noColourVariants = sortVariants(product?.variants.filter(v => !v.colour) ?? []);
 
   /* ── Stock save ── */
-  async function saveStock(variantId: string, productId: string, size: string, colour: string, qty: number) {
+  async function saveStock(variantId: string, pid: string, size: string, colour: string, qty: number) {
     setSaving(s => ({ ...s, [variantId]: true }));
     await fetch('/api/admin/stock', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ variant_id: variantId, product_id: productId, size, colour, stock_count: qty }),
+      body: JSON.stringify({ variant_id: variantId, product_id: pid, size, colour, stock_count: qty }),
     });
     setProduct(p => !p ? p : { ...p, variants: p.variants.map(v => v.id === variantId ? { ...v, stock_count: qty } : v) });
     setSaving(s => { const n={...s}; delete n[variantId]; return n; });
