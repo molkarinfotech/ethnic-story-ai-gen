@@ -187,6 +187,9 @@ export async function POST(req: NextRequest) {
   let detectedSize: string | null  = null;
   let fullText = '';
 
+  // mime is used in the Vision request content type context (kept for clarity)
+  void mime;
+
   try {
     const visionRes = await fetch(
       `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
@@ -216,14 +219,14 @@ export async function POST(req: NextRequest) {
       // Labels
       labels = (r?.labelAnnotations ?? []).map((l: { description: string }) => l.description);
 
-      // Object localisation — extract unique names
-      objectNames = [
-        ...new Set<string>(
+      // Object localisation — extract unique names (Array.from for ES5 compat)
+      objectNames = Array.from(
+        new Set<string>(
           (r?.localizedObjectAnnotations ?? []).map(
             (o: { name: string }) => o.name
           )
-        ),
-      ];
+        )
+      );
 
       // Colour properties
       const dominantColours: Array<{
