@@ -12,18 +12,67 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     router.push('/admin/login');
   }
 
-  const navItems = [
-    { href: '/admin',              label: 'Dashboard',  icon: '📊' },
-    { href: '/admin/orders',       label: 'Orders',     icon: '📦' },
-    { href: '/admin/products',     label: 'Products',   icon: '👗' },
-    { href: '/admin/categories',   label: 'Categories', icon: '🏷️' },
-    { href: '/admin/checkout',     label: 'Checkout',   icon: '🛒' },
-    { href: '/admin/scan',         label: 'Scan',       icon: '📷' },
-    { href: '/admin/import',       label: 'Import',     icon: '📥' },
-    { href: '/admin/appearance',   label: 'Appearance', icon: '🎨' },
+  // ── Navigation groups ──
+  // Primary: the things you do every day
+  // Tools: less frequent but important workflows
+  // Settings: configuration that rarely changes
+  const primaryNav = [
+    { href: '/admin',            label: 'Dashboard',  icon: '📊' },
+    { href: '/admin/products',   label: 'Products',   icon: '👗' },
+    { href: '/admin/orders',     label: 'Orders',     icon: '📦' },
+  ];
+  const toolsNav = [
+    { href: '/admin/scan',       label: 'Scan & AI',  icon: '📷' },
+    { href: '/admin/import',     label: 'Import',     icon: '📥' },
+  ];
+  const settingsNav = [
+    { href: '/admin/categories', label: 'Categories', icon: '🏷️' },
+    { href: '/admin/checkout',   label: 'Checkout',   icon: '🛒' },
+    { href: '/admin/appearance', label: 'Appearance', icon: '🎨' },
   ];
 
+  // Flat list for mobile bottom nav (most used items only)
+  const mobileNav = [
+    { href: '/admin',            label: 'Home',       icon: '📊' },
+    { href: '/admin/products',   label: 'Products',   icon: '👗' },
+    { href: '/admin/orders',     label: 'Orders',     icon: '📦' },
+    { href: '/admin/scan',       label: 'Scan',       icon: '📷' },
+    { href: '/admin/import',     label: 'Import',     icon: '📥' },
+  ];
+
+  function isActive(href: string) {
+    return href === '/admin' ? pathname === '/admin' : pathname.startsWith(href);
+  }
+
   if (isLoginPage) return <>{children}</>;
+
+  const linkStyle = (active: boolean): React.CSSProperties => ({
+    display: 'flex', alignItems: 'center', gap: '.75rem',
+    padding: '.6rem 1rem',
+    margin: '0 .5rem',
+    borderRadius: '.6rem',
+    textDecoration: 'none',
+    fontSize: '.85rem', fontWeight: active ? 700 : 500,
+    color: active ? '#9d174d' : '#6b7280',
+    background: active ? '#fdf2f8' : 'transparent',
+    transition: 'background .12s, color .12s',
+  });
+
+  function NavSection({ label, items }: { label: string; items: typeof primaryNav }) {
+    return (
+      <div style={{ marginBottom: '.25rem' }}>
+        <div style={{ padding: '.5rem 1rem .3rem', fontSize: '.6rem', fontWeight: 700, color: '#d1d5db', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+          {label}
+        </div>
+        {items.map(item => (
+          <a key={item.href} href={item.href} style={linkStyle(isActive(item.href))}>
+            <span style={{ fontSize: '1.05rem', lineHeight: 1 }}>{item.icon}</span>
+            {item.label}
+          </a>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: '100dvh', background: '#fdf2f8', fontFamily: 'system-ui, sans-serif' }}>
@@ -56,44 +105,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           @media (max-width: 767px) { .admin-sidebar { display: none !important; } }
           @media (min-width: 768px) { .admin-bottom-nav { display: none !important; } }
           @media (min-width: 768px) { .admin-content { padding: 2rem 2.5rem !important; } }
+          .admin-nav-link:hover { background: #fdf2f8 !important; color: #9d174d !important; }
         `}</style>
 
         <aside className="admin-sidebar" style={{
-          width: '220px', flexShrink: 0,
+          width: '210px', flexShrink: 0,
           background: 'white',
           borderRight: '1.5px solid #fce7f3',
           display: 'flex', flexDirection: 'column',
-          padding: '1.5rem 0',
+          padding: '1rem 0 1.5rem',
           position: 'sticky', top: '52px',
           height: 'calc(100dvh - 52px)',
           overflowY: 'auto',
+          gap: '.5rem',
         }}>
-          <div style={{ padding: '0 1rem .75rem', fontSize: '.65rem', fontWeight: 700, color: '#d1d5db', textTransform: 'uppercase', letterSpacing: '.08em' }}>Navigation</div>
-          {navItems.map(item => {
-            const active = item.href === '/admin'
-              ? pathname === '/admin'
-              : pathname.startsWith(item.href);
-            return (
-              <a
-                key={item.href}
-                href={item.href}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '.75rem',
-                  padding: '.65rem 1rem',
-                  margin: '0 .6rem',
-                  borderRadius: '.65rem',
-                  textDecoration: 'none',
-                  fontSize: '.88rem', fontWeight: active ? 700 : 500,
-                  color: active ? '#9d174d' : '#6b7280',
-                  background: active ? '#fdf2f8' : 'transparent',
-                  transition: 'background .12s, color .12s',
-                }}
-              >
-                <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>{item.icon}</span>
-                {item.label}
-              </a>
-            );
-          })}
+          <NavSection label="Main" items={primaryNav} />
+          <div style={{ height: '1px', background: '#fce7f3', margin: '.25rem .75rem' }} />
+          <NavSection label="Tools" items={toolsNav} />
+          <div style={{ height: '1px', background: '#fce7f3', margin: '.25rem .75rem' }} />
+          <NavSection label="Settings" items={settingsNav} />
         </aside>
 
         <main className="admin-content" style={{
@@ -105,26 +135,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </main>
       </div>
 
-      {/* ── Mobile bottom nav ── */}
+      {/* ── Mobile bottom nav (5 most-used items) ── */}
       <nav className="admin-bottom-nav" style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
         background: 'white', borderTop: '1.5px solid #fce7f3',
         display: 'flex', zIndex: 20,
         boxShadow: '0 -2px 12px rgba(0,0,0,.07)',
-        overflowX: 'auto',
       }}>
-        {navItems.map(item => {
-          const active = item.href === '/admin'
-            ? pathname === '/admin'
-            : pathname.startsWith(item.href);
+        {mobileNav.map(item => {
+          const active = isActive(item.href);
           return (
             <a
               key={item.href}
               href={item.href}
               style={{
-                flex: '0 0 auto', display: 'flex', flexDirection: 'column',
+                flex: 1, display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',
-                padding: '.5rem .65rem .4rem',
+                padding: '.5rem .5rem .4rem',
                 textDecoration: 'none',
                 color: active ? '#9d174d' : '#9ca3af',
                 fontSize: '.52rem', fontWeight: active ? 700 : 500,

@@ -97,25 +97,40 @@ export default function AdminProductsPage() {
     <div>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '.75rem' }}>
-        <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#111827' }}>Products & Inventory</h1>
-        <div style={{ display: 'flex', gap: '.5rem' }}>
-          <a href="/admin/products/new" style={{ background: '#9d174d', color: 'white', borderRadius: '.5rem', padding: '.45rem 1rem', textDecoration: 'none', fontSize: '.82rem', fontWeight: 600 }}>+ Add product</a>
+        <div>
+          <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#111827', marginBottom: '.15rem' }}>Products</h1>
+          <p style={{ fontSize: '.78rem', color: '#9ca3af', margin: 0 }}>Manage listings, inventory & images</p>
         </div>
+        <a
+          href="/admin/products/new"
+          style={{ background: '#9d174d', color: 'white', borderRadius: '.5rem', padding: '.5rem 1.1rem', textDecoration: 'none', fontSize: '.82rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '.4rem' }}
+        >
+          + New product
+        </a>
       </div>
 
       {/* Search */}
       <input
-        type="search" placeholder="Search products…"
+        type="search" placeholder="Search products or category…"
         value={search} onChange={e => setSearch(e.target.value)}
         style={{ width: '100%', padding: '.55rem .85rem', borderRadius: '.5rem', border: '1px solid #e5e7eb', fontSize: '.875rem', marginBottom: '1rem', outline: 'none', boxSizing: 'border-box' }}
       />
 
-      {loading && <p style={{ color: '#6b7280', fontSize: '.875rem', textAlign: 'center', padding: '2rem' }}>Loading products…</p>}
+      {/* Summary strip */}
+      {!loading && (
+        <div style={{ fontSize: '.75rem', color: '#9ca3af', marginBottom: '.75rem' }}>
+          {filtered.length} product{filtered.length !== 1 ? 's' : ''}
+          {search && ` matching "${search}"`}
+        </div>
+      )}
+
+      {loading && <p style={{ color: '#6b7280', fontSize: '.875rem', textAlign: 'center', padding: '2rem' }}>Loading…</p>}
 
       {!loading && filtered.length === 0 && (
         <div style={{ textAlign: 'center', padding: '3rem', color: '#9ca3af' }}>
           <div style={{ fontSize: '2.5rem', marginBottom: '.5rem' }}>👗</div>
           <p style={{ fontWeight: 600, color: '#6b7280' }}>No products found</p>
+          {search && <p style={{ fontSize: '.8rem', marginTop: '.25rem' }}>Try a different search term</p>}
         </div>
       )}
 
@@ -130,50 +145,74 @@ export default function AdminProductsPage() {
             <div key={p.id} style={{ background: 'white', borderRadius: '.7rem', border: '1px solid #fce7f3', boxShadow: '0 1px 3px rgba(0,0,0,.04)', overflow: 'hidden' }}>
 
               {/* Product row */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '.85rem', padding: '.8rem 1rem', flexWrap: 'wrap' }}>
-                {p.image && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '.85rem', padding: '.75rem 1rem', flexWrap: 'wrap' }}>
+
+                {/* Thumbnail */}
+                {p.image ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={p.image} alt={p.name} width={44} height={44}
-                    style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: '.4rem', flexShrink: 0 }} />
+                    style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: '.4rem', flexShrink: 0, border: '1px solid #fce7f3' }} />
+                ) : (
+                  <div style={{ width: 44, height: 44, borderRadius: '.4rem', background: '#fdf2f8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem', flexShrink: 0, border: '1px solid #fce7f3' }}>👗</div>
                 )}
+
+                {/* Info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: '.88rem', color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.name}
                     {p.badge && <span style={{ marginLeft: '.35rem', fontSize: '.63rem', background: '#fce7f3', color: '#9d174d', borderRadius: '2rem', padding: '.1rem .4rem', fontWeight: 700 }}>{p.badge}</span>}
                   </div>
-                  <div style={{ fontSize: '.75rem', color: '#6b7280', marginTop: '.1rem' }}>
-                    {p.category}{p.gender ? ` · ${p.gender}` : ''} · <strong style={{ color: '#111827' }}>A${p.price}</strong>
+                  <div style={{ fontSize: '.73rem', color: '#6b7280', marginTop: '.1rem', display: 'flex', gap: '.4rem', flexWrap: 'wrap' }}>
+                    <span>{p.category}</span>
+                    {p.gender && <span>· {p.gender}</span>}
+                    <span>· <strong style={{ color: '#111827' }}>A${p.price}</strong></span>
+                    {colours.length > 0 && <span>· {colours.length} colour{colours.length !== 1 ? 's' : ''}</span>}
                   </div>
                 </div>
 
-                {/* Stock summary */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexShrink: 0 }}>
-                  <span style={{
-                    fontSize: '.72rem', fontWeight: 700, borderRadius: '2rem', padding: '.2rem .6rem',
-                    background: total === 0 ? '#fee2e2' : low ? '#fef9c3' : '#dcfce7',
-                    color: total === 0 ? '#991b1b' : low ? '#854d0e' : '#166534',
-                  }}>
-                    {total === 0 ? '⚠ Out' : low ? `⚠ ${total} left` : `${total} units`}
-                  </span>
-                  <span style={{ fontSize: '.72rem', color: '#9ca3af' }}>{p.variants.length} variants</span>
-                  {colours.length > 0 && <span style={{ fontSize: '.72rem', color: '#9ca3af' }}>{colours.length} colour{colours.length !== 1 ? 's' : ''}</span>}
-                </div>
+                {/* Stock badge */}
+                <span style={{
+                  fontSize: '.71rem', fontWeight: 700, borderRadius: '2rem', padding: '.2rem .55rem', flexShrink: 0,
+                  background: total === 0 ? '#fee2e2' : low ? '#fef9c3' : '#dcfce7',
+                  color: total === 0 ? '#991b1b' : low ? '#854d0e' : '#166534',
+                }}>
+                  {total === 0 ? '⚠ Out of stock' : low ? `⚠ ${total} left` : `${total} units`}
+                </span>
 
                 {/* Actions */}
-                <div style={{ display: 'flex', gap: '.4rem', flexShrink: 0 }}>
+                <div style={{ display: 'flex', gap: '.35rem', flexShrink: 0, alignItems: 'center' }}>
+                  {/* Quick-edit stock inline */}
                   <button
                     onClick={() => setExpandedId(isOpen ? null : p.id)}
-                    style={{ fontSize: '.75rem', fontWeight: 600, background: isOpen ? '#9d174d' : '#fdf2f8', color: isOpen ? 'white' : '#9d174d', border: 'none', borderRadius: '.4rem', padding: '.3rem .7rem', cursor: 'pointer' }}
+                    title="Quick stock edit"
+                    style={{ fontSize: '.75rem', fontWeight: 600, background: isOpen ? '#9d174d' : '#fdf2f8', color: isOpen ? 'white' : '#9d174d', border: 'none', borderRadius: '.4rem', padding: '.32rem .65rem', cursor: 'pointer' }}
                   >
-                    {isOpen ? 'Close' : 'Manage'}
+                    {isOpen ? '▲ Close' : '▼ Stock'}
                   </button>
-                  <a href={`/admin/products/${p.id}/edit`} style={{ fontSize: '.75rem', fontWeight: 600, color: '#6b7280', background: '#f9fafb', borderRadius: '.4rem', padding: '.3rem .7rem', textDecoration: 'none' }}>Edit</a>
-                  <a href={`/admin/products/${p.id}/inventory`} style={{ fontSize: '.75rem', fontWeight: 600, color: '#6b7280', background: '#f9fafb', borderRadius: '.4rem', padding: '.3rem .7rem', textDecoration: 'none' }}>Images</a>
-                  <button onClick={() => deleteProduct(p.id, p.name)} style={{ fontSize: '.75rem', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '.3rem .4rem' }}>🗑</button>
+                  {/* Full product management page (images + stock + details) */}
+                  <a
+                    href={`/admin/products/${p.id}/inventory`}
+                    title="Manage images & full inventory"
+                    style={{ fontSize: '.75rem', fontWeight: 600, color: 'white', background: '#7c3aed', borderRadius: '.4rem', padding: '.32rem .65rem', textDecoration: 'none' }}
+                  >
+                    📸 Manage
+                  </a>
+                  {/* Edit product details */}
+                  <a
+                    href={`/admin/products/${p.id}/edit`}
+                    title="Edit product details"
+                    style={{ fontSize: '.75rem', fontWeight: 600, color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '.4rem', padding: '.32rem .55rem', textDecoration: 'none' }}
+                  >✏️</a>
+                  {/* Delete */}
+                  <button
+                    onClick={() => deleteProduct(p.id, p.name)}
+                    title="Delete product"
+                    style={{ fontSize: '.75rem', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '.3rem .35rem' }}
+                  >🗑</button>
                 </div>
               </div>
 
-              {/* Expanded inventory panel */}
+              {/* Inline stock panel */}
               {isOpen && (
                 <InventoryPanel
                   product={p}
@@ -208,7 +247,6 @@ function InventoryPanel({
   const [newColour, setNewColour] = useState('');
   const [adding, setAdding] = useState(false);
 
-  // Group variants by colour
   const byColour: Record<string, typeof product.variants> = {};
   const noColour: typeof product.variants = [];
   for (const v of sortVariants(product.variants)) {
@@ -228,18 +266,19 @@ function InventoryPanel({
 
   return (
     <div style={{ borderTop: '1px solid #fce7f3', background: '#fffbfd', padding: '.85rem 1rem 1rem' }}>
-      <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#9d174d', marginBottom: '.75rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>Inventory by variant</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '.75rem' }}>
+        <div style={{ fontSize: '.72rem', fontWeight: 700, color: '#9d174d', textTransform: 'uppercase', letterSpacing: '.05em' }}>Quick stock edit</div>
+        <a href={`/admin/products/${product.id}/inventory`} style={{ fontSize: '.72rem', color: '#7c3aed', fontWeight: 600, textDecoration: 'none' }}>Full manage (images + stock) →</a>
+      </div>
 
       {colourGroups.length === 0 && (
-        <p style={{ fontSize: '.8rem', color: '#9ca3af', marginBottom: '.75rem' }}>No variants yet. Add one below.</p>
+        <p style={{ fontSize: '.8rem', color: '#9ca3af', marginBottom: '.75rem' }}>No variants yet — add one below or use Full Manage to upload images.</p>
       )}
 
       {colourGroups.map(([colour, variants]) => (
-        <div key={colour} style={{ marginBottom: '1rem' }}>
+        <div key={colour} style={{ marginBottom: '.85rem' }}>
           {colour !== 'No colour' && (
-            <div style={{ fontSize: '.72rem', fontWeight: 700, color: '#6b7280', marginBottom: '.35rem', textTransform: 'capitalize' }}>
-              🎨 {colour}
-            </div>
+            <div style={{ fontSize: '.72rem', fontWeight: 700, color: '#6b7280', marginBottom: '.3rem', textTransform: 'capitalize' }}>🎨 {colour}</div>
           )}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem' }}>
             {variants.map(v => {
@@ -251,11 +290,11 @@ function InventoryPanel({
                   background: 'white', border: `1px solid ${qty === 0 ? '#fecaca' : qty <= 3 ? '#fef08a' : '#e5e7eb'}`,
                   borderRadius: '.45rem', padding: '.3rem .5rem',
                 }}>
-                  <span style={{ fontSize: '.75rem', fontWeight: 600, color: '#374151', minWidth: '2.5rem' }}>{v.size}</span>
+                  <span style={{ fontSize: '.75rem', fontWeight: 600, color: '#374151', minWidth: '2rem' }}>{v.size}</span>
                   <input
                     type="number" min={0} value={qty}
                     onChange={e => setVariantDrafts(d => ({ ...d, [v.id]: parseInt(e.target.value) || 0 }))}
-                    style={{ width: '3.5rem', padding: '.2rem .35rem', border: '1px solid #e5e7eb', borderRadius: '.3rem', fontSize: '.8rem', textAlign: 'center', outline: 'none' }}
+                    style={{ width: '3.2rem', padding: '.18rem .3rem', border: '1px solid #e5e7eb', borderRadius: '.3rem', fontSize: '.78rem', textAlign: 'center', outline: 'none' }}
                   />
                   {isDirty && (
                     <button
@@ -268,8 +307,8 @@ function InventoryPanel({
                   )}
                   <button
                     onClick={() => onDelete(v.id)}
-                    style={{ fontSize: '.65rem', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '.1rem', lineHeight: 1 }}
-                    title="Remove variant"
+                    style={{ fontSize: '.62rem', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '.1rem' }}
+                    title="Remove"
                   >✕</button>
                 </div>
               );
@@ -278,15 +317,15 @@ function InventoryPanel({
         </div>
       ))}
 
-      {/* Add variant */}
-      <div style={{ display: 'flex', gap: '.4rem', marginTop: '.5rem', flexWrap: 'wrap' }}>
+      {/* Add variant row */}
+      <div style={{ display: 'flex', gap: '.4rem', marginTop: '.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <input
-          placeholder="Size (e.g. S, M, 32)" value={newSize} onChange={e => setNewSize(e.target.value)}
-          style={{ flex: '1 1 90px', minWidth: '80px', padding: '.3rem .55rem', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.8rem', outline: 'none' }}
+          placeholder="Size (S, M, 32…)" value={newSize} onChange={e => setNewSize(e.target.value)}
+          style={{ flex: '1 1 80px', minWidth: '70px', padding: '.3rem .5rem', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.78rem', outline: 'none' }}
         />
         <input
-          placeholder="Colour (optional)" value={newColour} onChange={e => setNewColour(e.target.value)}
-          style={{ flex: '1 1 100px', minWidth: '90px', padding: '.3rem .55rem', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.8rem', outline: 'none' }}
+          placeholder="Colour" value={newColour} onChange={e => setNewColour(e.target.value)}
+          style={{ flex: '1 1 90px', minWidth: '80px', padding: '.3rem .5rem', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.78rem', outline: 'none' }}
         />
         <button
           disabled={adding || !newSize.trim()}
@@ -296,9 +335,9 @@ function InventoryPanel({
             setNewSize(''); setNewColour('');
             setAdding(false);
           }}
-          style={{ padding: '.3rem .75rem', background: '#9d174d', color: 'white', border: 'none', borderRadius: '.4rem', fontSize: '.8rem', fontWeight: 600, cursor: adding ? 'default' : 'pointer', opacity: adding ? .6 : 1 }}
+          style={{ padding: '.3rem .7rem', background: '#9d174d', color: 'white', border: 'none', borderRadius: '.4rem', fontSize: '.78rem', fontWeight: 600, cursor: adding ? 'default' : 'pointer', opacity: adding ? .6 : 1 }}
         >
-          {adding ? '…' : '+ Add'}
+          {adding ? '…' : '+ Add size'}
         </button>
       </div>
     </div>
