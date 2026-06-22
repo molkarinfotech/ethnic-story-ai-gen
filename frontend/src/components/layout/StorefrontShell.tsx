@@ -19,7 +19,7 @@ export function StorefrontShell({ children }: { children: React.ReactNode }) {
     <>
       {/* Announcement Bar */}
       <div style={{ background: 'var(--color-primary)', color: 'var(--color-text-inverse)', textAlign: 'center', padding: '.5rem 1rem', fontSize: 'var(--text-xs)', letterSpacing: '.05em' }}>
-        Free shipping on orders over A$150 · Handcrafted in India · Delivered Australia-wide
+        ✨ Free shipping on orders over A$150 · Handcrafted in India · Delivered Australia-wide
       </div>
 
       {/* Header */}
@@ -57,11 +57,77 @@ export function StorefrontShell({ children }: { children: React.ReactNode }) {
       <CartDrawer />
       <BottomTabBar />
 
-      <footer className="site-footer" style={{ marginBottom: 0 }}>
+      {/* Footer */}
+      <footer className="site-footer">
         <div className="container">
-          <div className="site-footer__inner">
-            <p>© 2026 Ethnic Story. All rights reserved.</p>
-            <p>Indian ethnic wear — handcrafted with intention, delivered across Australia.</p>
+          <div className="site-footer__grid">
+            {/* Brand */}
+            <div>
+              <div className="site-footer__brand">Ethnic Story</div>
+              <p className="site-footer__tagline">Celebrating the richness of Indian textile heritage. Handpicked sarees, lehengas and ethnic wear — delivered across Australia.</p>
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Ethnic Story on Facebook" style={{ fontSize: '1.2rem', opacity: 0.6, transition: 'opacity 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                  onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}>📘</a>
+                <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Ethnic Story on Instagram" style={{ fontSize: '1.2rem', opacity: 0.6, transition: 'opacity 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                  onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}>📸</a>
+                <a href="https://pinterest.com" target="_blank" rel="noopener noreferrer" aria-label="Ethnic Story on Pinterest" style={{ fontSize: '1.2rem', opacity: 0.6, transition: 'opacity 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                  onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}>📌</a>
+              </div>
+            </div>
+
+            {/* Collections */}
+            <div>
+              <div className="site-footer__col-title">Collections</div>
+              <ul className="site-footer__links">
+                {([
+                  ['Women', '/collections/women'],
+                  ['Men', '/collections/men'],
+                  ['Kids Wear', '/collections/kids'],
+                  ['Accessories', '/collections/accessories'],
+                  ['New Arrivals', '/collections'],
+                ] as [string, string][]).map(([label, href]) => (
+                  <li key={href}><a href={href}>{label}</a></li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Help */}
+            <div>
+              <div className="site-footer__col-title">Help</div>
+              <ul className="site-footer__links">
+                {([
+                  ['Sizing Guide', '/sizing-guide'],
+                  ['Shipping Info', '/shipping'],
+                  ['Returns & Exchanges', '/returns'],
+                  ['Track My Order', '/track-order'],
+                  ['Contact Us', '/contact'],
+                ] as [string, string][]).map(([label, href]) => (
+                  <li key={href}><a href={href}>{label}</a></li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Contact */}
+            <div>
+              <div className="site-footer__col-title">Contact</div>
+              <ul className="site-footer__links">
+                <li>📍 Sydney, Australia</li>
+                <li>
+                  <a href="mailto:hello@ethnicstory.com.au" style={{ textDecoration: 'none', color: 'inherit' }}>
+                    ✉️ hello@ethnicstory.com.au
+                  </a>
+                </li>
+                <li style={{ marginTop: '0.75rem', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Mon–Sat, 9am–6pm AEST</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="site-footer__bottom">
+            <span>© 2026 Ethnic Story. All rights reserved.</span>
+            <span>Indian ethnic wear, delivered across Australia 🇦🇺</span>
           </div>
         </div>
       </footer>

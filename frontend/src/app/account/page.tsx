@@ -4,7 +4,15 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { formatAUD } from '../../lib/products';
 
-type OrderItem = { id: string; name: string; quantity: number; price: number; size?: string };
+type OrderItem = {
+  id: string;
+  slug?: string;
+  name: string;
+  quantity: number;
+  price: number;
+  size?: string;
+  image?: string;
+};
 type Order = {
   id: string; created_at: string; amount_aud: number; status: string;
   items: OrderItem[]; customer_name?: string; customer_email?: string; customer_phone?: string;
@@ -33,8 +41,6 @@ export default function AccountPage() {
     else setOrdersLoading(true);
     setError('');
     try {
-      // cache: 'no-store' is critical — Next.js App Router caches fetch() by default,
-      // which means returning users would see a stale order list without it.
       const res = await fetch('/api/account/orders', {
         headers: { Authorization: `Bearer ${token}` },
         cache: 'no-store',
@@ -89,7 +95,6 @@ export default function AccountPage() {
           </button>
         </div>
 
-        {/* Spinner keyframe injected inline */}
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
         {error && (
@@ -134,20 +139,36 @@ export default function AccountPage() {
                       <div>
                         <SectionLabel>Items</SectionLabel>
                         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '.5rem' }}>
-                          {items.map((item, idx) => (
-                            <li key={idx} style={{ display: 'flex', alignItems: 'center', gap: '.75rem', padding: '.5rem .75rem', background: 'var(--color-surface-offset)', borderRadius: '.5rem' }}>
-                              <div style={{ width: '40px', height: '40px', borderRadius: '.4rem', background: 'var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem', flexShrink: 0 }}>🧵</div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <a href={`/products/${item.id}`} style={{ fontWeight: 600, color: 'var(--color-text)', textDecoration: 'none', fontSize: '0.875rem', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {item.name}
-                                </a>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                  {item.size && <span>Size: {item.size} &middot; </span>}Qty: {item.quantity} &middot; {formatAUD(item.price)} each
+                          {items.map((item, idx) => {
+                            // Use slug for the link if available, fall back to id (older orders may lack slug)
+                            const productHref = item.slug ? `/products/${item.slug}` : null;
+                            return (
+                              <li key={idx} style={{ display: 'flex', alignItems: 'center', gap: '.75rem', padding: '.5rem .75rem', background: 'var(--color-surface-offset)', borderRadius: '.5rem' }}>
+                                {/* Product thumbnail */}
+                                <div style={{ width: '48px', height: '48px', borderRadius: '.4rem', background: 'var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                                  {item.image
+                                    ? <img src={item.image} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    : <span style={{ fontSize: '1.5rem' }}>🧵</span>
+                                  }
                                 </div>
-                              </div>
-                              <div style={{ fontWeight: 700, fontSize: '0.875rem', flexShrink: 0 }}>{formatAUD(item.price * item.quantity)}</div>
-                            </li>
-                          ))}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  {productHref ? (
+                                    <a href={productHref} style={{ fontWeight: 600, color: 'var(--color-text)', textDecoration: 'none', fontSize: '0.875rem', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                                      onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-primary)')}
+                                      onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text)')}>
+                                      {item.name}
+                                    </a>
+                                  ) : (
+                                    <span style={{ fontWeight: 600, fontSize: '0.875rem', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
+                                  )}
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                    {item.size && <span>Size: {item.size} &middot; </span>}Qty: {item.quantity} &middot; {formatAUD(item.price)} each
+                                  </div>
+                                </div>
+                                <div style={{ fontWeight: 700, fontSize: '0.875rem', flexShrink: 0 }}>{formatAUD(item.price * item.quantity)}</div>
+                              </li>
+                            );
+                          })}
                         </ul>
                         <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '.75rem', fontWeight: 700, fontSize: '0.9rem', borderTop: '1px solid var(--color-border)', marginTop: '.75rem' }}>
                           <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Total paid</span>

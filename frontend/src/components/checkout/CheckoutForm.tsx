@@ -62,7 +62,6 @@ function PaymentForm({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Convenience helper — returns value + onChange for a controlled input
   function field(key: keyof ShippingAddress) {
     return {
       value: addr[key],
@@ -95,12 +94,17 @@ function PaymentForm({
     setLoading(true);
     setErrorMsg('');
 
+    // Include slug and image so account order history can display them
     const orderItems = selectedItems.map(i => ({
-      id: i.id, name: i.name, quantity: i.quantity, price: i.price, size: i.selectedSize,
+      id: i.id,
+      slug: i.slug,
+      name: i.name,
+      quantity: i.quantity,
+      price: i.price,
+      size: i.selectedSize,
+      image: i.image,
     }));
 
-    // Update PI metadata with full customer + order details before confirming.
-    // This is what the webhook reads to save the order.
     try {
       await fetch('/api/update-payment-intent', {
         method: 'POST',
@@ -308,7 +312,6 @@ export function CheckoutForm() {
     line1: '', line2: '', suburb: '', state: '', postcode: '',
   });
 
-  // Pre-select all in-stock items once — only on first stock load
   useEffect(() => {
     if (items.length === 0 || Object.keys(stockMap).length === 0) return;
     if (initialSelectionDone.current) return;
@@ -336,13 +339,11 @@ export function CheckoutForm() {
   const shipping = selectedPrice >= 150 ? 0 : selectedPrice > 0 ? 12.95 : 0;
   const grandTotal = selectedPrice + shipping;
 
-  // Load stock for all cart items
   useEffect(() => {
     if (!hydrated || items.length === 0) return;
     fetchStockForItems(items).then(setStockMap);
   }, [hydrated, items]);
 
-  // Pre-fill address for logged-in users
   useEffect(() => {
     if (!user || !session || prefillLoaded) return;
     setPrefillLoaded(true);
@@ -369,7 +370,6 @@ export function CheckoutForm() {
       .catch(() => {});
   }, [user, session, prefillLoaded]);
 
-  // Create / recreate payment intent whenever grand total changes
   useEffect(() => {
     if (!hydrated || grandTotal < 0.5) return;
     fetch('/api/create-payment-intent', {
