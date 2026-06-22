@@ -21,6 +21,15 @@ function totalStock(variants: Variant[]) {
   return variants.reduce((s, v) => s + (v.stock_count ?? 0), 0);
 }
 
+function uniqueColours(variants: Variant[]): string[] {
+  const seen: Record<string, true> = {};
+  const out: string[] = [];
+  for (const v of variants) {
+    if (v.colour && !seen[v.colour]) { seen[v.colour] = true; out.push(v.colour); }
+  }
+  return out;
+}
+
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,7 +124,7 @@ export default function AdminProductsPage() {
           const total = totalStock(p.variants);
           const low = total > 0 && total <= 5;
           const isOpen = expandedId === p.id;
-          const colours = [...new Set(p.variants.map(v => v.colour).filter(Boolean))];
+          const colours = uniqueColours(p.variants);
 
           return (
             <div key={p.id} style={{ background: 'white', borderRadius: '.7rem', border: '1px solid #fce7f3', boxShadow: '0 1px 3px rgba(0,0,0,.04)', overflow: 'hidden' }}>
@@ -213,9 +222,8 @@ function InventoryPanel({
   const colourGroups = Object.entries(byColour);
   if (noColour.length > 0) colourGroups.push(['No colour', noColour]);
 
-  function draftKey(vid: string) { return vid; }
   function draftValue(v: typeof product.variants[0]) {
-    return variantDrafts[draftKey(v.id)] ?? v.stock_count;
+    return variantDrafts[v.id] ?? v.stock_count;
   }
 
   return (
