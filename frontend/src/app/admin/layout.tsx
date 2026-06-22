@@ -13,12 +13,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   const navItems = [
-    { href: '/admin',          label: 'Dashboard',  icon: '📊' },
-    { href: '/admin/orders',   label: 'Orders',     icon: '📦' },
-    { href: '/admin/checkout', label: 'Checkout',   icon: '🛒' },
+    { href: '/admin',            label: 'Dashboard',  icon: '📊' },
+    { href: '/admin/orders',     label: 'Orders',     icon: '📦' },
+    { href: '/admin/products',   label: 'Products',   icon: '👗' },
     { href: '/admin/categories', label: 'Categories', icon: '🏷️' },
-    { href: '/admin/scan',     label: 'Scan',       icon: '📷' },
-    { href: '/admin/import',   label: 'Import',     icon: '📥' },
+    { href: '/admin/checkout',   label: 'Checkout',   icon: '🛒' },
+    { href: '/admin/scan',       label: 'Scan',       icon: '📷' },
+    { href: '/admin/import',     label: 'Import',     icon: '📥' },
   ];
 
   if (isLoginPage) return <>{children}</>;
@@ -47,10 +48,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </button>
       </div>
 
-      {/* ── Body: sidebar + content on desktop, stacked on mobile ── */}
+      {/* ── Body ── */}
       <div style={{ display: 'flex', minHeight: 'calc(100dvh - 52px)' }}>
 
-        {/* Desktop sidebar — hidden on mobile via inline media query trick using a wrapper */}
         <style>{`
           @media (max-width: 767px) { .admin-sidebar { display: none !important; } }
           @media (min-width: 768px) { .admin-bottom-nav { display: none !important; } }
@@ -95,7 +95,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </aside>
 
-        {/* Main content */}
         <main className="admin-content" style={{
           flex: 1, minWidth: 0,
           padding: '1rem',
@@ -111,6 +110,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         background: 'white', borderTop: '1.5px solid #fce7f3',
         display: 'flex', zIndex: 20,
         boxShadow: '0 -2px 12px rgba(0,0,0,.07)',
+        overflowX: 'auto',
       }}>
         {navItems.map(item => {
           const active = item.href === '/admin'
@@ -121,9 +121,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               key={item.href}
               href={item.href}
               style={{
-                flex: 1, display: 'flex', flexDirection: 'column',
+                flex: '0 0 auto', display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',
-                padding: '.5rem .2rem .4rem',
+                padding: '.5rem .65rem .4rem',
                 textDecoration: 'none',
                 color: active ? '#9d174d' : '#9ca3af',
                 fontSize: '.52rem', fontWeight: active ? 700 : 500,
