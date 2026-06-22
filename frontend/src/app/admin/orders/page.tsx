@@ -2,13 +2,14 @@
 import { useEffect, useState, useCallback } from 'react';
 
 type OrderItem = {
-  id: string;
+  id: string;          // order-item row id — NOT the product id
+  product_id?: string; // product UUID (if stored in order items JSON)
   name: string;
   quantity: number;
   price: number;
   size?: string;
   colour?: string;
-  slug?: string;
+  slug?: string;       // product slug for storefront link
 };
 
 type Order = {
@@ -41,7 +42,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 };
 
 const PAYMENT_LABELS: Record<string, string> = {
-  card: '💳 Card', cash: '💵 Cash', eftpos: '🏧 EFTPOS', payid: '📲 PayID',
+  card: '\ud83d\udcb3 Card', cash: '\ud83d\udcb5 Cash', eftpos: '\ud83c\udfe7 EFTPOS', payid: '\ud83d\udcf2 PayID',
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -76,6 +77,22 @@ function Row({ label, value }: { label: string; value: string }) {
       <span style={{ color: '#1a1a1a', fontWeight: 500 }}>{value}</span>
     </div>
   );
+}
+
+/**
+ * Resolve the best link for an order item:
+ * 1. If product_id is known  -> /admin/products/{product_id}/edit  (direct admin edit)
+ * 2. If slug is known         -> /products/{slug}                   (storefront page, opens in new tab)
+ * 3. Fallback                 -> /admin/products                    (products list)
+ */
+function productLink(item: OrderItem): { href: string; label: string } {
+  if (item.product_id) {
+    return { href: `/admin/products/${item.product_id}/edit`, label: `${item.name} \u2197` };
+  }
+  if (item.slug) {
+    return { href: `/products/${item.slug}`, label: `${item.name} \u2197` };
+  }
+  return { href: '/admin/products', label: item.name };
 }
 
 function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => void; onSave: (updated: Order) => void }) {
@@ -117,13 +134,13 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
               {new Date(order.created_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>
-          <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
+          <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: '1.1rem' }}>\u2715</button>
         </div>
 
         <Section title="Customer">
-          <Row label="Name"    value={order.customer_name  ?? '—'} />
-          <Row label="Email"   value={order.customer_email ?? '—'} />
-          <Row label="Phone"   value={order.customer_phone ?? '—'} />
+          <Row label="Name"    value={order.customer_name  ?? '\u2014'} />
+          <Row label="Email"   value={order.customer_email ?? '\u2014'} />
+          <Row label="Phone"   value={order.customer_phone ?? '\u2014'} />
           {addrStr && <Row label="Ship to" value={addrStr} />}
         </Section>
 
@@ -139,18 +156,24 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
             <tbody>
               {items.map((item, i) => {
                 const variant = [item.size, item.colour].filter(Boolean).join(' / ');
-                const productUrl = `/admin/products/${item.id}/edit`;
+                const link = productLink(item);
+                // Only items with a real product link (product_id or slug) get the clickable anchor
+                const hasLink = !!(item.product_id || item.slug);
                 return (
                   <tr key={i} style={{ borderBottom: '1px solid #f9fafb' }}>
                     <td style={{ padding: '8px 0' }}>
-                      <a
-                        href={productUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ fontWeight: 600, color: '#9d174d', textDecoration: 'none', fontSize: '.88rem' }}
-                      >
-                        {item.name} ↗
-                      </a>
+                      {hasLink ? (
+                        <a
+                          href={link.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ fontWeight: 600, color: '#9d174d', textDecoration: 'none', fontSize: '.88rem' }}
+                        >
+                          {link.label}
+                        </a>
+                      ) : (
+                        <span style={{ fontWeight: 600, color: '#111827', fontSize: '.88rem' }}>{item.name}</span>
+                      )}
                       {variant && <div style={{ fontSize: '.75rem', color: '#9ca3af', marginTop: 2 }}>{variant}</div>}
                     </td>
                     <td style={{ textAlign: 'center', padding: '8px 4px', color: '#6b7280' }}>{item.quantity}</td>
@@ -172,7 +195,7 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
               </tr>
               <tr>
                 <td colSpan={2} style={{ paddingTop: 4, fontSize: '.78rem', color: '#9ca3af' }}>Payment</td>
-                <td style={{ paddingTop: 4, textAlign: 'right', fontSize: '.78rem', color: '#9ca3af' }}>{PAYMENT_LABELS[order.payment_method ?? ''] ?? (order.payment_method ?? '—')}</td>
+                <td style={{ paddingTop: 4, textAlign: 'right', fontSize: '.78rem', color: '#9ca3af' }}>{PAYMENT_LABELS[order.payment_method ?? ''] ?? (order.payment_method ?? '\u2014')}</td>
               </tr>
             </tfoot>
           </table>
@@ -188,7 +211,7 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
           <label style={{ ...labelStyle, marginTop: 12 }}>Tracking number</label>
           <input value={tracking} onChange={e => setTracking(e.target.value)} placeholder="e.g. 7X0000000000" style={inputStyle} />
           <label style={{ ...labelStyle, marginTop: 12 }}>Internal notes</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes visible only to admin…" rows={3}
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes visible only to admin\u2026" rows={3}
             style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
         </Section>
 
@@ -198,7 +221,7 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
           <button onClick={onClose} style={{ padding: '10px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
           <button onClick={handleSave} disabled={saving}
             style={{ padding: '10px 24px', borderRadius: 8, background: '#9d174d', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, opacity: saving ? .6 : 1 }}>
-            {saving ? 'Saving…' : 'Save changes'}
+            {saving ? 'Saving\u2026' : 'Save changes'}
           </button>
         </div>
       </div>
@@ -262,7 +285,7 @@ export default function AdminOrdersPage() {
         <div>
           <h1 style={{ fontFamily: 'Georgia, serif', color: '#9d174d', margin: 0, fontSize: '1.5rem' }}>Orders</h1>
           <p style={{ margin: '4px 0 0', color: '#9ca3af', fontSize: '.8rem' }}>
-            {orders.length} total · {new Date().toLocaleTimeString('en-AU')}
+            {orders.length} total \u00b7 {new Date().toLocaleTimeString('en-AU')}
           </p>
         </div>
         <a href="/admin/checkout" style={{ padding: '9px 18px', background: '#9d174d', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700, fontSize: '.85rem' }}>
@@ -285,26 +308,26 @@ export default function AdminOrdersPage() {
 
       <div className="filter-row" style={{ display: 'flex', gap: '.75rem', marginBottom: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <input
-          placeholder="Search name, email, order ID…"
+          placeholder="Search name, email, order ID\u2026"
           value={search} onChange={e => setSearch(e.target.value)}
           style={{ flex: '1 1 200px', padding: '9px 14px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: '.9rem', minWidth: 0 }}
         />
         <select value={filterPayment} onChange={e => setFilterP(e.target.value)}
           style={{ padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: '.88rem', flexShrink: 0 }}>
           <option value="all">All payments</option>
-          <option value="card">💳 Card</option>
-          <option value="cash">💵 Cash</option>
-          <option value="eftpos">🏧 EFTPOS</option>
-          <option value="payid">📲 PayID</option>
+          <option value="card">\ud83d\udcb3 Card</option>
+          <option value="cash">\ud83d\udcb5 Cash</option>
+          <option value="eftpos">\ud83c\udfe7 EFTPOS</option>
+          <option value="payid">\ud83d\udcf2 PayID</option>
         </select>
         <button onClick={fetchOrders}
           style={{ padding: '9px 16px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: '.85rem', flexShrink: 0 }}>
-          ↻ Refresh
+          \u21bb Refresh
         </button>
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '4rem 0', color: '#9ca3af' }}>Loading orders…</div>
+        <div style={{ textAlign: 'center', padding: '4rem 0', color: '#9ca3af' }}>Loading orders\u2026</div>
       ) : error ? (
         <div style={{ background: '#fee2e2', color: '#991b1b', padding: '1rem', borderRadius: 8 }}>{error}</div>
       ) : filtered.length === 0 ? (
@@ -339,7 +362,7 @@ export default function AdminOrdersPage() {
                 </div>
 
                 <div className="col-customer">
-                  <div style={{ fontWeight: 600, fontSize: '.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.customer_name ?? '—'}</div>
+                  <div style={{ fontWeight: 600, fontSize: '.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.customer_name ?? '\u2014'}</div>
                   <div style={{ fontSize: '.72rem', color: '#9ca3af', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.customer_email ?? ''}</div>
                 </div>
 
