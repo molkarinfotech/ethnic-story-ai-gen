@@ -12,36 +12,32 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     router.push('/admin/login');
   }
 
-  // ── Navigation groups ──
-  // Primary: the things you do every day
-  // Tools: less frequent but important workflows
-  // Settings: configuration that rarely changes
   const primaryNav = [
-    { href: '/admin',            label: 'Dashboard',  icon: '📊' },
-    { href: '/admin/products',   label: 'Products',   icon: '👗' },
-    { href: '/admin/orders',     label: 'Orders',     icon: '📦' },
+    { href: '/admin/dashboard', label: 'Dashboard',  icon: '📊' },
+    { href: '/admin/products',  label: 'Products',   icon: '👗' },
+    { href: '/admin/orders',    label: 'Orders',     icon: '📦' },
   ];
   const toolsNav = [
-    { href: '/admin/scan',       label: 'Scan & AI',  icon: '📷' },
-    { href: '/admin/import',     label: 'Import',     icon: '📥' },
+    { href: '/admin/scan',      label: 'Scan & AI',  icon: '📷' },
+    { href: '/admin/import',    label: 'Import',     icon: '📥' },
+    { href: '/admin/checkout',  label: 'In-store',   icon: '🛒' },
   ];
   const settingsNav = [
     { href: '/admin/categories', label: 'Categories', icon: '🏷️' },
-    { href: '/admin/checkout',   label: 'Checkout',   icon: '🛒' },
     { href: '/admin/appearance', label: 'Appearance', icon: '🎨' },
   ];
 
-  // Flat list for mobile bottom nav (most used items only)
   const mobileNav = [
-    { href: '/admin',            label: 'Home',       icon: '📊' },
-    { href: '/admin/products',   label: 'Products',   icon: '👗' },
-    { href: '/admin/orders',     label: 'Orders',     icon: '📦' },
-    { href: '/admin/scan',       label: 'Scan',       icon: '📷' },
-    { href: '/admin/import',     label: 'Import',     icon: '📥' },
+    { href: '/admin/dashboard', label: 'Home',     icon: '📊' },
+    { href: '/admin/products',  label: 'Products', icon: '👗' },
+    { href: '/admin/orders',    label: 'Orders',   icon: '📦' },
+    { href: '/admin/checkout',  label: 'Checkout', icon: '🛒' },
+    { href: '/admin/scan',      label: 'Scan',     icon: '📷' },
   ];
 
   function isActive(href: string) {
-    return href === '/admin' ? pathname === '/admin' : pathname.startsWith(href);
+    if (href === '/admin/dashboard') return pathname === '/admin/dashboard' || pathname === '/admin';
+    return pathname.startsWith(href);
   }
 
   if (isLoginPage) return <>{children}</>;
@@ -77,7 +73,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div style={{ minHeight: '100dvh', background: '#fdf2f8', fontFamily: 'system-ui, sans-serif' }}>
 
-      {/* ── Top bar ── */}
+      {/* Top bar */}
       <div style={{
         background: '#9d174d', color: 'white',
         padding: '.85rem 1.25rem',
@@ -85,11 +81,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         position: 'sticky', top: 0, zIndex: 30,
         boxShadow: '0 2px 8px rgba(0,0,0,.18)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem' }}>
+        <a href="/admin/dashboard" style={{ display: 'flex', alignItems: 'center', gap: '.65rem', textDecoration: 'none', color: 'white' }}>
           <span style={{ fontWeight: 800, fontSize: '1.05rem', letterSpacing: '-.01em' }}>Ethnic Story</span>
           <span style={{ opacity: .4, fontSize: '1.1rem' }}>|</span>
           <span style={{ fontSize: '.82rem', opacity: .75, fontWeight: 500 }}>Admin Portal</span>
-        </div>
+        </a>
         <button
           onClick={handleLogout}
           style={{ background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.3)', color: 'white', borderRadius: '.5rem', padding: '.32rem .85rem', fontSize: '.8rem', cursor: 'pointer', fontWeight: 600 }}
@@ -98,7 +94,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </button>
       </div>
 
-      {/* ── Body ── */}
+      {/* Body */}
       <div style={{ display: 'flex', minHeight: 'calc(100dvh - 52px)' }}>
 
         <style>{`
@@ -135,7 +131,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </main>
       </div>
 
-      {/* ── Mobile bottom nav (5 most-used items) ── */}
+      {/* Mobile bottom nav */}
       <nav className="admin-bottom-nav" style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
         background: 'white', borderTop: '1.5px solid #fce7f3',

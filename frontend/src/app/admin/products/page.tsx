@@ -48,10 +48,19 @@ export default function AdminProductsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = products.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    (p.category ?? '').toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = products
+    .filter(p =>
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      (p.category ?? '').toLowerCase().includes(search.toLowerCase())
+    )
+    // Sort: out-of-stock products last
+    .sort((a, b) => {
+      const aStock = totalStock(a.variants);
+      const bStock = totalStock(b.variants);
+      if (aStock === 0 && bStock > 0) return 1;
+      if (bStock === 0 && aStock > 0) return -1;
+      return 0;
+    });
 
   async function saveVariantStock(variantId: string, productId: string, size: string, colour: string, qty: number) {
     setSaving(s => ({ ...s, [variantId]: true }));
@@ -118,9 +127,11 @@ export default function AdminProductsPage() {
 
       {/* Summary strip */}
       {!loading && (
-        <div style={{ fontSize: '.75rem', color: '#9ca3af', marginBottom: '.75rem' }}>
-          {filtered.length} product{filtered.length !== 1 ? 's' : ''}
-          {search && ` matching "${search}"`}
+        <div style={{ fontSize: '.75rem', color: '#9ca3af', marginBottom: '.75rem', display: 'flex', gap: '1rem' }}>
+          <span>{filtered.length} product{filtered.length !== 1 ? 's' : ''}{search && ` matching "${search}"`}</span>
+          {filtered.filter(p => totalStock(p.variants) === 0).length > 0 && (
+            <span style={{ color: '#991b1b', fontWeight: 600 }}>⚠ {filtered.filter(p => totalStock(p.variants) === 0).length} out of stock</span>
+          )}
         </div>
       )}
 
@@ -142,7 +153,7 @@ export default function AdminProductsPage() {
           const colours = uniqueColours(p.variants);
 
           return (
-            <div key={p.id} style={{ background: 'white', borderRadius: '.7rem', border: '1px solid #fce7f3', boxShadow: '0 1px 3px rgba(0,0,0,.04)', overflow: 'hidden' }}>
+            <div key={p.id} style={{ background: 'white', borderRadius: '.7rem', border: `1px solid ${total === 0 ? '#fecaca' : '#fce7f3'}`, boxShadow: '0 1px 3px rgba(0,0,0,.04)', overflow: 'hidden', opacity: total === 0 ? .85 : 1 }}>
 
               {/* Product row */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '.85rem', padding: '.75rem 1rem', flexWrap: 'wrap' }}>
@@ -181,7 +192,6 @@ export default function AdminProductsPage() {
 
                 {/* Actions */}
                 <div style={{ display: 'flex', gap: '.35rem', flexShrink: 0, alignItems: 'center' }}>
-                  {/* Quick-edit stock inline */}
                   <button
                     onClick={() => setExpandedId(isOpen ? null : p.id)}
                     title="Quick stock edit"
@@ -189,7 +199,6 @@ export default function AdminProductsPage() {
                   >
                     {isOpen ? '▲ Close' : '▼ Stock'}
                   </button>
-                  {/* Full product management page (images + stock + details) */}
                   <a
                     href={`/admin/products/${p.id}/inventory`}
                     title="Manage images & full inventory"
@@ -197,13 +206,11 @@ export default function AdminProductsPage() {
                   >
                     📸 Manage
                   </a>
-                  {/* Edit product details */}
                   <a
                     href={`/admin/products/${p.id}/edit`}
                     title="Edit product details"
                     style={{ fontSize: '.75rem', fontWeight: 600, color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '.4rem', padding: '.32rem .55rem', textDecoration: 'none' }}
                   >✏️</a>
-                  {/* Delete */}
                   <button
                     onClick={() => deleteProduct(p.id, p.name)}
                     title="Delete product"
