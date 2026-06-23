@@ -306,6 +306,9 @@ export function CheckoutForm() {
   const [stockMap, setStockMap] = useState<StockMap>({});
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const initialSelectionDone = useRef(false);
+  // Track whether we have already created the payment intent so we don't
+  // recreate it every time grandTotal changes (ticking/unticking items).
+  const intentCreated = useRef(false);
 
   const [addr, setAddr] = useState<ShippingAddress>({
     name: '', email: '', phone: '',
@@ -370,8 +373,16 @@ export function CheckoutForm() {
       .catch(() => {});
   }, [user, session, prefillLoaded]);
 
+  // Create the payment intent ONCE when the cart is hydrated and there is
+  // something to pay for. We intentionally do NOT re-run this when grandTotal
+  // changes — the amount is updated via update-payment-intent just before
+  // stripe.confirmPayment() is called, so the Stripe PaymentElement never
+  // needs to be remounted.
   useEffect(() => {
     if (!hydrated || grandTotal < 0.5) return;
+    if (intentCreated.current) return;   // already created — skip
+    intentCreated.current = true;
+
     fetch('/api/create-payment-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -385,9 +396,13 @@ export function CheckoutForm() {
           setIntentError('');
         } else {
           setIntentError(data.error ?? 'Could not initialise payment.');
+          intentCreated.current = false;  // allow retry
         }
       })
-      .catch(() => setIntentError('Network error — please refresh and try again.'));
+      .catch(() => {
+        setIntentError('Network error — please refresh and try again.');
+        intentCreated.current = false;    // allow retry
+      });
   }, [hydrated, grandTotal, session]);
 
   if (!hydrated) return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Loading your bag…</div>;
@@ -404,7 +419,7 @@ export function CheckoutForm() {
       <div className="order-success__icon">⚠️</div>
       <h2>Payment setup failed</h2>
       <p>{intentError}</p>
-      <button className="btn btn-primary" style={{ marginTop: 'var(--space-6)' }} onClick={() => window.location.reload()}>Try again</button>
+      <button className="btn btn-primary" style={{ marginTop: 'var(--space-6)' }} onClick={() => { intentCreated.current = false; window.location.reload(); }}>Try again</button>
     </div>
   );
   if (!clientSecret) return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Preparing payment…</div>;

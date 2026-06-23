@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { formatAUD } from '../../../lib/products';
 
-type OrderItem = { id: string; name: string; quantity: number; price: number; size?: string };
+type OrderItem = { id: string; slug?: string; name: string; quantity: number; price: number; size?: string; image?: string; };
 type Order = {
   id?: string; created_at?: string; amount_aud: number; status?: string;
   items: OrderItem[]; customer_name?: string; customer_email?: string;
@@ -111,18 +111,35 @@ export function SuccessContent() {
       {/* Items */}
       <Section title="Items ordered">
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '.75rem' }}>
-          {items.map((item, i) => (
-            <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '.75rem', background: 'var(--color-surface-offset)', borderRadius: '.75rem' }}>
-              <div style={{ width: '48px', height: '48px', borderRadius: '.5rem', background: 'var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', flexShrink: 0 }}>🧵</div>
-              <div style={{ flex: 1 }}>
-                <a href={`/products/${item.id}`} style={{ fontWeight: 600, color: 'var(--color-text)', textDecoration: 'none', fontSize: '0.9rem' }}>{item.name}</a>
-                <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: '.15rem' }}>
-                  {item.size && <span>Size: {item.size} &middot; </span>}Qty: {item.quantity}
+          {items.map((item, i) => {
+            // Use slug for the link (correct URL), fall back to nothing if missing
+            const productHref = item.slug ? `/products/${item.slug}` : null;
+            return (
+              <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '.75rem', background: 'var(--color-surface-offset)', borderRadius: '.75rem' }}>
+                {/* Product thumbnail — show image if stored, else emoji placeholder */}
+                <div style={{ width: '52px', height: '52px', borderRadius: '.5rem', background: 'var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', flexShrink: 0, overflow: 'hidden' }}>
+                  {item.image
+                    ? <img src={item.image} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <span>🧵</span>
+                  }
                 </div>
-              </div>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', flexShrink: 0 }}>{formatAUD(item.price * item.quantity)}</div>
-            </li>
-          ))}
+                <div style={{ flex: 1 }}>
+                  {productHref ? (
+                    <a href={productHref} style={{ fontWeight: 600, color: 'var(--color-text)', textDecoration: 'none', fontSize: '0.9rem' }}
+                      onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-primary)')}
+                      onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text)')}
+                    >{item.name}</a>
+                  ) : (
+                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{item.name}</span>
+                  )}
+                  <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: '.15rem' }}>
+                    {item.size && <span>Size: {item.size} &middot; </span>}Qty: {item.quantity}
+                  </div>
+                </div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem', flexShrink: 0 }}>{formatAUD(item.price * item.quantity)}</div>
+              </li>
+            );
+          })}
         </ul>
         <div style={{ borderTop: '1px solid var(--color-border)', marginTop: '1rem', paddingTop: '1rem', display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
           <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Total paid</span>
