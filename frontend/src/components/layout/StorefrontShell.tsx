@@ -82,13 +82,14 @@ export function StorefrontShell({ children }: { children: React.ReactNode }) {
             <div>
               <div className="site-footer__col-title">Collections</div>
               <ul className="site-footer__links">
+                {(['Women', '/collections/women'] as const) && null}
                 {([
                   ['Women', '/collections/women'],
                   ['Men', '/collections/men'],
                   ['Kids Wear', '/collections/kids'],
                   ['Accessories', '/collections/accessories'],
                   ['New Arrivals', '/collections'],
-                ] as [string, string][]).map(([label, href]) => (
+                ] as Array<[string, string]>).map(([label, href]) => (
                   <li key={href}><a href={href}>{label}</a></li>
                 ))}
               </ul>
@@ -104,7 +105,7 @@ export function StorefrontShell({ children }: { children: React.ReactNode }) {
                   ['Returns & Exchanges', '/returns'],
                   ['Track My Order', '/track-order'],
                   ['Contact Us', '/contact'],
-                ] as [string, string][]).map(([label, href]) => (
+                ] as Array<[string, string]>).map(([label, href]) => (
                   <li key={href}><a href={href}>{label}</a></li>
                 ))}
               </ul>
@@ -132,18 +133,31 @@ export function StorefrontShell({ children }: { children: React.ReactNode }) {
         </div>
       </footer>
 
+      {/* Scroll-reveal observer — runs after hydration + window load */}
       <script dangerouslySetInnerHTML={{ __html: `
         (function(){
-          var items = document.querySelectorAll('[data-reveal]');
-          if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-            var observer = new IntersectionObserver(function(entries){
-              entries.forEach(function(entry){
-                if(entry.isIntersecting){ entry.target.classList.add('is-visible'); observer.unobserve(entry.target); }
-              });
-            }, { threshold: .16, rootMargin: '0px 0px -40px 0px' });
-            items.forEach(function(item){ observer.observe(item); });
+          function initReveal(){
+            document.body.classList.add('js-ready');
+            var items = document.querySelectorAll('[data-reveal]');
+            if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+              var observer = new IntersectionObserver(function(entries){
+                entries.forEach(function(entry){
+                  if(entry.isIntersecting){
+                    entry.target.classList.add('is-visible');
+                    observer.unobserve(entry.target);
+                  }
+                });
+              }, { threshold: .16, rootMargin: '0px 0px -40px 0px' });
+              items.forEach(function(item){ observer.observe(item); });
+            } else {
+              items.forEach(function(item){ item.classList.add('is-visible'); });
+            }
+          }
+
+          if (document.readyState === 'complete') {
+            initReveal();
           } else {
-            items.forEach(function(item){ item.classList.add('is-visible'); });
+            window.addEventListener('load', initReveal, { once: true });
           }
         })();
       ` }} />
