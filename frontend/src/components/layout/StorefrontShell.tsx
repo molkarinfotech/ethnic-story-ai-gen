@@ -10,10 +10,25 @@ import { DarkModeToggle } from './DarkModeToggle';
 export function StorefrontShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
-  // Render nothing but children for all /admin routes
   if (pathname.startsWith('/admin')) {
     return <>{children}</>;
   }
+
+  const collectionLinks: Array<[string, string]> = [
+    ['Women', '/collections/women'],
+    ['Men', '/collections/men'],
+    ['Kids Wear', '/collections/kids'],
+    ['Accessories', '/collections/accessories'],
+    ['New Arrivals', '/collections'],
+  ];
+
+  const helpLinks: Array<[string, string]> = [
+    ['Sizing Guide', '/sizing-guide'],
+    ['Shipping Info', '/shipping'],
+    ['Returns & Exchanges', '/returns'],
+    ['Track My Order', '/track-order'],
+    ['Contact Us', '/contact'],
+  ];
 
   return (
     <>
@@ -82,14 +97,7 @@ export function StorefrontShell({ children }: { children: React.ReactNode }) {
             <div>
               <div className="site-footer__col-title">Collections</div>
               <ul className="site-footer__links">
-                {(['Women', '/collections/women'] as const) && null}
-                {([
-                  ['Women', '/collections/women'],
-                  ['Men', '/collections/men'],
-                  ['Kids Wear', '/collections/kids'],
-                  ['Accessories', '/collections/accessories'],
-                  ['New Arrivals', '/collections'],
-                ] as Array<[string, string]>).map(([label, href]) => (
+                {collectionLinks.map(([label, href]) => (
                   <li key={href}><a href={href}>{label}</a></li>
                 ))}
               </ul>
@@ -99,13 +107,7 @@ export function StorefrontShell({ children }: { children: React.ReactNode }) {
             <div>
               <div className="site-footer__col-title">Help</div>
               <ul className="site-footer__links">
-                {([
-                  ['Sizing Guide', '/sizing-guide'],
-                  ['Shipping Info', '/shipping'],
-                  ['Returns & Exchanges', '/returns'],
-                  ['Track My Order', '/track-order'],
-                  ['Contact Us', '/contact'],
-                ] as Array<[string, string]>).map(([label, href]) => (
+                {helpLinks.map(([label, href]) => (
                   <li key={href}><a href={href}>{label}</a></li>
                 ))}
               </ul>
