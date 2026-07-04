@@ -103,7 +103,6 @@ function slugify(str: string) {
 
 /**
  * Normalise colour to Title Case — must match the server-side normaliseColour().
- * Both run the same logic so product_images.colour === product_variants.colour always.
  */
 function normaliseColour(raw: string): string {
   const trimmed = raw.trim();
@@ -264,7 +263,6 @@ export default function ScanPage() {
         const fd = new FormData();
         fd.append('image',      item.file);
         fd.append('product_id', form.productId);
-        // Bug fix: normalise colour before sending so it always matches product_images
         fd.append('colour', normaliseColour(item.colour || form.colour || ''));
         fd.append('sort_order', String(sortOrder));
         const res  = await authFetch('/api/admin/scan-upload', { method: 'POST', body: fd });
@@ -326,7 +324,6 @@ export default function ScanPage() {
     if (!imageFile)      { setError('No image to upload');      return; }
     setSaving(true); setError(null);
 
-    // Bug fix: always normalise colour before sending to scan-upload and stock PATCH
     const colourToSave = normaliseColour(form.colour);
 
     try {
@@ -345,7 +342,7 @@ export default function ScanPage() {
         body: JSON.stringify({
           product_id:  form.productId,
           size:        form.size,
-          colour:      colourToSave,   // Bug fix: use normalised colour, not raw form.colour
+          colour:      colourToSave,
           stock_count: form.stockCount,
         }),
       });
@@ -361,12 +358,17 @@ export default function ScanPage() {
   }
 
   // ── Step 3: Generate model images ─────────────────────────────────────────
+  // Pass the scanned imageFile so the API can use it as input_image for
+  // flux-kontext-pro (image-to-image) — the model will dress a virtual
+  // model in the exact garment from the scan.
   async function handleGenerateModel() {
     setGeneratingModel(true); setModelError(null); setModelImages([]); setSavedModelIdxs(new Set());
     try {
       const fd = new FormData();
       fd.append('style',  modelStyle);
       fd.append('prompt', promptTouched ? modelPrompt : buildDefaultPrompt(visionResult, form));
+      // ✅ Send the scan image so the API can condition generation on it
+      if (imageFile) fd.append('image', imageFile);
       const res  = await authFetch('/api/admin/scan-model-gen', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Generation failed');
@@ -378,6 +380,10 @@ export default function ScanPage() {
     }
   }
 
+  // ── Save a generated model image ──────────────────────────────────────────
+  // 1. Upload to product_images via scan-upload (as before)
+  // 2. ✅ PATCH product_variants via stock endpoint to set image_url,
+  //    so the storefront variant picker can show this model image.
   async function handleSaveModelImage(idx: number) {
     if (!form.productId) {
       setModelError('Select a product first before saving a model image.');
@@ -389,6 +395,7 @@ export default function ScanPage() {
 
     setSavingModelIdx(idx); setModelError(null);
     try {
+      // Step A: upload to product_images (gets a public Supabase Storage URL)
       let blob: Blob;
       if (img.url) {
         const r = await fetch(img.url);
@@ -405,9 +412,33 @@ export default function ScanPage() {
       fd.append('product_id', form.productId);
       fd.append('colour',     normaliseColour(form.colour));
       fd.append('sort_order', String(idx + 1));
-      const res  = await authFetch('/api/admin/scan-upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Upload failed');
+      const uploadRes  = await authFetch('/api/admin/scan-upload', { method: 'POST', body: fd });
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok) throw new Error(uploadData.error ?? 'Upload failed');
+
+      // Step B: PATCH product_variants to persist image_url on the colour variant
+      // uploadData.url is the public Supabase Storage URL returned by scan-upload
+      const savedImageUrl: string | undefined = uploadData.url ?? uploadData.image_url;
+      if (savedImageUrl && form.size) {
+        const variantRes = await authFetch('/api/admin/stock', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            product_id: form.productId,
+            size:       form.size,
+            colour:     normaliseColour(form.colour),
+            image_url:  savedImageUrl,
+            // Do not change stock_count — only update image_url
+            stock_count: undefined,
+          }),
+        });
+        // Non-fatal: log warning but don't block the success state
+        if (!variantRes.ok) {
+          const vd = await variantRes.json().catch(() => ({}));
+          console.warn('[scan] variant image_url PATCH failed:', vd);
+        }
+      }
+
       setSavedModelIdxs(prev => new Set(prev).add(idx));
     } catch (e: unknown) {
       setModelError(e instanceof Error ? e.message : 'Save failed');
@@ -729,7 +760,7 @@ export default function ScanPage() {
               <div style={stepBadge(true, false)}>3</div>
               <div>
                 <div style={{ fontWeight: 700, fontSize: '.95rem' }}>Generate Model Image</div>
-                <div style={{ fontSize: '.75rem', color: '#9ca3af' }}>AI-generated fashion photography via Replicate/Flux</div>
+                <div style={{ fontSize: '.75rem', color: '#9ca3af' }}>AI dresses a virtual model in your scanned garment (flux-kontext-pro)</div>
               </div>
               <button onClick={() => setShowModelGen(v => !v)} style={{ marginLeft: 'auto', ...pill(showModelGen) }}>
                 {showModelGen ? 'Hide' : 'Open'}
@@ -755,6 +786,13 @@ export default function ScanPage() {
                   onChange={e => { setModelPrompt(e.target.value); setPromptTouched(true); }}
                 />
 
+                {imageFile && (
+                  <div style={{ fontSize: '.75rem', color: '#16a34a', marginBottom: '.5rem', display: 'flex', alignItems: 'center', gap: '.35rem' }}>
+                    <span>🖼️</span>
+                    <span>Scanned image will be used as garment reference for AI generation</span>
+                  </div>
+                )}
+
                 <button onClick={handleGenerateModel} disabled={generatingModel} style={{ ...btnPrimary, marginBottom: '.75rem', opacity: generatingModel ? .6 : 1 }}>
                   {generatingModel ? '✨ Generating…' : '✨ Generate Model Image'}
                 </button>
@@ -762,23 +800,26 @@ export default function ScanPage() {
                 {modelError && <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '.65rem', padding: '.65rem', color: '#dc2626', fontSize: '.85rem', marginBottom: '.75rem' }}>{modelError}</div>}
 
                 {modelImages.length > 0 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '.75rem' }}>
-                    {modelImages.map((img, i) => {
-                      const src = img.url ?? (img.b64 ? `data:image/png;base64,${img.b64}` : null);
-                      if (!src) return null;
-                      return (
-                        <div key={i} style={{ position: 'relative' }}>
-                          <img src={src} alt={`Generated ${i+1}`} style={{ width: '100%', borderRadius: '.75rem', display: 'block' }} />
-                          <button
-                            onClick={() => handleSaveModelImage(i)}
-                            disabled={savedModelIdxs.has(i) || savingModelIdx === i}
-                            style={{ position: 'absolute', bottom: '.5rem', right: '.5rem', background: savedModelIdxs.has(i) ? '#16a34a' : '#9d174d', color: 'white', border: 'none', borderRadius: '2rem', padding: '.3rem .75rem', fontSize: '.75rem', cursor: 'pointer', fontWeight: 700, opacity: savingModelIdx === i ? .6 : 1 }}>
-                            {savedModelIdxs.has(i) ? '✓ Saved' : savingModelIdx === i ? '⏳' : '⬆️ Save'}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <>
+                    <div style={{ fontSize: '.75rem', color: '#6b7280', marginBottom: '.5rem' }}>Tap ⬆️ Save to add a generated image to this product variant</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '.75rem' }}>
+                      {modelImages.map((img, i) => {
+                        const src = img.url ?? (img.b64 ? `data:image/png;base64,${img.b64}` : null);
+                        if (!src) return null;
+                        return (
+                          <div key={i} style={{ position: 'relative' }}>
+                            <img src={src} alt={`Generated ${i+1}`} style={{ width: '100%', borderRadius: '.75rem', display: 'block' }} />
+                            <button
+                              onClick={() => handleSaveModelImage(i)}
+                              disabled={savedModelIdxs.has(i) || savingModelIdx === i}
+                              style={{ position: 'absolute', bottom: '.5rem', right: '.5rem', background: savedModelIdxs.has(i) ? '#16a34a' : '#9d174d', color: 'white', border: 'none', borderRadius: '2rem', padding: '.3rem .75rem', fontSize: '.75rem', cursor: 'pointer', fontWeight: 700, opacity: savingModelIdx === i ? .6 : 1 }}>
+                              {savedModelIdxs.has(i) ? '✓ Saved' : savingModelIdx === i ? '⏳' : '⬆️ Save'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
               </>
             )}
