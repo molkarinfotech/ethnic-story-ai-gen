@@ -42,11 +42,11 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const sb = getServiceSupabase();
 
-  // Build the update payload — only include fields that were supplied
-  // stock_count may be undefined when the caller only wants to update image_url
+  // Build the update payload — only include fields that were explicitly supplied.
+  // NOTE: We use `!== undefined` only (not `!== null`) so that stock_count=0 is included.
   const updatePayload: Record<string, unknown> = {};
-  if (body.stock_count !== undefined && body.stock_count !== null) {
-    updatePayload.stock_count = body.stock_count;
+  if (body.stock_count !== undefined) {
+    updatePayload.stock_count = Number(body.stock_count);
   }
   if (body.image_url !== undefined && body.image_url !== null) {
     updatePayload.image_url = body.image_url;
@@ -62,26 +62,32 @@ export async function PATCH(req: NextRequest) {
       .from('product_variants')
       .update(updatePayload)
       .eq('id', body.variant_id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error('[stock PATCH] update by variant_id error:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 
   } else if (body.product_id && body.size !== undefined) {
-    // Upsert on (product_id, size, colour) — always include stock_count for upsert
-    // If only image_url is being set and the row doesn't exist yet, default stock to 0
-    const colour = normaliseColour(body.colour);
+    // Upsert on (product_id, size, colour)
+    // Always include stock_count for upsert so new rows get a value (default 0)
+    const colour = normaliseColour(body.colour ?? '');
     const upsertPayload = {
       product_id:  body.product_id,
-      size:        body.size,
+      size:        String(body.size).trim(),
       colour,
-      stock_count: body.stock_count ?? 0,
-      ...updatePayload,
+      stock_count: body.stock_count !== undefined ? Number(body.stock_count) : 0,
+      ...(body.image_url !== undefined && body.image_url !== null ? { image_url: body.image_url } : {}),
     };
     const { error } = await sb
       .from('product_variants')
       .upsert(upsertPayload, { onConflict: 'product_id,size,colour' });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error('[stock PATCH] upsert error:', error, 'payload:', upsertPayload);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 
   } else {
-    return NextResponse.json({ error: 'Missing variant_id or product_id+size' }, { status: 400 });
+    return NextResponse.json({ error: 'Missing variant_id or (product_id + size)' }, { status: 400 });
   }
 
   return NextResponse.json({ ok: true });
