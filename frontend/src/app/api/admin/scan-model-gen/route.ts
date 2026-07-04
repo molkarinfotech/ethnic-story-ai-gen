@@ -50,28 +50,29 @@ async function generateOne(
 
       if (inputImage) {
         // Image-to-image: flux-kontext-pro conditions on the scanned garment
+        // Note: flux-kontext-pro only accepts "jpg" or "png" — webp is rejected (422)
         output = await replicate.run(
           'black-forest-labs/flux-kontext-pro' as `${string}/${string}`,
           {
             input: {
               prompt,
-              input_image:    inputImage,
-              aspect_ratio:   '9:16',
-              output_format:  'webp',
-              output_quality: 90,
+              input_image:      inputImage,
+              aspect_ratio:     '9:16',
+              output_format:    'jpg',
+              output_quality:   90,
               safety_tolerance: 2,
             },
           },
         );
       } else {
-        // Text-only fallback
+        // Text-only fallback: flux-1.1-pro supports webp but we keep jpg for consistency
         output = await replicate.run(
           'black-forest-labs/flux-1.1-pro',
           {
             input: {
               prompt,
               aspect_ratio:      '9:16',
-              output_format:     'webp',
+              output_format:     'jpg',
               output_quality:    90,
               safety_tolerance:  2,
               prompt_upsampling: true,
