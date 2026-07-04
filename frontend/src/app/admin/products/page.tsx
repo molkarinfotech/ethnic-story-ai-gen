@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 
-type Variant = { id: string; size: string; colour: string; stock_count: number };
+type Variant = { id: string; size: string; colour: string; stock_count: number; image_url?: string | null };
 type Product = {
   id: string; name: string; slug: string; price: number;
   category: string; gender?: string; badge?: string;
@@ -37,13 +37,19 @@ export default function AdminProductsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [variantDrafts, setVariantDrafts] = useState<Record<string, number>>({});
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
-    fetch('/api/admin/stock')
+    setFetchError(null);
+    fetch('/api/admin/stock', { credentials: 'include' })
       .then(r => r.json())
-      .then(data => { setProducts(Array.isArray(data) ? data : []); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then(data => {
+        if (data?.error) { setFetchError(data.error); setProducts([]); }
+        else setProducts(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(e => { setFetchError(String(e)); setLoading(false); });
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -53,7 +59,6 @@ export default function AdminProductsPage() {
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       (p.category ?? '').toLowerCase().includes(search.toLowerCase())
     )
-    // Sort: out-of-stock products last
     .sort((a, b) => {
       const aStock = totalStock(a.variants);
       const bStock = totalStock(b.variants);
@@ -64,41 +69,52 @@ export default function AdminProductsPage() {
 
   async function saveVariantStock(variantId: string, productId: string, size: string, colour: string, qty: number) {
     setSaving(s => ({ ...s, [variantId]: true }));
-    await fetch('/api/admin/stock', {
+    const res = await fetch('/api/admin/stock', {
       method: 'PATCH',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ variant_id: variantId, product_id: productId, size, colour, stock_count: qty }),
     });
-    setProducts(ps => ps.map(p => ({
-      ...p,
-      variants: p.variants.map(v => v.id === variantId ? { ...v, stock_count: qty } : v),
-    })));
+    const data = await res.json();
+    if (!res.ok) { alert(`Save failed: ${data.error ?? res.status}`); }
+    else {
+      setProducts(ps => ps.map(p => ({
+        ...p,
+        variants: p.variants.map(v => v.id === variantId ? { ...v, stock_count: qty } : v),
+      })));
+    }
     setSaving(s => { const n = { ...s }; delete n[variantId]; return n; });
   }
 
   async function addVariant(productId: string, size: string, colour: string) {
     if (!size.trim()) return;
-    await fetch('/api/admin/stock', {
+    const res = await fetch('/api/admin/stock', {
       method: 'PATCH',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ product_id: productId, size: size.trim(), colour: colour.trim(), stock_count: 0 }),
     });
+    const data = await res.json();
+    if (!res.ok) { alert(`Add variant failed: ${data.error ?? res.status}`); return; }
     load();
   }
 
   async function deleteVariant(variantId: string) {
     if (!confirm('Remove this variant?')) return;
-    await fetch('/api/admin/stock', {
+    const res = await fetch('/api/admin/stock', {
       method: 'DELETE',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ variant_id: variantId }),
     });
+    if (!res.ok) { const d = await res.json(); alert(`Delete failed: ${d.error ?? res.status}`); return; }
     load();
   }
 
   async function deleteProduct(id: string, name: string) {
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
-    await fetch(`/api/admin/products/${id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/admin/products/${id}`, { method: 'DELETE', credentials: 'include' });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(`Delete failed: ${d.error ?? res.status}`); return; }
     setProducts(ps => ps.filter(p => p.id !== id));
   }
 
@@ -108,7 +124,7 @@ export default function AdminProductsPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '.75rem' }}>
         <div>
           <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#111827', marginBottom: '.15rem' }}>Products</h1>
-          <p style={{ fontSize: '.78rem', color: '#9ca3af', margin: 0 }}>Manage listings, inventory & images</p>
+          <p style={{ fontSize: '.78rem', color: '#9ca3af', margin: 0 }}>Manage listings, inventory &amp; images</p>
         </div>
         <a
           href="/admin/products/new"
@@ -126,7 +142,7 @@ export default function AdminProductsPage() {
       />
 
       {/* Summary strip */}
-      {!loading && (
+      {!loading && !fetchError && (
         <div style={{ fontSize: '.75rem', color: '#9ca3af', marginBottom: '.75rem', display: 'flex', gap: '1rem' }}>
           <span>{filtered.length} product{filtered.length !== 1 ? 's' : ''}{search && ` matching "${search}"`}</span>
           {filtered.filter(p => totalStock(p.variants) === 0).length > 0 && (
@@ -137,7 +153,14 @@ export default function AdminProductsPage() {
 
       {loading && <p style={{ color: '#6b7280', fontSize: '.875rem', textAlign: 'center', padding: '2rem' }}>Loading…</p>}
 
-      {!loading && filtered.length === 0 && (
+      {fetchError && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '.65rem', padding: '.75rem 1rem', color: '#dc2626', fontSize: '.85rem', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>⚠ Error loading products: {fetchError}</span>
+          <button onClick={load} style={{ background: '#9d174d', color: 'white', border: 'none', borderRadius: '.4rem', padding: '.25rem .65rem', fontSize: '.78rem', cursor: 'pointer' }}>Retry</button>
+        </div>
+      )}
+
+      {!loading && !fetchError && filtered.length === 0 && (
         <div style={{ textAlign: 'center', padding: '3rem', color: '#9ca3af' }}>
           <div style={{ fontSize: '2.5rem', marginBottom: '.5rem' }}>👗</div>
           <p style={{ fontWeight: 600, color: '#6b7280' }}>No products found</p>
