@@ -1,8 +1,7 @@
 /**
  * Server-side proxy to download a Replicate-hosted image and save it.
- * The browser cannot fetch Replicate CDN URLs directly (CORS), so the
- * scan page POSTs the image URL here and this route fetches it server-side,
- * then uploads to Supabase Storage via the same path as scan-upload.
+ * Replicate CDN URLs are short-lived — we re-fetch server-side immediately
+ * and fall back to accepting a raw base64 body when the URL has expired.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
@@ -24,32 +23,45 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json() as {
-    image_url:  string;
-    product_id: string;
-    colour:     string;
-    size?:      string;
+    image_url?:  string;
+    image_b64?:  string;   // base64 PNG/JPG fallback when URL has expired
+    product_id:  string;
+    colour:      string;
+    size?:       string;
     sort_order?: number;
   };
 
-  const { image_url, product_id, colour: colourRaw, size, sort_order = 1 } = body;
+  const { image_url, image_b64, product_id, colour: colourRaw, size, sort_order = 1 } = body;
 
-  if (!image_url)  return NextResponse.json({ error: 'image_url required' },  { status: 400 });
-  if (!product_id) return NextResponse.json({ error: 'product_id required' }, { status: 400 });
+  if (!image_url && !image_b64)
+    return NextResponse.json({ error: 'image_url or image_b64 required' }, { status: 400 });
+  if (!product_id)
+    return NextResponse.json({ error: 'product_id required' }, { status: 400 });
 
   const colour     = normaliseColour(colourRaw);
   const colourSlug = colour.replace(/\s+/g, '-').toLowerCase();
 
-  // 1. Fetch image server-side (bypasses browser CORS)
+  // 1. Get image bytes — prefer URL fetch, fall back to base64
   let buffer: Buffer;
   let contentType = 'image/jpeg';
-  try {
-    const imgRes = await fetch(image_url);
-    if (!imgRes.ok) throw new Error(`Image fetch failed: ${imgRes.status} ${imgRes.statusText}`);
-    contentType  = imgRes.headers.get('content-type') ?? 'image/jpeg';
-    const ab     = await imgRes.arrayBuffer();
-    buffer       = Buffer.from(ab);
-  } catch (e: unknown) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'Fetch failed' }, { status: 500 });
+
+  if (image_b64) {
+    // Client already decoded from an <img> src data-URI or sent raw base64
+    const b64 = image_b64.replace(/^data:[^;]+;base64,/, '');
+    buffer      = Buffer.from(b64, 'base64');
+    contentType = image_b64.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
+  } else {
+    try {
+      const imgRes = await fetch(image_url!, { signal: AbortSignal.timeout(15_000) });
+      if (!imgRes.ok) throw new Error(`Image fetch failed: ${imgRes.status} ${imgRes.statusText}`);
+      contentType  = imgRes.headers.get('content-type') ?? 'image/jpeg';
+      buffer       = Buffer.from(await imgRes.arrayBuffer());
+    } catch (e: unknown) {
+      return NextResponse.json(
+        { error: `Could not fetch image: ${e instanceof Error ? e.message : 'fetch failed'}. Try saving again immediately after generating.` },
+        { status: 500 },
+      );
+    }
   }
 
   // 2. Upload to Supabase Storage
@@ -61,9 +73,8 @@ export async function POST(req: NextRequest) {
     .from('product-images')
     .upload(storagePath, buffer, { contentType, upsert: false });
 
-  if (uploadErr) {
+  if (uploadErr)
     return NextResponse.json({ error: uploadErr.message }, { status: 500 });
-  }
 
   const { data: urlData } = sb.storage.from('product-images').getPublicUrl(storagePath);
   const publicUrl = urlData.publicUrl;
@@ -75,9 +86,8 @@ export async function POST(req: NextRequest) {
     .select('id, colour, url, sort_order')
     .single();
 
-  if (insertErr) {
+  if (insertErr)
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
-  }
 
   // 4. Optionally update product_variants.image_url for this colour+size
   if (size) {
@@ -85,7 +95,7 @@ export async function POST(req: NextRequest) {
       .from('product_variants')
       .upsert(
         { product_id, size, colour, image_url: publicUrl, stock_count: 0 },
-        { onConflict: 'product_id,size,colour' }
+        { onConflict: 'product_id,size,colour' },
       );
   }
 
