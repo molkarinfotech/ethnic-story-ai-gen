@@ -5,12 +5,17 @@ export const dynamic = 'force-dynamic';
 
 export type ProductImage = { id: string; colour: string; url: string; sort_order: number };
 
-export async function GET(_req: NextRequest, { params }: { params: { productId: string } }) {
+// Bug fix: await params — required in Next.js 15 (params is now a Promise)
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ productId: string }> }
+) {
+  const { productId } = await params;
   const sb = getServiceSupabase();
   const { data, error } = await sb
     .from('product_images')
     .select('id, colour, url, sort_order')
-    .eq('product_id', params.productId)
+    .eq('product_id', productId)
     .order('colour')
     .order('sort_order');
 
@@ -22,13 +27,17 @@ export async function GET(_req: NextRequest, { params }: { params: { productId: 
 }
 
 // POST: add an image for a product+colour
-export async function POST(req: NextRequest, { params }: { params: { productId: string } }) {
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ productId: string }> }
+) {
+  const { productId } = await params;
   const { colour = '', url, sort_order = 0 } = await req.json();
   if (!url) return NextResponse.json({ error: 'url required' }, { status: 400 });
   const sb = getServiceSupabase();
   const { data, error } = await sb
     .from('product_images')
-    .insert({ product_id: params.productId, colour, url, sort_order })
+    .insert({ product_id: productId, colour, url, sort_order })
     .select()
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -36,8 +45,10 @@ export async function POST(req: NextRequest, { params }: { params: { productId: 
 }
 
 // PATCH: update sort_order, url, and/or colour on an existing image row
-// Body: { id: string, sort_order?: number, url?: string, colour?: string }
-export async function PATCH(req: NextRequest, { params: _p }: { params: { productId: string } }) {
+export async function PATCH(
+  req: NextRequest,
+  { params: _p }: { params: Promise<{ productId: string }> }
+) {
   const body = await req.json();
   const { id, sort_order, url, colour } = body as {
     id?: string;
@@ -70,7 +81,10 @@ export async function PATCH(req: NextRequest, { params: _p }: { params: { produc
 }
 
 // DELETE: remove a single image by id (pass ?id=...)
-export async function DELETE(req: NextRequest, { params: _p }: { params: { productId: string } }) {
+export async function DELETE(
+  req: NextRequest,
+  { params: _p }: { params: Promise<{ productId: string }> }
+) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });

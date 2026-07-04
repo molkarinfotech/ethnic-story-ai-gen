@@ -35,19 +35,18 @@ export async function POST(req: NextRequest) {
     const pi = event.data.object as Stripe.PaymentIntent;
     const m  = pi.metadata ?? {};
 
-    let items: { id: string; name: string; quantity: number; price: number; size?: string }[] = [];
+    let items: { id: string; name: string; quantity: number; price: number; size?: string; colour?: string }[] = [];
     try { items = JSON.parse(m.items ?? '[]'); } catch { items = []; }
 
     console.log('[stripe-webhook] Items from metadata:', JSON.stringify(items));
 
     const sb = getServiceSupabase();
 
-    // Derive shipping cost: total minus sum of item prices
     const itemsTotal  = items.reduce((s, i) => s + i.price * i.quantity, 0);
     const totalAud    = pi.amount / 100;
     const shippingCost = Math.max(0, Math.round((totalAud - itemsTotal) * 100) / 100);
 
-    // ── 1. Save order ───────────────────────────────────────────────────────────────────────────────
+    // ── 1. Save order ───────────────────────────────────────────────────────
     const { error: insertError, data: orderData } = await sb.from('orders').insert({
       stripe_payment_intent_id: pi.id,
       amount_aud:               totalAud,
@@ -77,7 +76,7 @@ export async function POST(req: NextRequest) {
     const orderId = orderData?.[0]?.id ?? pi.id;
     console.log('[stripe-webhook] Order saved. user_id:', m.user_id || 'guest', '| row:', orderId);
 
-    // ── 2. Decrement stock per variant ─────────────────────────────────────────────────────────────────────
+    // ── 2. Decrement stock per variant ──────────────────────────────────────
     for (const item of items) {
       if (!item.id || !item.quantity) continue;
 
@@ -86,7 +85,8 @@ export async function POST(req: NextRequest) {
         .select('id, stock_count')
         .eq('product_id', item.id);
 
-      if (item.size) variantQuery = variantQuery.eq('size', item.size);
+      if (item.size)   variantQuery = variantQuery.eq('size', item.size);
+      if (item.colour) variantQuery = variantQuery.eq('colour', item.colour);
 
       const { data: variant, error: fetchErr } = await variantQuery.maybeSingle();
 
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
         continue;
       }
       if (!variant) {
-        console.warn(`[stripe-webhook] No variant found: product_id=${item.id} size=${item.size ?? 'none'} — skipping`);
+        console.warn(`[stripe-webhook] No variant found: product_id=${item.id} size=${item.size ?? 'none'} colour=${item.colour ?? 'none'} — skipping`);
         continue;
       }
 
@@ -105,33 +105,62 @@ export async function POST(req: NextRequest) {
       if (updateErr) {
         console.error(`[stripe-webhook] Stock update error for variant ${variant.id}:`, updateErr.message);
       } else {
-        console.log(`[stripe-webhook] ✓ Stock: product=${item.id} size=${item.size ?? 'N/A'} | ${variant.stock_count} → ${newStock}`);
+        console.log(`[stripe-webhook] ✓ Stock: product=${item.id} size=${item.size ?? 'N/A'} colour=${item.colour ?? 'N/A'} | ${variant.stock_count} → ${newStock}`);
       }
     }
 
-    // ── 3. Fetch product images for confirmation email ──────────────────────────────────────────────
+    // ── 3. Fetch first variant image per item from product_images ───────────
+    // Uses product_id + colour (from order item) to get the correct variant image.
+    // Falls back to products.image if no variant image is found.
     const seen: Record<string, boolean> = {};
     const productIds: string[] = [];
     for (const i of items) {
       if (i.id && !seen[i.id]) { seen[i.id] = true; productIds.push(i.id); }
     }
+
+    // Fetch fallback product-level images
     const { data: productRows } = await sb
       .from('products')
       .select('id, image')
       .in('id', productIds);
-    const imageMap: Record<string, string> = {};
+    const fallbackImageMap: Record<string, string> = {};
     for (const row of productRows ?? []) {
-      if (row.image) imageMap[row.id] = row.image;
+      if (row.image) fallbackImageMap[row.id] = row.image;
     }
 
-    // ── 4. Send order confirmation email ────────────────────────────────────────────────────────────
+    // Build a per-item variant image map: key = `${productId}:${colour}`
+    const variantImageMap: Record<string, string> = {};
+    for (const item of items) {
+      if (!item.id) continue;
+      const colour = item.colour ?? '';
+      const key    = `${item.id}:${colour}`;
+      if (variantImageMap[key]) continue;
+
+      const query = sb
+        .from('product_images')
+        .select('url')
+        .eq('product_id', item.id)
+        .order('sort_order')
+        .limit(1);
+
+      // Filter by colour only if we have one (prevents empty-string mismatch)
+      const finalQuery = colour ? query.eq('colour', colour) : query;
+      const { data: imgRows } = await finalQuery;
+      if (imgRows?.[0]?.url) variantImageMap[key] = imgRows[0].url;
+    }
+
+    // ── 4. Send order confirmation email ────────────────────────────────────
     if (m.customer_email) {
       try {
         const emailPayload = buildOrderConfirmationEmail({
           customerName:    m.customer_name || 'Valued Customer',
           customerEmail:   m.customer_email,
           orderId,
-          items: items.map(i => ({ ...i, image: imageMap[i.id] })),
+          items: items.map(i => ({
+            ...i,
+            // Use variant image (colour-matched), fall back to product image
+            image: variantImageMap[`${i.id}:${i.colour ?? ''}`] ?? fallbackImageMap[i.id],
+          })),
           subtotalAud:     itemsTotal,
           shippingCost,
           totalAud,

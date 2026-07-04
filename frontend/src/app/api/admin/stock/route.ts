@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '../../../../lib/supabase';
 import { isAdminAuthed } from '../../../../lib/admin-auth';
+import { normaliseColour } from '../scan-upload/route';
 
 // GET: all products with their size+colour variants
 export async function GET(req: NextRequest) {
@@ -28,6 +29,7 @@ export async function GET(req: NextRequest) {
 }
 
 // PATCH: upsert a variant stock count
+// Colour is normalised to Title Case to match product_images.colour
 export async function PATCH(req: NextRequest) {
   if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json();
@@ -40,7 +42,8 @@ export async function PATCH(req: NextRequest) {
       .eq('id', body.variant_id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   } else if (body.product_id && body.size !== undefined) {
-    const colour = body.colour ?? '';
+    // Normalise colour so product_variants.colour always matches product_images.colour
+    const colour = normaliseColour(body.colour);
     const { error } = await sb
       .from('product_variants')
       .upsert(
