@@ -13,90 +13,88 @@ async function isAdmin(): Promise<boolean> {
 
 // ── Category keywords ─────────────────────────────────────────────────────────
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  sarees:   ['saree', 'sari', 'drape', 'silk', 'banarasi', 'chiffon', 'georgette'],
-  lehengas: ['lehenga', 'lehnga', 'skirt', 'bridal', 'ghagra', 'chaniya'],
-  kurtas:   ['kurta', 'kurti', 'tunic', 'top', 'shirt', 'kameez', 'cotton', 'block print'],
-  kids:     ['kids', 'child', 'children', 'girl', 'boy', 'baby', 'toddler'],
+  sarees:   ['saree', 'sari', 'drape', 'silk', 'banarasi', 'chiffon', 'georgette', 'dupatta',
+             'drapery', 'pleated', 'pallu', 'blouse'],
+  lehengas: ['lehenga', 'lehnga', 'skirt', 'bridal', 'ghagra', 'chaniya', 'flared skirt',
+             'circular skirt', 'maxi skirt'],
+  kurtas:   ['kurta', 'kurti', 'tunic', 'top', 'shirt', 'kameez', 'cotton', 'block print',
+             'anarkali', 'salwar', 'palazzo', 'churidar', 'embroidered', 'ethnic top'],
+  kids:     ['kids', 'child', 'children', 'girl', 'boy', 'baby', 'toddler', 'infant'],
 };
+
+// ── Generic Vision label → garment type mapping ───────────────────────────────
+// Vision often returns generic fashion labels rather than specific Indian garment
+// names, so we map those to sensible ethnic wear types.
+const GENERIC_LABEL_MAP: Array<{ type: string; category: string; keywords: string[] }> = [
+  { type: 'Saree',          category: 'sarees',   keywords: ['sari', 'saree', 'drape', 'pallu', 'pleats', 'pleated garment'] },
+  { type: 'Lehenga',        category: 'lehengas', keywords: ['lehenga', 'lehnga', 'flared skirt', 'ghagra', 'skirt'] },
+  { type: 'Kurta',          category: 'kurtas',   keywords: ['kurta', 'kurti', 'kameez', 'tunic', 'salwar', 'churidar', 'palazzo'] },
+  { type: 'Anarkali Suit',  category: 'kurtas',   keywords: ['anarkali'] },
+  { type: 'Salwar Kameez',  category: 'kurtas',   keywords: ['salwar kameez', 'salwar suit', 'punjabi suit'] },
+  // Generic fashion Vision labels — map to most likely ethnic equivalent
+  { type: 'Ethnic Top',     category: 'kurtas',   keywords: ['top', 'blouse', 'sleeve', 'neckline', 'collar', 'button'] },
+  { type: 'Ethnic Dress',   category: 'kurtas',   keywords: ['dress', 'gown', 'frock', 'evening gown', 'prom dress', 'fashion'] },
+  { type: 'Ethnic Garment', category: 'kurtas',   keywords: ['textile', 'fabric', 'clothing', 'garment', 'costume', 'outerwear', 'apparel'] },
+];
 
 // ── 35-type ethnic product type map ──────────────────────────────────────────
 const PRODUCT_TYPE_MAP: Array<{ type: string; category: string; keywords: string[] }> = [
-  // Sarees & drapes
   { type: 'Banarasi Silk Saree',   category: 'sarees',   keywords: ['banarasi', 'brocade', 'silk saree', 'kashi'] },
   { type: 'Kanjivaram Saree',      category: 'sarees',   keywords: ['kanjivaram', 'kanjeevaram', 'kanchipuram'] },
-  { type: 'Chiffon Saree',         category: 'sarees',   keywords: ['chiffon saree', 'chiffon'] },
+  { type: 'Chiffon Saree',         category: 'sarees',   keywords: ['chiffon saree'] },
   { type: 'Georgette Saree',       category: 'sarees',   keywords: ['georgette saree', 'georgette'] },
   { type: 'Cotton Saree',          category: 'sarees',   keywords: ['cotton saree', 'handloom', 'khadi saree'] },
   { type: 'Net Saree',             category: 'sarees',   keywords: ['net saree', 'net fabric'] },
   { type: 'Bandhani Saree',        category: 'sarees',   keywords: ['bandhani', 'bandhej', 'tie dye'] },
-  { type: 'Saree',                 category: 'sarees',   keywords: ['saree', 'sari', 'drape'] },
-  // Lehengas
+  { type: 'Saree',                 category: 'sarees',   keywords: ['saree', 'sari', 'drape', 'pallu'] },
   { type: 'Bridal Lehenga',        category: 'lehengas', keywords: ['bridal lehenga', 'wedding lehenga', 'bridal skirt'] },
   { type: 'Chaniya Choli',         category: 'lehengas', keywords: ['chaniya', 'chaniya choli', 'ghagra choli', 'navratri'] },
   { type: 'Sharara',               category: 'lehengas', keywords: ['sharara'] },
   { type: 'Garara',                category: 'lehengas', keywords: ['garara'] },
-  { type: 'Lehenga',               category: 'lehengas', keywords: ['lehenga', 'lehnga', 'skirt'] },
-  // Kurtas & tops
-  { type: 'Anarkali Suit',         category: 'kurtas',   keywords: ['anarkali', 'floor length kurta', 'anarkali suit'] },
+  { type: 'Lehenga',               category: 'lehengas', keywords: ['lehenga', 'lehnga', 'flared skirt', 'ghagra'] },
+  { type: 'Anarkali Suit',         category: 'kurtas',   keywords: ['anarkali', 'floor length kurta'] },
   { type: 'Salwar Kameez',         category: 'kurtas',   keywords: ['salwar kameez', 'salwar suit', 'punjabi suit'] },
-  { type: 'Palazzo Suit',          category: 'kurtas',   keywords: ['palazzo', 'palazzo suit', 'palazzo kurta'] },
+  { type: 'Palazzo Suit',          category: 'kurtas',   keywords: ['palazzo', 'palazzo suit'] },
   { type: 'Patiala Suit',          category: 'kurtas',   keywords: ['patiala', 'patiala salwar'] },
   { type: 'Straight Kurta',        category: 'kurtas',   keywords: ['straight kurta', 'straight cut kurta'] },
   { type: 'A-Line Kurta',          category: 'kurtas',   keywords: ['a-line kurta', 'a line kurta', 'flared kurta'] },
   { type: 'Block Print Kurta',     category: 'kurtas',   keywords: ['block print', 'block printed', 'hand block'] },
-  { type: 'Embroidered Kurta',     category: 'kurtas',   keywords: ['embroidered kurta', 'embroidery kurta', 'mirror work kurta'] },
+  { type: 'Embroidered Kurta',     category: 'kurtas',   keywords: ['embroidered kurta', 'embroidery', 'mirror work'] },
   { type: 'Lucknowi Kurta',        category: 'kurtas',   keywords: ['lucknowi', 'chikankari'] },
-  { type: 'Kurti',                 category: 'kurtas',   keywords: ['kurti', 'top', 'tunic'] },
+  { type: 'Kurti',                 category: 'kurtas',   keywords: ['kurti'] },
   { type: 'Kurta',                 category: 'kurtas',   keywords: ['kurta', 'kameez'] },
-  // Dupattas & accessories
   { type: 'Dupatta',               category: 'kurtas',   keywords: ['dupatta', 'stole', 'chunni'] },
   { type: 'Shawl',                 category: 'kurtas',   keywords: ['shawl', 'kashmiri shawl', 'pashmina'] },
-  // Ethnic Western fusion
   { type: 'Indo-Western Dress',    category: 'kurtas',   keywords: ['indo western', 'indo-western', 'fusion wear', 'cape kurta'] },
   { type: 'Co-ord Set',            category: 'kurtas',   keywords: ['co-ord', 'coord set', 'matching set'] },
-  // Occasion-specific
   { type: 'Festive Wear',          category: 'kurtas',   keywords: ['festive', 'festival wear', 'diwali', 'eid'] },
-  { type: 'Party Wear',            category: 'kurtas',   keywords: ['party wear', 'party'] },
+  { type: 'Party Wear',            category: 'kurtas',   keywords: ['party wear'] },
   { type: 'Casual Ethnic',         category: 'kurtas',   keywords: ['casual', 'daily wear', 'everyday'] },
-  // Kids
   { type: 'Kids Lehenga',          category: 'kids',     keywords: ['kids lehenga', 'girl lehenga', 'baby lehenga'] },
   { type: 'Kids Kurta Set',        category: 'kids',     keywords: ['kids kurta', 'boy kurta', 'baby kurta'] },
-  { type: 'Kids Ethnic Wear',      category: 'kids',     keywords: ['kids', 'children', 'child', 'baby', 'toddler', 'boy', 'girl'] },
-  // Generic fallback
-  { type: 'Ethnic Garment',        category: 'kurtas',   keywords: ['ethnic', 'indian', 'traditional', 'garment', 'clothing', 'outfit', 'dress'] },
+  { type: 'Kids Ethnic Wear',      category: 'kids',     keywords: ['kids', 'children', 'child', 'baby', 'toddler'] },
 ];
 
 // ── Colour map ────────────────────────────────────────────────────────────────
 const COLOUR_MAP: Record<string, [number, number, number]> = {
-  'Red':           [220, 38,  38],
-  'Crimson':       [185, 28,  28],
-  'Pink':          [236, 72,  153],
-  'Rose':          [251, 113, 133],
-  'Orange':        [234, 88,  12],
-  'Yellow':        [234, 179, 8],
-  'Mustard':       [202, 138, 4],
-  'Ivory':         [240, 230, 210],
-  'White':         [255, 255, 255],
-  'Emerald Green': [4,   120, 87],
-  'Green':         [22,  163, 74],
-  'Teal':          [13,  148, 136],
-  'Royal Blue':    [29,  78,  216],
-  'Blue':          [37,  99,  235],
-  'Navy':          [30,  27,  75],
-  'Indigo':        [67,  56,  202],
-  'Purple':        [126, 34,  206],
-  'Violet':        [109, 40,  217],
-  'Maroon':        [127, 29,  29],
-  'Burgundy':      [109, 20,  20],
-  'Gold':          [202, 138, 4],
-  'Silver':        [148, 163, 184],
-  'Black':         [15,  23,  42],
-  'Charcoal':      [51,  65,  85],
-  'Grey':          [107, 114, 128],
-  'Brown':         [120, 53,  15],
-  'Beige':         [214, 197, 171],
-  'Peach':         [253, 186, 116],
-  'Coral':         [249, 115, 22],
+  'Red':           [220, 38,  38],  'Crimson':   [185, 28,  28],
+  'Pink':          [236, 72,  153], 'Rose':       [251, 113, 133],
+  'Orange':        [234, 88,  12],  'Yellow':     [234, 179, 8],
+  'Mustard':       [202, 138, 4],   'Ivory':      [240, 230, 210],
+  'White':         [255, 255, 255], 'Cream':      [253, 245, 230],
+  'Emerald Green': [4,   120, 87],  'Green':      [22,  163, 74],
+  'Teal':          [13,  148, 136], 'Royal Blue': [29,  78,  216],
+  'Blue':          [37,  99,  235], 'Navy':       [30,  27,  75],
+  'Indigo':        [67,  56,  202], 'Purple':     [126, 34,  206],
+  'Violet':        [109, 40,  217], 'Maroon':     [127, 29,  29],
+  'Burgundy':      [109, 20,  20],  'Gold':       [202, 138, 4],
+  'Silver':        [148, 163, 184], 'Black':      [15,  23,  42],
+  'Charcoal':      [51,  65,  85],  'Grey':       [107, 114, 128],
+  'Brown':         [120, 53,  15],  'Beige':      [214, 197, 171],
+  'Peach':         [253, 186, 116], 'Coral':      [249, 115, 22],
+  'Magenta':       [219, 39,  119], 'Lavender':   [196, 181, 253],
+  'Olive':         [101, 117, 40],  'Rust':       [194, 65,  12],
+  'Turquoise':     [20,  184, 166],
 };
 
 const SIZE_PATTERN = /\b(XXS|XS|S|M|L|XL|XXL|2XL|3XL|Free\s*Size|\d{2,3}(?:\.\d)?(?:\s*cm|\s*in)?)\b/i;
@@ -128,13 +126,20 @@ function extractSize(text: string): string | null {
   return match[0].replace(/\s+/g, ' ').trim();
 }
 
-/**
- * Detects the specific ethnic garment type from Vision labels + object names.
- * Returns the best-matching entry from PRODUCT_TYPE_MAP, or null.
- */
-function detectProductType(labels: string[], objectNames: string[]): { type: string; category: string } | null {
-  const haystack = [...labels, ...objectNames].join(' ').toLowerCase();
+function detectProductType(
+  labels: string[],
+  objectNames: string[],
+  webLabels: string[],
+): { type: string; category: string } | null {
+  const haystack = [...labels, ...objectNames, ...webLabels].join(' ').toLowerCase();
+  // Try specific types first
   for (const entry of PRODUCT_TYPE_MAP) {
+    if (entry.keywords.some(k => haystack.includes(k))) {
+      return { type: entry.type, category: entry.category };
+    }
+  }
+  // Fall back to generic Vision label mapping
+  for (const entry of GENERIC_LABEL_MAP) {
     if (entry.keywords.some(k => haystack.includes(k))) {
       return { type: entry.type, category: entry.category };
     }
@@ -153,42 +158,32 @@ export async function POST(req: NextRequest) {
 
   const bytes  = await file.arrayBuffer();
   const base64 = Buffer.from(bytes).toString('base64');
-  const mime   = file.type || 'image/jpeg';
 
   const apiKey = process.env.GOOGLE_VISION_API_KEY;
   if (!apiKey) {
-    // Vision not configured — fall back gracefully
     const supabase = getServiceSupabase();
     const { data: products } = await supabase
       .from('products')
       .select('id, name, slug, category')
       .order('created_at', { ascending: false });
     return NextResponse.json({
-      visionSkipped:     true,
-      visionError:       'GOOGLE_VISION_API_KEY not set',
-      labels:            [],
-      detectedCategory:  null,
-      detectedProductType: null,
-      detectedColours:   [],
-      primaryColour:     null,
-      detectedSize:      null,
-      fullText:          '',
-      suggestedProducts: [],
-      allProducts:       products ?? [],
+      visionSkipped: true, visionError: 'GOOGLE_VISION_API_KEY not set',
+      labels: [], objectNames: [], webLabels: [],
+      detectedCategory: null, detectedProductType: null,
+      detectedColours: [], primaryColour: null,
+      detectedSize: null, fullText: '',
+      suggestedProducts: [], allProducts: products ?? [],
     });
   }
 
-  // ── Call Google Vision ────────────────────────────────────────────────────
   let visionError: string | null = null;
-  let labels: string[]           = [];
-  let objectNames: string[]      = [];
+  let labels: string[]      = [];
+  let objectNames: string[] = [];
+  let webLabels: string[]   = [];
   let colours: { name: string; score: number }[] = [];
   let primaryColour: string | null = null;
   let detectedSize: string | null  = null;
   let fullText = '';
-
-  // mime is used in the Vision request content type context (kept for clarity)
-  void mime;
 
   try {
     const visionRes = await fetch(
@@ -200,10 +195,11 @@ export async function POST(req: NextRequest) {
           requests: [{
             image: { content: base64 },
             features: [
-              { type: 'LABEL_DETECTION',       maxResults: 20 },
-              { type: 'IMAGE_PROPERTIES',      maxResults: 10 },
-              { type: 'TEXT_DETECTION',        maxResults: 5  },
-              { type: 'OBJECT_LOCALIZATION',   maxResults: 10 },
+              { type: 'LABEL_DETECTION',     maxResults: 30 },
+              { type: 'IMAGE_PROPERTIES',    maxResults: 10 },
+              { type: 'TEXT_DETECTION',      maxResults: 5  },
+              { type: 'OBJECT_LOCALIZATION', maxResults: 10 },
+              { type: 'WEB_DETECTION',       maxResults: 10 },
             ],
           }],
         }),
@@ -216,103 +212,83 @@ export async function POST(req: NextRequest) {
     if (r?.error) {
       visionError = r.error.message ?? 'Vision API error';
     } else {
-      // Labels
       labels = (r?.labelAnnotations ?? []).map((l: { description: string }) => l.description);
 
-      // Object localisation — extract unique names (Array.from for ES5 compat)
       objectNames = Array.from(
         new Set<string>(
-          (r?.localizedObjectAnnotations ?? []).map(
-            (o: { name: string }) => o.name
-          )
+          (r?.localizedObjectAnnotations ?? []).map((o: { name: string }) => o.name)
         )
       );
 
-      // Colour properties
+      // WEB_DETECTION: bestGuessLabels + webEntities — great for Indian garments
+      const webEntities: string[] = (r?.webDetection?.webEntities ?? [])
+        .filter((e: { score: number }) => e.score > 0.4)
+        .map((e: { description: string }) => e.description ?? '')
+        .filter(Boolean);
+      const bestGuess: string[] = (r?.webDetection?.bestGuessLabels ?? [])
+        .map((l: { label: string }) => l.label ?? '')
+        .filter(Boolean);
+      webLabels = [...bestGuess, ...webEntities];
+
+      // Colour properties — filter out near-black shadows, boost saturated tones
       const dominantColours: Array<{
         color: { red: number; green: number; blue: number };
         score: number;
         pixelFraction: number;
       }> = r?.imagePropertiesAnnotation?.dominantColors?.colors ?? [];
 
-      // Score = blended weight of API score + pixel fraction, boosted for non-white/grey tones
       const scored = dominantColours
         .filter(c => {
           const { red: R = 0, green: G = 0, blue: B = 0 } = c.color;
-          const brightness = (R + G + B) / 3;
-          // Skip very dark near-black swatches (likely shadows)
-          return brightness > 20;
+          return (R + G + B) / 3 > 20; // skip near-black shadows
         })
         .map(c => {
           const { red: R = 0, green: G = 0, blue: B = 0 } = c.color;
-          const name = nearestColourName(R, G, B);
-          // Penalise near-neutral colours (white/grey/beige backgrounds)
+          const name       = nearestColourName(R, G, B);
           const saturation = Math.max(R, G, B) - Math.min(R, G, B);
-          const saturationBoost = saturation > 40 ? 1.4 : saturation > 15 ? 1.1 : 0.6;
-          const combinedScore = (c.score * 0.6 + c.pixelFraction * 0.4) * saturationBoost;
-          return { name, score: Math.round(combinedScore * 1000) / 1000 };
+          const satBoost   = saturation > 40 ? 1.4 : saturation > 15 ? 1.1 : 0.6;
+          const score      = (c.score * 0.6 + c.pixelFraction * 0.4) * satBoost;
+          return { name, score: Math.round(score * 1000) / 1000 };
         })
         .sort((a, b) => b.score - a.score);
 
-      // Deduplicate by name, keeping highest score
       const seen = new Set<string>();
-      colours = scored.filter(c => {
-        if (seen.has(c.name)) return false;
-        seen.add(c.name);
-        return true;
-      }).slice(0, 5);
-
+      colours = scored.filter(c => { if (seen.has(c.name)) return false; seen.add(c.name); return true; }).slice(0, 5);
       primaryColour = colours[0]?.name ?? null;
 
-      // Full text
-      fullText = r?.textAnnotations?.[0]?.description ?? '';
+      fullText     = r?.textAnnotations?.[0]?.description ?? '';
       detectedSize = extractSize(fullText) ?? extractSize(labels.join(' '));
     }
   } catch (e: unknown) {
     visionError = e instanceof Error ? e.message : 'Vision fetch failed';
   }
 
-  // ── Detect category + product type ───────────────────────────────────────
-  const allLabelText = [...labels, ...objectNames];
+  const allLabelText = [...labels, ...objectNames, ...webLabels];
   const detectedCategory    = detectCategory(allLabelText);
-  const detectedProductType = detectProductType(allLabelText, objectNames);
+  const detectedProductType = detectProductType(labels, objectNames, webLabels);
 
-  // ── Load products & score suggestions ────────────────────────────────────
   const supabase = getServiceSupabase();
   const { data: products } = await supabase
     .from('products')
     .select('id, name, slug, category')
     .order('created_at', { ascending: false });
 
-  const allProducts: Array<{ id: string; name: string; slug: string; category: string }> =
-    products ?? [];
+  const allProducts = (products ?? []) as Array<{ id: string; name: string; slug: string; category: string }>;
 
-  // Score each product against labels + object names + detected type
   const scoredProducts = allProducts.map(p => {
     const haystack = (p.name + ' ' + p.category).toLowerCase();
     let score = 0;
-
-    // Category match — strong signal
-    if (detectedCategory && p.category === detectedCategory) score += 40;
-    // Product type category match
+    if (detectedCategory && p.category === detectedCategory)             score += 40;
     if (detectedProductType && p.category === detectedProductType.category) score += 20;
-
-    // Label & object name keyword match
-    for (const label of [...labels, ...objectNames]) {
+    for (const label of allLabelText) {
       if (haystack.includes(label.toLowerCase())) score += 10;
     }
-
-    // Product type name words in product name
     if (detectedProductType) {
-      const typeWords = detectedProductType.type.toLowerCase().split(' ');
-      for (const word of typeWords) {
+      for (const word of detectedProductType.type.toLowerCase().split(' ')) {
         if (word.length > 3 && haystack.includes(word)) score += 8;
       }
     }
-
-    // Colour match in product name
     if (primaryColour && haystack.includes(primaryColour.toLowerCase())) score += 6;
-
     return { ...p, score };
   });
 
@@ -320,13 +296,14 @@ export async function POST(req: NextRequest) {
     .filter(p => p.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 5)
-    .map(({ score: _score, ...p }) => p);
+    .map(({ score: _s, ...p }) => p);
 
   return NextResponse.json({
     visionSkipped:    !!visionError && labels.length === 0,
     visionError,
     labels,
     objectNames,
+    webLabels,
     detectedCategory,
     detectedProductType: detectedProductType
       ? { type: detectedProductType.type, category: detectedProductType.category }

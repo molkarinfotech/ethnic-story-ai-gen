@@ -9,6 +9,7 @@ type VisionResult = {
   visionError: string | null;
   labels: string[];
   objectNames?: string[];
+  webLabels?: string[];
   detectedCategory: string | null;
   detectedProductType: { type: string; category: string } | null;
   detectedColours: { name: string; score: number }[];
@@ -30,9 +31,11 @@ type FormState = {
 type NewProductForm = {
   name: string;
   category: string;
+  gender: string;
   price: string;
   original_price: string;
   description: string;
+  badge: string;
 };
 
 type ModelImage = { url: string | null; b64: string | null };
@@ -47,6 +50,7 @@ type ExtraImageItem = {
 
 const SIZES      = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
 const CATEGORIES = ['sarees', 'lehengas', 'kurtas', 'kids'];
+const GENDERS    = ['women', 'men', 'kids', 'unisex'];
 const MODEL_STYLES = [
   { id: 'studio',    label: '🎞️ Studio',    desc: 'White background, clean e-com look' },
   { id: 'outdoor',   label: '🌿 Outdoor',   desc: 'Natural light, heritage backdrop' },
@@ -101,16 +105,10 @@ function slugify(str: string) {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
-/**
- * Normalise colour to Title Case — must match the server-side normaliseColour().
- */
 function normaliseColour(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return 'Unassigned';
-  return trimmed
-    .split(/\s+/)
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(' ');
+  return trimmed.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 }
 
 function buildDefaultPrompt(visionResult: VisionResult | null, form: FormState): string {
@@ -147,19 +145,16 @@ export default function ScanPage() {
     productId: '', productName: '', colour: '', size: '', stockCount: 1,
   });
   const [newProduct, setNewProduct] = useState<NewProductForm>({
-    name: '', category: '', price: '', original_price: '', description: '',
+    name: '', category: '', gender: 'women', price: '', original_price: '', description: '', badge: '',
   });
 
-  // GPT description generation
   const [generatingDesc, setGeneratingDesc] = useState(false);
   const [descError,      setDescError]      = useState<string | null>(null);
 
-  // Step 2b — extra images
   const [extraImages,     setExtraImages]     = useState<ExtraImageItem[]>([]);
   const [uploadingExtras, setUploadingExtras] = useState(false);
   const [extraUploadDone, setExtraUploadDone] = useState(false);
 
-  // Step 3 — AI Model Gen
   const [showModelGen,    setShowModelGen]    = useState(false);
   const [modelStyle,      setModelStyle]      = useState('studio');
   const [modelPrompt,     setModelPrompt]     = useState('');
@@ -228,15 +223,11 @@ export default function ScanPage() {
     if (file) handleFile(file);
   }
 
-  // ── Extra images picker ───────────────────────────────────────────────────
   function onExtraFilesChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
     const items: ExtraImageItem[] = files.map(f => ({
-      file: f,
-      preview: URL.createObjectURL(f),
-      colour: form.colour || '',
-      status: 'pending',
+      file: f, preview: URL.createObjectURL(f), colour: form.colour || '', status: 'pending',
     }));
     setExtraImages(prev => [...prev, ...items]);
     setExtraUploadDone(false);
@@ -261,7 +252,7 @@ export default function ScanPage() {
       setExtraImages(prev => prev.map((x, idx) => idx === i ? { ...x, status: 'uploading' } : x));
       try {
         const fd = new FormData();
-        fd.append('image',      item.file);
+        fd.append('image', item.file);
         fd.append('product_id', form.productId);
         fd.append('colour', normaliseColour(item.colour || form.colour || ''));
         fd.append('sort_order', String(sortOrder));
@@ -284,7 +275,7 @@ export default function ScanPage() {
     setSaved(false); setError(null); setShowNewProduct(false); setProductSearch('');
     setAllProducts([]); setVisionResult(null);
     setForm({ productId: '', productName: '', colour: '', size: '', stockCount: 1 });
-    setNewProduct({ name: '', category: '', price: '', original_price: '', description: '' });
+    setNewProduct({ name: '', category: '', gender: 'women', price: '', original_price: '', description: '', badge: '' });
     setShowModelGen(false); setModelImages([]); setModelError(null);
     setSavedModelIdxs(new Set()); setModelPrompt(''); setPromptTouched(false);
     setExtraImages([]); setExtraUploadDone(false);
@@ -293,7 +284,6 @@ export default function ScanPage() {
     if (extraFileRef.current) extraFileRef.current.value = '';
   }
 
-  // ── GPT description generation ────────────────────────────────────────────
   async function handleGenerateDescription() {
     setGeneratingDesc(true); setDescError(null);
     try {
@@ -317,7 +307,6 @@ export default function ScanPage() {
     }
   }
 
-  // ── Step 2: Save to inventory ─────────────────────────────────────────────
   async function handleSave() {
     if (!form.productId) { setError('Please select a product'); return; }
     if (!form.size)      { setError('Please select a size');    return; }
@@ -325,7 +314,6 @@ export default function ScanPage() {
     setSaving(true); setError(null);
 
     const colourToSave = normaliseColour(form.colour);
-
     try {
       const fd = new FormData();
       fd.append('image',      imageFile);
@@ -357,17 +345,12 @@ export default function ScanPage() {
     }
   }
 
-  // ── Step 3: Generate model images ─────────────────────────────────────────
-  // Pass the scanned imageFile so the API can use it as input_image for
-  // flux-kontext-pro (image-to-image) — the model will dress a virtual
-  // model in the exact garment from the scan.
   async function handleGenerateModel() {
     setGeneratingModel(true); setModelError(null); setModelImages([]); setSavedModelIdxs(new Set());
     try {
       const fd = new FormData();
       fd.append('style',  modelStyle);
       fd.append('prompt', promptTouched ? modelPrompt : buildDefaultPrompt(visionResult, form));
-      // ✅ Send the scan image so the API can condition generation on it
       if (imageFile) fd.append('image', imageFile);
       const res  = await authFetch('/api/admin/scan-model-gen', { method: 'POST', body: fd });
       const data = await res.json();
@@ -380,65 +363,48 @@ export default function ScanPage() {
     }
   }
 
-  // ── Save a generated model image ──────────────────────────────────────────
-  // 1. Upload to product_images via scan-upload (as before)
-  // 2. ✅ PATCH product_variants via stock endpoint to set image_url,
-  //    so the storefront variant picker can show this model image.
+  // Save model image via server-side proxy route to avoid browser CORS on Replicate CDN URLs
   async function handleSaveModelImage(idx: number) {
     if (!form.productId) {
       setModelError('Select a product first before saving a model image.');
       return;
     }
     const img = modelImages[idx];
-    const src = img.url ?? (img.b64 ? `data:image/png;base64,${img.b64}` : null);
-    if (!src) return;
+    if (!img.url && !img.b64) return;
 
     setSavingModelIdx(idx); setModelError(null);
     try {
-      // Step A: upload to product_images (gets a public Supabase Storage URL)
-      let blob: Blob;
       if (img.url) {
-        const r = await fetch(img.url);
-        blob = await r.blob();
+        // Server-side fetch + upload — bypasses CORS on Replicate CDN
+        const res = await authFetch('/api/admin/scan-model-save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image_url:  img.url,
+            product_id: form.productId,
+            colour:     normaliseColour(form.colour),
+            size:       form.size || undefined,
+            sort_order: idx + 1,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? 'Save failed');
       } else {
+        // b64 path — upload as file via scan-upload (no CORS issue)
         const binary = atob(img.b64!);
         const arr = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
-        blob = new Blob([arr], { type: 'image/png' });
+        const blob = new Blob([arr], { type: 'image/png' });
+        const file = new File([blob], `model-gen-${Date.now()}.png`, { type: 'image/png' });
+        const fd = new FormData();
+        fd.append('image',      file);
+        fd.append('product_id', form.productId);
+        fd.append('colour',     normaliseColour(form.colour));
+        fd.append('sort_order', String(idx + 1));
+        const res  = await authFetch('/api/admin/scan-upload', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? 'Upload failed');
       }
-      const file = new File([blob], `model-gen-${Date.now()}.png`, { type: 'image/png' });
-      const fd = new FormData();
-      fd.append('image',      file);
-      fd.append('product_id', form.productId);
-      fd.append('colour',     normaliseColour(form.colour));
-      fd.append('sort_order', String(idx + 1));
-      const uploadRes  = await authFetch('/api/admin/scan-upload', { method: 'POST', body: fd });
-      const uploadData = await uploadRes.json();
-      if (!uploadRes.ok) throw new Error(uploadData.error ?? 'Upload failed');
-
-      // Step B: PATCH product_variants to persist image_url on the colour variant
-      // uploadData.url is the public Supabase Storage URL returned by scan-upload
-      const savedImageUrl: string | undefined = uploadData.url ?? uploadData.image_url;
-      if (savedImageUrl && form.size) {
-        const variantRes = await authFetch('/api/admin/stock', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            product_id: form.productId,
-            size:       form.size,
-            colour:     normaliseColour(form.colour),
-            image_url:  savedImageUrl,
-            // Do not change stock_count — only update image_url
-            stock_count: undefined,
-          }),
-        });
-        // Non-fatal: log warning but don't block the success state
-        if (!variantRes.ok) {
-          const vd = await variantRes.json().catch(() => ({}));
-          console.warn('[scan] variant image_url PATCH failed:', vd);
-        }
-      }
-
       setSavedModelIdxs(prev => new Set(prev).add(idx));
     } catch (e: unknown) {
       setModelError(e instanceof Error ? e.message : 'Save failed');
@@ -457,11 +423,13 @@ export default function ScanPage() {
         name:     newProduct.name.trim(),
         slug:     slugify(newProduct.name),
         category: newProduct.category,
+        gender:   newProduct.gender || 'women',
         price:    parseFloat(newProduct.price),
         in_stock: true,
       };
       if (newProduct.original_price) body.original_price = parseFloat(newProduct.original_price);
       if (newProduct.description)    body.description    = newProduct.description.trim();
+      if (newProduct.badge?.trim())  body.badge          = newProduct.badge.trim();
       const res  = await authFetch('/api/admin/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -472,7 +440,7 @@ export default function ScanPage() {
       setAllProducts(prev => [data, ...prev]);
       setForm(f => ({ ...f, productId: data.id, productName: data.name }));
       setShowNewProduct(false);
-      setNewProduct({ name: '', category: '', price: '', original_price: '', description: '' });
+      setNewProduct({ name: '', category: '', gender: 'women', price: '', original_price: '', description: '', badge: '' });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Create failed');
     } finally {
@@ -493,7 +461,6 @@ export default function ScanPage() {
   const step3Active = saved;
 
   const displayPrompt = promptTouched ? modelPrompt : buildDefaultPrompt(visionResult, form);
-
   const allExtrasDone = extraImages.length > 0 && extraImages.every(x => x.status === 'done');
 
   return (
@@ -557,22 +524,50 @@ export default function ScanPage() {
                 <div style={{ fontSize: '.82rem', color: '#92400e' }}>⚠️ Vision skipped: {visionResult.visionError}</div>
               ) : (
                 <>
-                  <div style={{ fontWeight: 700, fontSize: '.8rem', color: '#15803d', marginBottom: '.4rem' }}>🤖 Detected:</div>
+                  <div style={{ fontWeight: 700, fontSize: '.8rem', color: '#15803d', marginBottom: '.4rem' }}>🤖 Detected — tap a chip to apply it:</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.3rem' }}>
+                    {/* Clickable colour chips */}
                     {visionResult.detectedColours.map(c => (
-                      <span key={c.name} style={{ background: '#dcfce7', color: '#166534', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem', fontWeight: 600 }}>🎨 {c.name}</span>
+                      <button key={c.name}
+                        title="Tap to use this colour"
+                        onClick={() => setForm(f => ({ ...f, colour: c.name }))}
+                        style={{ background: form.colour === c.name ? '#9d174d' : '#dcfce7', color: form.colour === c.name ? 'white' : '#166534', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem', fontWeight: 600, border: form.colour === c.name ? '2px solid #9d174d' : '1px solid #bbf7d0', cursor: 'pointer' }}>
+                        🎨 {c.name}
+                      </button>
                     ))}
+                    {/* Clickable product type chip — fills in new product name/category */}
                     {visionResult.detectedProductType && (
-                      <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem', fontWeight: 700, border: '1px solid #fde68a' }}>
+                      <button
+                        title="Tap to set product type"
+                        onClick={() => {
+                          setNewProduct(p => ({ ...p, category: visionResult.detectedProductType!.category, name: p.name || visionResult.detectedProductType!.type }));
+                          setShowNewProduct(true);
+                        }}
+                        style={{ background: '#fef3c7', color: '#92400e', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem', fontWeight: 700, border: '1px solid #fde68a', cursor: 'pointer' }}>
                         👗 {visionResult.detectedProductType.type}
-                      </span>
+                      </button>
                     )}
                     {visionResult.detectedCategory && !visionResult.detectedProductType && (
-                      <span style={{ background: '#ede9fe', color: '#6d28d9', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem', fontWeight: 600 }}>📂 {visionResult.detectedCategory}</span>
+                      <button
+                        title="Tap to set category"
+                        onClick={() => setNewProduct(p => ({ ...p, category: visionResult.detectedCategory! }))}
+                        style={{ background: '#ede9fe', color: '#6d28d9', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem', fontWeight: 600, border: '1px solid #ddd6fe', cursor: 'pointer' }}>
+                        📂 {visionResult.detectedCategory}
+                      </button>
                     )}
                     {visionResult.detectedSize && (
-                      <span style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem', fontWeight: 600 }}>📏 {visionResult.detectedSize}</span>
+                      <button
+                        title="Tap to use this size"
+                        onClick={() => setForm(f => ({ ...f, size: visionResult.detectedSize! }))}
+                        style={{ background: form.size === visionResult.detectedSize ? '#1d4ed8' : '#dbeafe', color: form.size === visionResult.detectedSize ? 'white' : '#1d4ed8', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem', fontWeight: 600, border: '1px solid #bfdbfe', cursor: 'pointer' }}>
+                        📏 {visionResult.detectedSize}
+                      </button>
                     )}
+                    {/* Web detection labels */}
+                    {(visionResult.webLabels ?? []).slice(0, 4).map(l => (
+                      <span key={l} style={{ background: '#f0f9ff', color: '#0369a1', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem', border: '1px solid #bae6fd' }}>🌐 {l}</span>
+                    ))}
+                    {/* Standard Vision labels */}
                     {visionResult.labels.slice(0, 4).map(l => (
                       <span key={l} style={{ background: '#f3f4f6', color: '#374151', borderRadius: '.4rem', padding: '.15rem .5rem', fontSize: '.75rem' }}>{l}</span>
                     ))}
@@ -594,7 +589,6 @@ export default function ScanPage() {
               </div>
             </div>
 
-            {/* Product selection */}
             {!saved && (
               <>
                 <label style={fieldLabel}>Product</label>
@@ -646,6 +640,14 @@ export default function ScanPage() {
                       <option value="">Select category…</option>
                       {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
+
+                    <label style={fieldLabel}>Gender</label>
+                    <select style={{ ...selectStyle, marginBottom: '.5rem' }} value={newProduct.gender} onChange={e => setNewProduct(p => ({ ...p, gender: e.target.value }))}>
+                      {GENDERS.map(g => <option key={g} value={g}>{g.charAt(0).toUpperCase() + g.slice(1)}</option>)}
+                    </select>
+
+                    <label style={fieldLabel}>Badge <span style={{ fontWeight: 400, textTransform: 'none', color: '#9ca3af' }}>(optional — e.g. New, Sale, Bestseller)</span></label>
+                    <input style={{ ...inputStyle, marginBottom: '.5rem' }} value={newProduct.badge} onChange={e => setNewProduct(p => ({ ...p, badge: e.target.value }))} placeholder="e.g. New Arrival" />
 
                     <label style={fieldLabel}>Price (AUD) *</label>
                     <input style={{ ...inputStyle, marginBottom: '.5rem' }} type="number" min="0" step="0.01" value={newProduct.price} onChange={e => setNewProduct(p => ({ ...p, price: e.target.value }))} placeholder="e.g. 149.00" />
@@ -704,7 +706,6 @@ export default function ScanPage() {
               </div>
             )}
 
-            {/* Extra images section */}
             {form.productId && (
               <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: '.75rem', marginTop: '.25rem' }}>
                 <label style={fieldLabel}>Additional Images (same or other colours)</label>
@@ -718,8 +719,7 @@ export default function ScanPage() {
                         <>
                           <input
                             style={{ width: '72px', fontSize: '.65rem', padding: '.2rem .3rem', border: '1px solid #e5e7eb', borderRadius: '.3rem', marginTop: '.2rem' }}
-                            value={item.colour}
-                            onChange={e => setExtraColour(i, e.target.value)}
+                            value={item.colour} onChange={e => setExtraColour(i, e.target.value)}
                             placeholder="Colour"
                           />
                           <button onClick={() => removeExtraImage(i)} style={{ position: 'absolute', top: 2, left: 2, background: 'rgba(0,0,0,.5)', color: 'white', border: 'none', borderRadius: '50%', width: '16px', height: '16px', fontSize: '.6rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
@@ -753,14 +753,14 @@ export default function ScanPage() {
           </div>
         )}
 
-        {/* ── STEP 3: Model gen ──────────────────────────────────────── */}
+        {/* ── STEP 3: Model gen ────────────────────────────────────────── */}
         {step3Active && (
           <div style={{ ...card, border: '1.5px solid #e5e7eb' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem', marginBottom: '1rem' }}>
               <div style={stepBadge(true, false)}>3</div>
               <div>
                 <div style={{ fontWeight: 700, fontSize: '.95rem' }}>Generate Model Image</div>
-                <div style={{ fontSize: '.75rem', color: '#9ca3af' }}>AI dresses a virtual model in your scanned garment (flux-kontext-pro)</div>
+                <div style={{ fontSize: '.75rem', color: '#9ca3af' }}>AI dresses a virtual model in your scanned garment</div>
               </div>
               <button onClick={() => setShowModelGen(v => !v)} style={{ marginLeft: 'auto', ...pill(showModelGen) }}>
                 {showModelGen ? 'Hide' : 'Open'}
@@ -789,7 +789,7 @@ export default function ScanPage() {
                 {imageFile && (
                   <div style={{ fontSize: '.75rem', color: '#16a34a', marginBottom: '.5rem', display: 'flex', alignItems: 'center', gap: '.35rem' }}>
                     <span>🖼️</span>
-                    <span>Scanned image will be used as garment reference for AI generation</span>
+                    <span>Scanned image used as garment reference for AI generation</span>
                   </div>
                 )}
 
