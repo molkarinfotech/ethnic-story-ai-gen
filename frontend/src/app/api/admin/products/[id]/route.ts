@@ -2,16 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getServiceSupabase } from '../../../../../lib/supabase';
 
-/**
- * Unified admin auth — matches the same logic used by stock/route.ts
- * so all admin routes behave consistently regardless of how the
- * session cookie was issued (HMAC-signed or legacy 'authenticated').
- */
 async function isAdmin(req: NextRequest): Promise<boolean> {
   const reqCookie = req.cookies.get('admin_session')?.value
     ?? req.cookies.get('admin_token')?.value;
   if (reqCookie && reqCookie !== '') return true;
-
   try {
     const cookieStore = await cookies();
     const val = cookieStore.get('admin_session')?.value
@@ -25,15 +19,16 @@ async function isAdmin(req: NextRequest): Promise<boolean> {
 const LETTER_SIZE_ORDER = ['XS','S','M','L','XL','XXL','Free Size'];
 
 function sortVariants(variants: { id: string; size: string; colour?: string; stock_count: number; price?: number }[]) {
-  const letter  = variants.filter(v => LETTER_SIZE_ORDER.includes(v.size))
+  // Always exclude __colour__ anchor rows — they are internal bookkeeping only
+  const real    = variants.filter(v => v.size !== '__colour__');
+  const letter  = real.filter(v => LETTER_SIZE_ORDER.includes(v.size))
     .sort((a, b) => LETTER_SIZE_ORDER.indexOf(a.size) - LETTER_SIZE_ORDER.indexOf(b.size));
-  const numeric = variants.filter(v => /^\d/.test(v.size))
+  const numeric = real.filter(v => /^\d/.test(v.size))
     .sort((a, b) => parseFloat(a.size) - parseFloat(b.size));
-  const other   = variants.filter(v => !LETTER_SIZE_ORDER.includes(v.size) && !/^\d/.test(v.size));
+  const other   = real.filter(v => !LETTER_SIZE_ORDER.includes(v.size) && !/^\d/.test(v.size));
   return [...letter, ...numeric, ...other];
 }
 
-// Whitelist of product fields an admin is allowed to update.
 const ALLOWED_UPDATE_FIELDS = new Set([
   'name', 'slug', 'category', 'subcategory', 'gender', 'price', 'original_price', 'badge',
   'image', 'in_stock', 'stock_count', 'subtitle', 'description',
@@ -46,7 +41,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const sb = getServiceSupabase();
 
-  // Support both UUID and slug lookups
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
   let query = sb
     .from('products')
@@ -54,12 +48,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   query = isUuid ? query.eq('id', id) : query.eq('slug', id);
 
   const { data: product, error: prodErr } = await query.single();
-
   if (prodErr || !product) {
     return NextResponse.json({ error: prodErr?.message ?? 'Not found' }, { status: 404 });
   }
 
-  // Resolve first gallery image
   const { data: imgRows } = await sb
     .from('product_images')
     .select('url, sort_order')
@@ -69,6 +61,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const firstGalleryImage = imgRows?.[0]?.url ?? null;
 
+  // Fetch ALL variants (including anchors) so the inventory page can
+  // derive colour groups — client-side sortVariants strips anchor rows
+  // from the display grid but uses them for colour derivation.
   const { data: variants, error: varErr } = await sb
     .from('product_variants')
     .select('id, size, colour, stock_count, price')
@@ -81,6 +76,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   return NextResponse.json({
     ...product,
     image: firstGalleryImage ?? product.image ?? null,
+    // sortVariants strips __colour__ anchor rows server-side too
     variants: sortVariants(variants ?? []),
   });
 }
@@ -91,7 +87,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const body = await req.json();
 
-  // Only pass through whitelisted fields to prevent mass-assignment
   const safeUpdate: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(body)) {
     if (ALLOWED_UPDATE_FIELDS.has(key)) safeUpdate[key] = value;
