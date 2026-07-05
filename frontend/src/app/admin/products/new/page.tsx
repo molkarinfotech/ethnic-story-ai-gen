@@ -36,8 +36,12 @@ export default function NewProductPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.name.trim()) { setError('Product name is required.'); return; }
+    if (!form.price || isNaN(parseFloat(form.price))) { setError('A valid price is required.'); return; }
+
     setSaving(true);
     setError('');
+
     const payload = {
       ...form,
       price: parseFloat(form.price),
@@ -47,6 +51,7 @@ export default function NewProductPage() {
       image: form.image || null,
       gender: form.gender || 'women',
     };
+
     try {
       const res = await fetch('/api/admin/products', {
         method: 'POST',
@@ -54,22 +59,37 @@ export default function NewProductPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const created = await res.json();
-      if (!res.ok) {
-        setError(created.error ?? 'Failed to save product.');
+
+      // Parse JSON safely — a network error or proxy may return non-JSON
+      let created: Record<string, unknown> = {};
+      try {
+        created = await res.json();
+      } catch {
+        // Body was not JSON (e.g. a 502 HTML error page)
         setSaving(false);
+        setError(`Server error (${res.status}). Please try again.`);
         return;
       }
-      // Guard: if id is missing fall back to products list
-      const id = created?.id;
+
+      if (!res.ok) {
+        setSaving(false);
+        setError((created?.error as string) ?? `Failed to save product (${res.status}).`);
+        return;
+      }
+
+      const id = created?.id as string | undefined;
       if (!id) {
-        router.push('/admin/products');
+        // API returned 2xx but no id — should never happen, but handle gracefully
+        setSaving(false);
+        setError('Product saved but no ID was returned. Please check the products list.');
         return;
       }
-      router.push(`/admin/products/${id}/inventory`);
+
+      // Use replace so the create form is not in the back-stack
+      router.replace(`/admin/products/${id}/inventory`);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to save product.');
       setSaving(false);
+      setError(err instanceof Error ? err.message : 'Network error — failed to save product.');
     }
   }
 
@@ -91,14 +111,27 @@ export default function NewProductPage() {
                 set('category', cat.slug);
               }}
             />
-            {error && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '1rem' }}>{error}</p>}
+            {error && (
+              <p style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '1rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.4rem', padding: '.5rem .75rem' }}>
+                ⚠ {error}
+              </p>
+            )}
             <div style={{ display: 'flex', gap: '.75rem', marginTop: '1.5rem' }}>
-              <button type="submit" disabled={saving} className="btn btn-primary"
-                style={{ flex: 1, justifyContent: 'center', minHeight: '44px' }}>
+              <button
+                type="submit"
+                disabled={saving}
+                className="btn btn-primary"
+                style={{ flex: 1, justifyContent: 'center', minHeight: '44px', opacity: saving ? 0.7 : 1 }}
+              >
                 {saving ? 'Saving…' : 'Save & manage stock →'}
               </button>
-              <a href="/admin/products" className="btn btn--outline"
-                style={{ flex: 1, justifyContent: 'center', minHeight: '44px', textDecoration: 'none', display: 'flex', alignItems: 'center' }}>Cancel</a>
+              <a
+                href="/admin/products"
+                className="btn btn--outline"
+                style={{ flex: 1, justifyContent: 'center', minHeight: '44px', textDecoration: 'none', display: 'flex', alignItems: 'center' }}
+              >
+                Cancel
+              </a>
             </div>
           </form>
         </div>
