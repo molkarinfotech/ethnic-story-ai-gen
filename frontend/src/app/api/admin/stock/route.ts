@@ -18,7 +18,10 @@ async function isAdmin(req: NextRequest): Promise<boolean> {
   }
 }
 
-// GET: all products with their variants (excludes __colour__ anchor rows)
+// GET: all products with their variants.
+// IMPORTANT: we return ALL variant rows including __colour__ anchor rows
+// so the frontend knows which colour groups exist even before any real
+// size is added. The frontend filters out __colour__ from stock display.
 export async function GET(req: NextRequest) {
   if (!(await isAdmin(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const sb = getServiceSupabase();
@@ -28,10 +31,10 @@ export async function GET(req: NextRequest) {
     .order('name');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // Fetch ALL variants including __colour__ anchor rows
   const { data: variants } = await sb
     .from('product_variants')
-    .select('id, product_id, size, colour, stock_count, image_url')
-    .neq('size', '__colour__');  // exclude anchor rows from stock list
+    .select('id, product_id, size, colour, stock_count, image_url');
 
   const result = (products ?? []).map((p: Record<string, unknown>) => ({
     ...p,
@@ -50,7 +53,6 @@ export async function GET(req: NextRequest) {
 }
 
 // PATCH: upsert a variant — works even without a DB unique constraint
-// Strategy: look up existing row first, then update or insert.
 export async function PATCH(req: NextRequest) {
   if (!(await isAdmin(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json();
@@ -81,7 +83,6 @@ export async function PATCH(req: NextRequest) {
   const stock_count = body.stock_count !== undefined ? Number(body.stock_count) : 0;
   const image_url   = body.image_url ?? null;
 
-  // Check if the row already exists
   const { data: existing } = await sb
     .from('product_variants')
     .select('id')
@@ -91,7 +92,6 @@ export async function PATCH(req: NextRequest) {
     .maybeSingle();
 
   if (existing?.id) {
-    // Update existing row
     const updatePayload: Record<string, unknown> = { stock_count };
     if (image_url !== null) updatePayload.image_url = image_url;
     const { error } = await sb
@@ -100,7 +100,6 @@ export async function PATCH(req: NextRequest) {
       .eq('id', existing.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   } else {
-    // Insert new row
     const insertPayload: Record<string, unknown> = {
       product_id:  body.product_id,
       size:        body.size,

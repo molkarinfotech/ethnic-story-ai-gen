@@ -2,20 +2,22 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 type ProductImage = { id: string; colour: string; url: string; sort_order: number };
-type Variant      = { id: string; size: string; colour: string; stock_count: number; image_url?: string | null };
-type Product      = {
+// All DB rows come back, including __colour__ anchors (size === '__colour__')
+type Variant = { id: string; size: string; colour: string; stock_count: number; image_url?: string | null };
+type Product = {
   id: string; name: string; slug: string; price: number;
   category: string; gender?: string; badge?: string;
   in_stock?: boolean; image?: string;
   variants: Variant[];
 };
 
-// Anchor sizes — internal bookkeeping only, never shown to admin or shoppers
-const ANCHOR_SIZES = new Set(['__colour__', 'TBA']);
+// Sizes that are internal bookkeeping — never shown as stock chips
+const INTERNAL_SIZES = new Set(['__colour__', 'TBA']);
 
 const SIZE_ORDER = ['XS','S','M','L','XL','XXL','Free Size'];
+
 function sortVariants(vs: Variant[]) {
-  const real    = vs.filter(v => !ANCHOR_SIZES.has(v.size));
+  const real    = vs.filter(v => !INTERNAL_SIZES.has(v.size));
   const letter  = real.filter(v => SIZE_ORDER.includes(v.size)).sort((a,b) => SIZE_ORDER.indexOf(a.size)-SIZE_ORDER.indexOf(b.size));
   const numeric = real.filter(v => /^\d/.test(v.size)).sort((a,b) => parseFloat(a.size)-parseFloat(b.size));
   const other   = real.filter(v => !SIZE_ORDER.includes(v.size) && !/^\d/.test(v.size));
@@ -23,9 +25,13 @@ function sortVariants(vs: Variant[]) {
 }
 
 function totalStock(variants: Variant[]) {
-  return variants.filter(v => !ANCHOR_SIZES.has(v.size)).reduce((s,v) => s + (v.stock_count ?? 0), 0);
+  return variants
+    .filter(v => !INTERNAL_SIZES.has(v.size))
+    .reduce((s,v) => s + (v.stock_count ?? 0), 0);
 }
 
+// Derive unique colour names from ALL variant rows (including __colour__ anchors)
+// This means a colour shows up as soon as it's added, even before any size exists
 function uniqueColours(variants: Variant[], images: ProductImage[]): string[] {
   const seen: Record<string,true> = {};
   const out: string[] = [];
@@ -34,21 +40,22 @@ function uniqueColours(variants: Variant[], images: ProductImage[]): string[] {
     ...images.map(i => i.colour),
   ];
   for (const c of all) {
-    if (c && typeof c === 'string' && c.trim() && !seen[c]) { seen[c] = true; out.push(c); }
+    const trimmed = (c ?? '').trim();
+    if (trimmed && !seen[trimmed]) { seen[trimmed] = true; out.push(trimmed); }
   }
   return out.sort();
 }
 
 export default function AdminProductsPage() {
-  const [products,     setProducts]     = useState<Product[]>([]);
-  const [loading,      setLoading]      = useState(true);
-  const [search,       setSearch]       = useState('');
-  const [expandedId,   setExpandedId]   = useState<string | null>(null);
-  const [saving,       setSaving]       = useState<Record<string,boolean>>({});
-  const [variantDrafts,setVariantDrafts]= useState<Record<string,number>>({});
-  const [fetchError,   setFetchError]   = useState<string | null>(null);
-  // images keyed by product id
-  const [imageMap,     setImageMap]     = useState<Record<string, ProductImage[]>>({});
+  const [products,      setProducts]     = useState<Product[]>([]);
+  const [loading,       setLoading]      = useState(true);
+  const [search,        setSearch]       = useState('');
+  const [expandedId,    setExpandedId]   = useState<string | null>(null);
+  const [saving,        setSaving]       = useState<Record<string,boolean>>({});
+  const [variantDrafts, setVariantDrafts]= useState<Record<string,number>>({});
+  const [fetchError,    setFetchError]   = useState<string | null>(null);
+  const [imageMap,      setImageMap]     = useState<Record<string, ProductImage[]>>({});
+  const [imagesLoaded,  setImagesLoaded] = useState<Record<string,boolean>>({});
 
   const load = useCallback(() => {
     setLoading(true);
@@ -65,17 +72,17 @@ export default function AdminProductsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Load images for a product when its panel is first opened
   const loadImages = useCallback(async (productId: string) => {
-    if (imageMap[productId]) return; // already loaded
+    if (imagesLoaded[productId]) return;
+    setImagesLoaded(m => ({ ...m, [productId]: true }));
     try {
-      const res = await fetch(`/api/product-images/${productId}`, { credentials: 'include' });
+      const res  = await fetch(`/api/product-images/${productId}`, { credentials: 'include' });
       const data = await res.json();
       setImageMap(m => ({ ...m, [productId]: Array.isArray(data) ? data : [] }));
     } catch {
       setImageMap(m => ({ ...m, [productId]: [] }));
     }
-  }, [imageMap]);
+  }, [imagesLoaded]);
 
   function toggleExpand(productId: string) {
     if (expandedId === productId) {
@@ -143,6 +150,8 @@ export default function AdminProductsPage() {
     load();
   }
 
+  // addColourGroup: saves a __colour__ anchor row so the colour appears immediately
+  // even before any real size variant exists for it
   async function addColourGroup(productId: string, colourName: string) {
     const name = colourName.trim()
       .split(/\s+/)
@@ -156,7 +165,24 @@ export default function AdminProductsPage() {
       body: JSON.stringify({ product_id: productId, size: '__colour__', colour: name, stock_count: 0 }),
     });
     if (!res.ok) { const d = await res.json().catch(() => ({})); alert(`Failed: ${d.error ?? res.status}`); return; }
-    load();
+    // Optimistically add the anchor row to local state immediately
+    // so the colour group shows without waiting for a full reload
+    setProducts(ps => ps.map(p => {
+      if (p.id !== productId) return p;
+      // only add if not already present
+      const already = p.variants.some(v => v.colour === name && v.size === '__colour__');
+      if (already) return p;
+      return {
+        ...p,
+        variants: [...p.variants, {
+          id: `tmp-${Date.now()}`,
+          size: '__colour__',
+          colour: name,
+          stock_count: 0,
+          image_url: null,
+        }],
+      };
+    }));
   }
 
   async function deleteImage(productId: string, imageId: string) {
@@ -251,11 +277,11 @@ export default function AdminProductsPage() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
         {filtered.map(p => {
-          const total    = totalStock(p.variants);
-          const low      = total > 0 && total <= 5;
-          const isOpen   = expandedId === p.id;
-          const images   = imageMap[p.id] ?? [];
-          const colours  = uniqueColours(p.variants, images);
+          const total   = totalStock(p.variants);
+          const low     = total > 0 && total <= 5;
+          const isOpen  = expandedId === p.id;
+          const images  = imageMap[p.id] ?? [];
+          const colours = uniqueColours(p.variants, images);
 
           return (
             <div key={p.id} style={{
@@ -354,18 +380,18 @@ function ExpandedPanel({
   product, images, colours, variantDrafts, setVariantDrafts, saving,
   onSave, onAddVariant, onDeleteVariant, onAddColour, onDeleteImage, onUploadFiles,
 }: {
-  product:         Product;
-  images:          ProductImage[];
-  colours:         string[];
-  variantDrafts:   Record<string,number>;
-  setVariantDrafts:React.Dispatch<React.SetStateAction<Record<string,number>>>;
-  saving:          Record<string,boolean>;
-  onSave:          (vid: string, pid: string, size: string, colour: string, qty: number) => Promise<void>;
-  onAddVariant:    (pid: string, size: string, colour: string) => Promise<void>;
-  onDeleteVariant: (vid: string) => Promise<void>;
-  onAddColour:     (name: string) => Promise<void>;
-  onDeleteImage:   (imgId: string) => Promise<void>;
-  onUploadFiles:   (colour: string, files: File[]) => Promise<void>;
+  product:          Product;
+  images:           ProductImage[];
+  colours:          string[];
+  variantDrafts:    Record<string,number>;
+  setVariantDrafts: React.Dispatch<React.SetStateAction<Record<string,number>>>;
+  saving:           Record<string,boolean>;
+  onSave:           (vid: string, pid: string, size: string, colour: string, qty: number) => Promise<void>;
+  onAddVariant:     (pid: string, size: string, colour: string) => Promise<void>;
+  onDeleteVariant:  (vid: string) => Promise<void>;
+  onAddColour:      (name: string) => Promise<void>;
+  onDeleteImage:    (imgId: string) => Promise<void>;
+  onUploadFiles:    (colour: string, files: File[]) => Promise<void>;
 }) {
   const [showColourForm, setShowColourForm] = useState(false);
   const [newColourName,  setNewColourName]  = useState('');
@@ -387,7 +413,8 @@ function ExpandedPanel({
   function imagesByColour(c: string) {
     return images.filter(i => i.colour === c).sort((a,b) => a.sort_order - b.sort_order);
   }
-  const noColourVariants = sortVariants(product.variants.filter(v => !v.colour));
+  // Variants with no colour assigned and not internal
+  const noColourVariants = sortVariants(product.variants.filter(v => !v.colour || v.colour.trim() === ''));
 
   return (
     <div style={{ borderTop: '1px solid #fce7f3', background: '#fffbfd', padding: '1rem' }}>
@@ -406,7 +433,7 @@ function ExpandedPanel({
         >+ Add colour</button>
       </div>
 
-      {/* Add colour form */}
+      {/* Add colour inline form */}
       {showColourForm && (
         <div style={{
           display: 'flex', gap: '.4rem', alignItems: 'center', flexWrap: 'wrap',
@@ -447,7 +474,7 @@ function ExpandedPanel({
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty state — shown only when truly no colours at all */}
       {colours.length === 0 && (
         <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#9ca3af' }}>
           <div style={{ fontSize: '2rem', marginBottom: '.35rem' }}>🎨</div>
@@ -456,7 +483,7 @@ function ExpandedPanel({
         </div>
       )}
 
-      {/* Colour groups */}
+      {/* One ColourGroup per unique colour */}
       {colours.map(colour => (
         <ColourGroup
           key={colour}
@@ -475,7 +502,7 @@ function ExpandedPanel({
         />
       ))}
 
-      {/* Variants with no colour */}
+      {/* Variants with no colour assigned */}
       {noColourVariants.length > 0 && (
         <div style={{ marginTop: '.5rem', paddingTop: '.75rem', borderTop: '1px dashed #fce7f3' }}>
           <div style={{ fontSize: '.7rem', fontWeight: 700, color: '#9ca3af', marginBottom: '.4rem' }}>NO COLOUR ASSIGNED</div>
@@ -493,28 +520,27 @@ function ExpandedPanel({
 
 /* ═══════════════════════ ColourGroup ═══════════════════════ */
 function ColourGroup({
-  colour, variants, images, productId: _pid,
+  colour, variants, images,
   variantDrafts, setVariantDrafts, saving,
   onSave, onAddVariant, onDeleteVariant, onDeleteImage, onUploadFiles,
 }: {
-  colour:          string;
-  variants:        Variant[];
-  images:          ProductImage[];
-  productId:       string;
-  variantDrafts:   Record<string,number>;
-  setVariantDrafts:React.Dispatch<React.SetStateAction<Record<string,number>>>;
-  saving:          Record<string,boolean>;
-  onSave:          (vid: string, size: string, qty: number) => Promise<void>;
-  onAddVariant:    (size: string) => Promise<void>;
-  onDeleteVariant: (vid: string) => Promise<void>;
-  onDeleteImage:   (imgId: string) => Promise<void>;
-  onUploadFiles:   (files: File[]) => Promise<void>;
+  colour:           string;
+  variants:         Variant[];
+  images:           ProductImage[];
+  productId:        string;
+  variantDrafts:    Record<string,number>;
+  setVariantDrafts: React.Dispatch<React.SetStateAction<Record<string,number>>>;
+  saving:           Record<string,boolean>;
+  onSave:           (vid: string, size: string, qty: number) => Promise<void>;
+  onAddVariant:     (size: string) => Promise<void>;
+  onDeleteVariant:  (vid: string) => Promise<void>;
+  onDeleteImage:    (imgId: string) => Promise<void>;
+  onUploadFiles:    (files: File[]) => Promise<void>;
 }) {
   const [uploading,    setUploading]    = useState(false);
   const [isDragOver,   setIsDragOver]   = useState(false);
   const [showSizeForm, setShowSizeForm] = useState(false);
   const [newSize,      setNewSize]      = useState('');
-  const [newQty,       setNewQty]       = useState(0);
   const [addingSize,   setAddingSize]   = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -527,7 +553,8 @@ function ColourGroup({
     if (fileRef.current) fileRef.current.value = '';
   }
 
-  const totalStock = variants.reduce((s,v) => s + (variantDrafts[v.id] ?? v.stock_count), 0);
+  // Only count real (non-internal) variants for stock total
+  const stockTotal = variants.reduce((s,v) => s + (variantDrafts[v.id] ?? v.stock_count), 0);
 
   return (
     <div style={{
@@ -546,7 +573,7 @@ function ColourGroup({
         <span style={{ fontWeight: 700, fontSize: '.82rem', color: '#9d174d', flex: 1, textTransform: 'capitalize' }}>{colour}</span>
         <span style={{ fontSize: '.68rem', color: '#9ca3af' }}>
           {images.length} img{images.length !== 1 ? 's' : ''}
-          {variants.length > 0 && ` · ${variants.length} size${variants.length !== 1 ? 's' : ''} · ${totalStock} units`}
+          {variants.length > 0 && ` · ${variants.length} size${variants.length !== 1 ? 's' : ''} · ${stockTotal} units`}
         </span>
       </div>
 
@@ -561,7 +588,6 @@ function ColourGroup({
         <div>
           <div style={{ fontSize: '.67rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '.4rem' }}>Photos</div>
 
-          {/* Thumbnail strip */}
           {images.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.3rem', marginBottom: '.5rem' }}>
               {images.map((img, idx) => (
@@ -631,7 +657,7 @@ function ColourGroup({
           <div style={{ fontSize: '.67rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '.4rem' }}>Sizes &amp; Stock</div>
 
           {variants.length === 0 ? (
-            <p style={{ fontSize: '.73rem', color: '#9ca3af', marginBottom: '.4rem' }}>No sizes yet.</p>
+            <p style={{ fontSize: '.73rem', color: '#9ca3af', marginBottom: '.5rem' }}>No sizes yet — add one below.</p>
           ) : (
             <div style={{ marginBottom: '.4rem' }}>
               <VariantChips
@@ -657,37 +683,29 @@ function ColourGroup({
           ) : (
             <div style={{ display: 'flex', gap: '.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <input
-                placeholder="S, M, 38…" value={newSize}
+                placeholder="S / M / 38…" value={newSize}
                 onChange={e => setNewSize(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && newSize.trim()) {
                     e.preventDefault();
                     setAddingSize(true);
-                    onAddVariant(newSize.trim()).then(() => { setNewSize(''); setNewQty(0); setShowSizeForm(false); setAddingSize(false); });
+                    onAddVariant(newSize.trim()).then(() => { setNewSize(''); setShowSizeForm(false); setAddingSize(false); });
                   }
                 }}
                 autoFocus
                 style={{ flex: '1 1 55px', minWidth: '50px', padding: '.28rem .4rem', border: '1px solid #e5e7eb', borderRadius: '.35rem', fontSize: '.75rem', outline: 'none' }}
               />
-              <div style={{ display: 'flex', alignItems: 'center', gap: '.2rem' }}>
-                <label style={{ fontSize: '.65rem', color: '#9ca3af' }}>Qty:</label>
-                <input
-                  type="number" min={0} value={newQty}
-                  onChange={e => setNewQty(parseInt(e.target.value) || 0)}
-                  style={{ width: '2.8rem', padding: '.28rem', border: '1px solid #e5e7eb', borderRadius: '.35rem', fontSize: '.75rem', textAlign: 'center', outline: 'none' }}
-                />
-              </div>
               <button
                 disabled={addingSize || !newSize.trim()}
                 onClick={async () => {
                   setAddingSize(true);
                   await onAddVariant(newSize.trim());
-                  setNewSize(''); setNewQty(0); setShowSizeForm(false); setAddingSize(false);
+                  setNewSize(''); setShowSizeForm(false); setAddingSize(false);
                 }}
                 style={{ padding: '.28rem .5rem', background: '#9d174d', color: 'white', border: 'none', borderRadius: '.35rem', fontSize: '.72rem', fontWeight: 700, cursor: 'pointer', opacity: addingSize || !newSize.trim() ? .6 : 1 }}
               >{addingSize ? '…' : 'Add'}</button>
               <button
-                onClick={() => { setShowSizeForm(false); setNewSize(''); setNewQty(0); }}
+                onClick={() => { setShowSizeForm(false); setNewSize(''); }}
                 style={{ padding: '.28rem .4rem', background: '#f9fafb', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: '.35rem', fontSize: '.72rem', cursor: 'pointer' }}
               >✕</button>
             </div>
