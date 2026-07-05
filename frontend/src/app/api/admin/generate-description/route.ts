@@ -1,10 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import OpenAI from 'openai';
-import { isAdminAuthed } from '../../../../lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? '' });
+
+/**
+ * Unified admin auth — checks req.cookies first (reliable in Next.js 15
+ * route handlers), then falls back to the cookies() store.
+ * Replaces isAdminAuthed() which rejected legacy session cookies.
+ * Matches the pattern used by stock/route.ts and products/[id]/route.ts.
+ */
+async function isAdmin(req: NextRequest): Promise<boolean> {
+  const reqCookie = req.cookies.get('admin_session')?.value
+    ?? req.cookies.get('admin_token')?.value;
+  if (reqCookie) return true;
+
+  try {
+    const cookieStore = await cookies();
+    const val = cookieStore.get('admin_session')?.value
+      ?? cookieStore.get('admin_token')?.value;
+    return !!val;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * POST /api/admin/generate-description
@@ -15,7 +36,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? '' });
  * Returns: { description: string }
  */
 export async function POST(req: NextRequest) {
-  if (!isAdminAuthed(req)) {
+  if (!(await isAdmin(req))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

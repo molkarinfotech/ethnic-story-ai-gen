@@ -2,10 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getServiceSupabase } from '../../../../lib/supabase';
 
-async function isAdmin(): Promise<boolean> {
+/**
+ * Unified admin auth — checks req.cookies first (reliable in Next.js 15
+ * route handlers), then falls back to the cookies() store.
+ * Matches the pattern used by stock/route.ts and products/[id]/route.ts.
+ */
+async function isAdmin(req: NextRequest): Promise<boolean> {
+  const reqCookie = req.cookies.get('admin_session')?.value
+    ?? req.cookies.get('admin_token')?.value;
+  if (reqCookie) return true;
+
   try {
     const cookieStore = await cookies();
-    return !!cookieStore.get('admin_session')?.value || !!cookieStore.get('admin_token')?.value;
+    const val = cookieStore.get('admin_session')?.value
+      ?? cookieStore.get('admin_token')?.value;
+    return !!val;
   } catch {
     return false;
   }
@@ -152,7 +163,7 @@ function detectProductType(
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await isAdmin())) {
+  if (!(await isAdmin(req))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -163,6 +174,7 @@ export async function POST(req: NextRequest) {
   const bytes  = await file.arrayBuffer();
   const base64 = Buffer.from(bytes).toString('base64');
   const mime   = file.type?.includes('png') ? 'image/png' : 'image/jpeg';
+  void mime; // used for future MIME-type hints if needed
 
   const apiKey = process.env.GOOGLE_VISION_API_KEY;
   if (!apiKey) {
@@ -199,7 +211,6 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           requests: [{
             image: { content: base64 },
-            // Tell Vision the MIME type so it processes correctly
             imageContext: { languageHints: ['en'] },
             features: [
               { type: 'LABEL_DETECTION',     maxResults: 40 },
@@ -216,7 +227,6 @@ export async function POST(req: NextRequest) {
 
     const visionData = await visionRes.json();
 
-    // Surface any top-level API errors (wrong key, quota, etc.)
     if (visionData.error) {
       visionError = `Vision API error ${visionData.error.code}: ${visionData.error.message}`;
     } else {
@@ -233,7 +243,6 @@ export async function POST(req: NextRequest) {
           )
         );
 
-        // WEB_DETECTION: bestGuessLabels + webEntities
         const webEntities: string[] = (r?.webDetection?.webEntities ?? [])
           .filter((e: { score: number }) => e.score > 0.3)
           .map((e: { description: string }) => e.description ?? '')
@@ -243,7 +252,6 @@ export async function POST(req: NextRequest) {
           .filter(Boolean);
         webLabels = [...bestGuess, ...webEntities];
 
-        // Colour — filter near-black/near-white background noise, boost saturated garment tones
         const dominantColours: Array<{
           color: { red: number; green: number; blue: number };
           score: number;
@@ -254,7 +262,7 @@ export async function POST(req: NextRequest) {
           .filter(c => {
             const { red: R = 0, green: G = 0, blue: B = 0 } = c.color;
             const avg = (R + G + B) / 3;
-            return avg > 25 && avg < 245; // skip pure black background & pure white
+            return avg > 25 && avg < 245;
           })
           .map(c => {
             const { red: R = 0, green: G = 0, blue: B = 0 } = c.color;
