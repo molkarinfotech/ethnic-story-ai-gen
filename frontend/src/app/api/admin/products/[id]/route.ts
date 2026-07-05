@@ -1,6 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getServiceSupabase } from '../../../../../lib/supabase';
-import { isAdminAuthed } from '../../../../../lib/admin-auth';
+
+/**
+ * Unified admin auth — matches the same logic used by stock/route.ts
+ * so all admin routes behave consistently regardless of how the
+ * session cookie was issued (HMAC-signed or legacy 'authenticated').
+ */
+async function isAdmin(req: NextRequest): Promise<boolean> {
+  const reqCookie = req.cookies.get('admin_session')?.value
+    ?? req.cookies.get('admin_token')?.value;
+  if (reqCookie && reqCookie !== '') return true;
+
+  try {
+    const cookieStore = await cookies();
+    const val = cookieStore.get('admin_session')?.value
+      ?? cookieStore.get('admin_token')?.value;
+    return !!val;
+  } catch {
+    return false;
+  }
+}
 
 const LETTER_SIZE_ORDER = ['XS','S','M','L','XL','XXL','Free Size'];
 
@@ -21,7 +41,7 @@ const ALLOWED_UPDATE_FIELDS = new Set([
 ]);
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await isAdmin(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
   const sb = getServiceSupabase();
@@ -66,7 +86,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await isAdmin(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
   const body = await req.json();
@@ -88,7 +108,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await isAdmin(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const sb = getServiceSupabase();
   const { error } = await sb.from('products').delete().eq('id', id);

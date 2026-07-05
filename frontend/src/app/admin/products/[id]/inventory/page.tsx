@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, use } from 'react';
 
 type ProductImage = { id: string; colour: string; url: string; sort_order: number };
 type Variant      = { id: string; size: string; colour: string; stock_count: number };
@@ -25,8 +25,9 @@ function uniqueSorted(arr: string[]): string[] {
 }
 
 /* ─────────────────────────────────────────────────────────── */
-export default function InventoryPage({ params }: { params: { id: string } }) {
-  const productId = params.id;
+export default function InventoryPage({ params }: { params: Promise<{ id: string }> }) {
+  // Next.js 15: params is a Promise — must be unwrapped
+  const { id: productId } = use(params);
 
   const [product, setProduct] = useState<Product | null>(null);
   const [images,  setImages]  = useState<ProductImage[]>([]);
@@ -41,8 +42,8 @@ export default function InventoryPage({ params }: { params: { id: string } }) {
   const loadAll = useCallback(async () => {
     setLoading(true);
     const [prodRes, imgRes] = await Promise.all([
-      fetch(`/api/admin/products/${productId}`).then(r => r.json()),
-      fetch(`/api/product-images/${productId}`).then(r => r.json()),
+      fetch(`/api/admin/products/${productId}`, { credentials: 'include' }).then(r => r.json()),
+      fetch(`/api/product-images/${productId}`, { credentials: 'include' }).then(r => r.json()),
     ]);
     if (!prodRes.error) setProduct(prodRes);
     setImages(Array.isArray(imgRes) ? imgRes : []);
@@ -73,6 +74,7 @@ export default function InventoryPage({ params }: { params: { id: string } }) {
     setSaving(s => ({ ...s, [variantId]: true }));
     await fetch('/api/admin/stock', {
       method: 'PATCH',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ variant_id: variantId, product_id: pid, size, colour, stock_count: qty }),
     });
@@ -85,6 +87,7 @@ export default function InventoryPage({ params }: { params: { id: string } }) {
     if (!confirm('Remove this size variant?')) return;
     await fetch('/api/admin/stock', {
       method: 'DELETE',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ variant_id: variantId }),
     });
@@ -95,6 +98,7 @@ export default function InventoryPage({ params }: { params: { id: string } }) {
     if (!size.trim()) return;
     await fetch('/api/admin/stock', {
       method: 'PATCH',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ product_id: productId, size: size.trim(), colour, stock_count: qty }),
     });
@@ -104,7 +108,7 @@ export default function InventoryPage({ params }: { params: { id: string } }) {
   /* ── Images ── */
   async function deleteImage(imageId: string) {
     if (!confirm('Remove this image?')) return;
-    await fetch(`/api/product-images/${productId}?id=${imageId}`, { method: 'DELETE' });
+    await fetch(`/api/product-images/${productId}?id=${imageId}`, { method: 'DELETE', credentials: 'include' });
     setImages(imgs => imgs.filter(i => i.id !== imageId));
   }
 
@@ -118,7 +122,7 @@ export default function InventoryPage({ params }: { params: { id: string } }) {
       fd.append('product_id', productId);
       fd.append('colour',     colour || 'Unassigned');
       fd.append('sort_order', String(baseOrder + i));
-      const res = await fetch('/api/admin/scan-upload', { method: 'POST', body: fd });
+      const res = await fetch('/api/admin/scan-upload', { method: 'POST', credentials: 'include', body: fd });
       if (res.ok) {
         const d = await res.json();
         if (d.image) results.push(d.image);
@@ -135,6 +139,7 @@ export default function InventoryPage({ params }: { params: { id: string } }) {
     // (user then adds proper sizes)
     await fetch('/api/admin/stock', {
       method: 'PATCH',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ product_id: productId, size: 'TBA', colour: name, stock_count: 0 }),
     });
@@ -221,7 +226,7 @@ export default function InventoryPage({ params }: { params: { id: string } }) {
         <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#9ca3af', background: 'white', borderRadius: '.7rem', border: '1px dashed #fce7f3' }}>
           <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>🎨</div>
           <p style={{ fontWeight: 600, color: '#6b7280', marginBottom: '.25rem' }}>No colours yet</p>
-          <p style={{ fontSize: '.8rem' }}>Click "+ Add colour" above to start building your product's colour variants.</p>
+          <p style={{ fontSize: '.8rem' }}>Click "+ Add colour" above to start building your product&apos;s colour variants.</p>
         </div>
       )}
 
