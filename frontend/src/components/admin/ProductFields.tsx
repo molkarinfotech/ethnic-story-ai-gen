@@ -28,12 +28,12 @@ export function ProductFields({
 }) {
   const isAccessories = form.category === 'accessories';
 
-  const [showNewCat,    setShowNewCat]    = useState(false);
-  const [newCatLabel,   setNewCatLabel]   = useState('');
-  const [newCatSlug,    setNewCatSlug]    = useState('');
-  const [slugTouched,   setSlugTouched]   = useState(false);
-  const [creatingCat,   setCreatingCat]   = useState(false);
-  const [catError,      setCatError]      = useState('');
+  const [showNewCat,  setShowNewCat]  = useState(false);
+  const [newCatLabel, setNewCatLabel] = useState('');
+  const [newCatSlug,  setNewCatSlug]  = useState('');
+  const [slugTouched, setSlugTouched] = useState(false);
+  const [creatingCat, setCreatingCat] = useState(false);
+  const [catError,    setCatError]    = useState('');
 
   function handleCatLabelChange(val: string) {
     setNewCatLabel(val);
@@ -58,7 +58,6 @@ export function ProductFields({
       if (!res.ok) throw new Error(data.error ?? 'Failed to create category');
       const newCat: CategoryOption = { slug: data.slug, label: data.label };
       onCategoryCreated?.(newCat);
-      // Reset form
       setShowNewCat(false);
       setNewCatLabel('');
       setNewCatSlug('');
@@ -70,30 +69,48 @@ export function ProductFields({
     }
   }
 
+  /* ── helpers ── */
+  function cancelNewCat() {
+    setShowNewCat(false);
+    setNewCatLabel('');
+    setNewCatSlug('');
+    setSlugTouched(false);
+    setCatError('');
+    if (!showNewCat) return;
+    // restore selection to first real category (or keep current)
+    if (categories.length > 0 && !categories.find(c => c.slug === form.category)) {
+      set('category', categories[0].slug);
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {[
-        { id: 'name',           label: 'Product name *',        placeholder: 'Banarasi Silk Saree',            required: true },
-        { id: 'slug',           label: 'URL slug *',             placeholder: 'banarasi-silk-saree',            required: true },
-        { id: 'subtitle',       label: 'Subtitle',               placeholder: 'Pure silk with gold zari border' },
-        { id: 'price',          label: 'Price (AUD) *',          placeholder: '189', type: 'number',            required: true },
-        { id: 'original_price', label: 'Original price (AUD)',   placeholder: '229', type: 'number' },
-      ].map(f => (
+
+      {/* Text fields */}
+      {([
+        { id: 'name',           label: 'Product name *',       placeholder: 'Banarasi Silk Saree',            required: true },
+        { id: 'slug',           label: 'URL slug *',            placeholder: 'banarasi-silk-saree',            required: true },
+        { id: 'subtitle',       label: 'Subtitle',              placeholder: 'Pure silk with gold zari border' },
+        { id: 'price',          label: 'Price (AUD) *',         placeholder: '189', type: 'number',            required: true },
+        { id: 'original_price', label: 'Original price (AUD)', placeholder: '229', type: 'number'            },
+      ] as const).map(f => (
         <div key={f.id} className="checkout-field">
           <label className="checkout-label">{f.label}</label>
           <input
-            type={f.type ?? 'text'}
+            type={'type' in f ? f.type : 'text'}
             className="checkout-input"
             placeholder={f.placeholder}
             value={form[f.id] ?? ''}
             onChange={e => set(f.id, e.target.value)}
-            required={f.required}
-            step={f.type === 'number' ? '0.01' : undefined}
+            required={'required' in f ? f.required : false}
+            step={'type' in f && f.type === 'number' ? '0.01' : undefined}
           />
         </div>
       ))}
 
+      {/* Gender + Category row */}
       <div style={{ display: 'grid', gridTemplateColumns: isAccessories ? '1fr' : '1fr 1fr', gap: '.75rem' }}>
+
         {!isAccessories && (
           <div className="checkout-field">
             <label className="checkout-label">Gender *</label>
@@ -125,15 +142,20 @@ export function ProductFields({
             }}
             required={!showNewCat}
           >
+            {/* Always show a placeholder when list is empty */}
+            {categories.length === 0 && (
+              <option value="" disabled>Loading categories…</option>
+            )}
             {categories.map(c => (
               <option key={c.slug} value={c.slug}>{c.label}</option>
             ))}
-            <option value="__new__">＋ New category…</option>
+            {/* This option is ALWAYS present — never inside a conditional */}
+            <option value="__new__">✚ New category…</option>
           </select>
         </div>
       </div>
 
-      {/* ── Inline new-category form ── */}
+      {/* ── Inline new-category panel ── */}
       {showNewCat && (
         <div style={{
           background: '#f5f3ff',
@@ -142,9 +164,9 @@ export function ProductFields({
           padding: '1rem',
           display: 'flex',
           flexDirection: 'column',
-          gap: '.6rem',
+          gap: '.65rem',
         }}>
-          <div style={{ fontWeight: 700, fontSize: '.82rem', color: '#7c3aed' }}>✨ New category</div>
+          <div style={{ fontWeight: 700, fontSize: '.82rem', color: '#7c3aed' }}>✨ Create new category</div>
 
           <div className="checkout-field" style={{ margin: 0 }}>
             <label className="checkout-label" style={{ fontSize: '.75rem' }}>Display name *</label>
@@ -158,7 +180,10 @@ export function ProductFields({
           </div>
 
           <div className="checkout-field" style={{ margin: 0 }}>
-            <label className="checkout-label" style={{ fontSize: '.75rem' }}>URL slug * <span style={{ fontWeight: 400, color: '#9ca3af', textTransform: 'none' }}>(auto-filled)</span></label>
+            <label className="checkout-label" style={{ fontSize: '.75rem' }}>
+              URL slug *{' '}
+              <span style={{ fontWeight: 400, color: '#9ca3af', textTransform: 'none' }}>(auto-filled — editable)</span>
+            </label>
             <input
               className="checkout-input"
               placeholder="e.g. kurtis"
@@ -187,15 +212,7 @@ export function ProductFields({
             </button>
             <button
               type="button"
-              onClick={() => {
-                setShowNewCat(false);
-                setNewCatLabel('');
-                setNewCatSlug('');
-                setSlugTouched(false);
-                setCatError('');
-                // Restore to first existing category
-                if (categories.length > 0) set('category', categories[0].slug);
-              }}
+              onClick={cancelNewCat}
               style={{
                 padding: '.55rem .75rem', background: 'white', color: '#6b7280',
                 border: '1px solid #e5e7eb', borderRadius: '.45rem',
@@ -206,6 +223,7 @@ export function ProductFields({
         </div>
       )}
 
+      {/* Accessories subcategory */}
       {isAccessories && (
         <div className="checkout-field">
           <label className="checkout-label">Subcategory</label>
@@ -222,11 +240,12 @@ export function ProductFields({
         </div>
       )}
 
+      {/* Badge */}
       <div className="checkout-field">
         <label className="checkout-label">Badge</label>
         <select
           className="checkout-input"
-          value={form.badge}
+          value={form.badge ?? ''}
           onChange={e => set('badge', e.target.value)}
         >
           {BADGES.map(b => (

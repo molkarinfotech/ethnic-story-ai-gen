@@ -17,21 +17,28 @@ function sortVariants(vs: Variant[]) {
   return [...letter, ...numeric, ...other];
 }
 
-function uniqueSorted(arr: string[]): string[] {
+function uniqueSorted(arr: (string | undefined | null)[]): string[] {
   const seen: Record<string,true> = {};
   const out: string[] = [];
-  for (const s of arr) { if (s && !seen[s]) { seen[s] = true; out.push(s); } }
+  for (const s of arr) {
+    if (s && typeof s === 'string' && s.trim() && !seen[s]) {
+      seen[s] = true;
+      out.push(s);
+    }
+  }
   return out.sort();
 }
 
-/* ─────────────────────────────────────────────────────────── */
-export default function InventoryPage({ params }: { params: Promise<{ id: string }> | { id: string } }) {
-  // Support both Next.js 14 (params is plain object) and 15 (params is a Promise)
+/* Shell — unwraps params safely for Next.js 14 and 15 */
+export default function InventoryPage({
+  params,
+}: {
+  params: Promise<{ id: string }> | { id: string };
+}) {
   const [productId, setProductId] = useState<string | null>(null);
 
   useEffect(() => {
-    // If params is a Promise (Next.js 15), resolve it; otherwise use directly
-    if (params && typeof (params as Promise<{id:string}>).then === 'function') {
+    if (params && typeof (params as Promise<{ id: string }>).then === 'function') {
       (params as Promise<{ id: string }>).then(p => setProductId(p.id));
     } else {
       setProductId((params as { id: string }).id);
@@ -39,13 +46,17 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
   }, [params]);
 
   if (!productId) {
-    return <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280', fontSize: '.875rem' }}>Loading…</div>;
+    return (
+      <div style={{ padding: '3rem', textAlign: 'center', color: '#9ca3af', fontSize: '.875rem' }}>
+        Loading…
+      </div>
+    );
   }
 
   return <InventoryInner productId={productId} />;
 }
 
-/* ─────────────────────────────────────────────────────────── */
+/* ────────────────────────────────── Inner ──────────────────────────────── */
 function InventoryInner({ productId }: { productId: string }) {
   const [product,        setProduct]        = useState<Product | null>(null);
   const [images,         setImages]         = useState<ProductImage[]>([]);
@@ -54,32 +65,39 @@ function InventoryInner({ productId }: { productId: string }) {
   const [saving,         setSaving]         = useState<Record<string,boolean>>({});
   const [drafts,         setDrafts]         = useState<Record<string,number>>({});
   const [pendingColours, setPendingColours] = useState<string[]>([]);
+  const [showAddColour,  setShowAddColour]  = useState(false);
+  const [newColourName,  setNewColourName]  = useState('');
 
-  const [showAddColour, setShowAddColour] = useState(false);
-  const [newColourName, setNewColourName] = useState('');
-
+  /* ─ loadAll ─ */
   const loadAll = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const [prodRes, imgRes] = await Promise.all([
+      const [prodData, imgData] = await Promise.all([
         fetch(`/api/admin/products/${productId}`, { credentials: 'include' }).then(r => r.json()),
         fetch(`/api/product-images/${productId}`).then(r => r.json()),
       ]);
-      if (prodRes.error) {
-        setLoadError(prodRes.error);
+
+      if (prodData?.error) {
+        setLoadError(prodData.error);
         setLoading(false);
         return;
       }
-      setProduct(prodRes);
-      const realColours = new Set([
-        ...(prodRes.variants ?? []).map((v: Variant) => v.colour).filter(Boolean),
-        ...(Array.isArray(imgRes) ? imgRes : []).map((i: ProductImage) => i.colour).filter(Boolean),
+
+      const safeProduct = prodData as Product;
+      const safeImages: ProductImage[] = Array.isArray(imgData) ? imgData : [];
+
+      setProduct(safeProduct);
+      setImages(safeImages);
+
+      // Clear pendingColours that now exist in DB
+      const dbColourSet = new Set([
+        ...(safeProduct.variants ?? []).map(v => v.colour).filter(Boolean),
+        ...safeImages.map(i => i.colour).filter(Boolean),
       ]);
-      setPendingColours(prev => prev.filter(c => !realColours.has(c)));
-      setImages(Array.isArray(imgRes) ? imgRes : []);
+      setPendingColours(prev => prev.filter(c => !dbColourSet.has(c)));
     } catch (e: unknown) {
-      setLoadError(e instanceof Error ? e.message : 'Failed to load product');
+      setLoadError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
@@ -87,26 +105,39 @@ function InventoryInner({ productId }: { productId: string }) {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  /* ── Derived data ── */
-  const dbColours = product
-    ? uniqueSorted([
-        ...product.variants.map(v => v.colour).filter(Boolean) as string[],
-        ...images.map(i => i.colour).filter(Boolean) as string[],
-      ])
+  /* ─ Derived colours ─
+     Source of truth = variants (colour is stored there on every PATCH to /api/admin/stock).
+     Images are secondary — they belong to an existing colour group.
+     pendingColours are UI-only colour groups not yet backed by a variant or image.
+  */
+  const variantColours = product
+    ? uniqueSorted(product.variants.map(v => v.colour))
     : [];
-  const colours = uniqueSorted([...dbColours, ...pendingColours]);
+  const imageColours = uniqueSorted(images.map(i => i.colour));
+  // Merge: variant colours first, then image-only colours, then pending
+  const colours = uniqueSorted([...variantColours, ...imageColours, ...pendingColours]);
 
   function imagesByColour(c: string) {
-    return images.filter(i => i.colour === c).sort((a,b) => a.sort_order - b.sort_order);
+    return images
+      .filter(i => i.colour === c)
+      .sort((a, b) => a.sort_order - b.sort_order);
   }
   function variantsByColour(c: string) {
     return sortVariants(product?.variants.filter(v => v.colour === c) ?? []);
   }
-  const noColourVariants = sortVariants(product?.variants.filter(v => !v.colour) ?? []);
-  const totalStock = product?.variants.reduce((s,v) => s + v.stock_count, 0) ?? 0;
+  const noColourVariants = sortVariants(
+    product?.variants.filter(v => !v.colour) ?? []
+  );
+  const totalStock = product?.variants.reduce((s, v) => s + v.stock_count, 0) ?? 0;
 
-  /* ── Stock ── */
-  async function saveStock(variantId: string, pid: string, size: string, colour: string, qty: number) {
+  /* ─ Stock mutations ─ */
+  async function saveStock(
+    variantId: string,
+    pid: string,
+    size: string,
+    colour: string,
+    qty: number
+  ) {
     setSaving(s => ({ ...s, [variantId]: true }));
     await fetch('/api/admin/stock', {
       method: 'PATCH',
@@ -114,9 +145,13 @@ function InventoryInner({ productId }: { productId: string }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ variant_id: variantId, product_id: pid, size, colour, stock_count: qty }),
     });
-    setProduct(p => !p ? p : { ...p, variants: p.variants.map(v => v.id === variantId ? { ...v, stock_count: qty } : v) });
-    setSaving(s => { const n={...s}; delete n[variantId]; return n; });
-    setDrafts(d => { const n={...d}; delete n[variantId]; return n; });
+    setProduct(p =>
+      !p ? p : { ...p, variants: p.variants.map(v =>
+        v.id === variantId ? { ...v, stock_count: qty } : v
+      )}
+    );
+    setSaving(s => { const n = { ...s }; delete n[variantId]; return n; });
+    setDrafts(d => { const n = { ...d }; delete n[variantId]; return n; });
   }
 
   async function deleteVariant(variantId: string) {
@@ -127,7 +162,9 @@ function InventoryInner({ productId }: { productId: string }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ variant_id: variantId }),
     });
-    setProduct(p => !p ? p : { ...p, variants: p.variants.filter(v => v.id !== variantId) });
+    setProduct(p =>
+      !p ? p : { ...p, variants: p.variants.filter(v => v.id !== variantId) }
+    );
   }
 
   async function addVariant(colour: string, size: string, qty = 0) {
@@ -141,10 +178,13 @@ function InventoryInner({ productId }: { productId: string }) {
     await loadAll();
   }
 
-  /* ── Images ── */
+  /* ─ Image mutations ─ */
   async function deleteImage(imageId: string) {
     if (!confirm('Remove this image?')) return;
-    await fetch(`/api/product-images/${productId}?id=${imageId}`, { method: 'DELETE', credentials: 'include' });
+    await fetch(`/api/product-images/${productId}?id=${imageId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
     setImages(imgs => imgs.filter(i => i.id !== imageId));
   }
 
@@ -157,17 +197,24 @@ function InventoryInner({ productId }: { productId: string }) {
       fd.append('product_id', productId);
       fd.append('colour',     colour || 'Unassigned');
       fd.append('sort_order', String(baseOrder + i));
-      const res = await fetch('/api/admin/scan-upload', { method: 'POST', credentials: 'include', body: fd });
+      const res = await fetch('/api/admin/scan-upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: fd,
+      });
       if (res.ok) {
         const d = await res.json();
-        if (d.image) results.push(d.image);
+        if (d?.image) results.push(d.image as ProductImage);
       }
     }
-    setPendingColours(prev => prev.filter(c => c !== colour));
+    // Once an image exists for this colour it's no longer pending
+    if (results.length > 0) {
+      setPendingColours(prev => prev.filter(c => c !== colour));
+    }
     return results;
   }
 
-  /* ── Add colour group ── */
+  /* ─ Add colour group ─ */
   function addColourGroup() {
     const name = newColourName.trim();
     if (!name) return;
@@ -176,12 +223,13 @@ function InventoryInner({ productId }: { productId: string }) {
       .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
       .join(' ');
     setPendingColours(prev => {
-      const currentColours = uniqueSorted([
-        ...(product?.variants.map(v => v.colour).filter(Boolean) as string[] ?? []),
-        ...images.map(i => i.colour).filter(Boolean) as string[],
+      // Build the full current set to avoid duplicates
+      const existing = new Set([
+        ...(product?.variants.map(v => v.colour).filter(Boolean) ?? []),
+        ...images.map(i => i.colour).filter(Boolean),
         ...prev,
       ]);
-      if (currentColours.includes(normalised)) return prev;
+      if (existing.has(normalised)) return prev;
       return [...prev, normalised];
     });
     setNewColourName('');
@@ -190,26 +238,36 @@ function InventoryInner({ productId }: { productId: string }) {
 
   /* ─── Render ─── */
   if (loading) {
-    return <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280', fontSize: '.875rem' }}>Loading…</div>;
+    return (
+      <div style={{ padding: '3rem', textAlign: 'center', color: '#9ca3af', fontSize: '.875rem' }}>
+        Loading…
+      </div>
+    );
   }
 
   if (loadError || !product) {
     return (
       <div style={{ padding: '2rem' }}>
-        <a href="/admin/products" style={{ color: '#9d174d', textDecoration: 'none', fontSize: '.875rem' }}>← Back to Products</a>
+        <a href="/admin/products" style={{ color: '#9d174d', textDecoration: 'none', fontSize: '.875rem' }}>
+          ← Back to products
+        </a>
         <p style={{ marginTop: '1rem', color: '#ef4444' }}>{loadError ?? 'Product not found.'}</p>
         <button
           onClick={loadAll}
-          style={{ marginTop: '.75rem', padding: '.5rem 1rem', background: '#9d174d', color: 'white', border: 'none', borderRadius: '.5rem', cursor: 'pointer', fontSize: '.875rem', fontWeight: 600 }}
+          style={{
+            marginTop: '.75rem', padding: '.5rem 1rem', background: '#9d174d',
+            color: 'white', border: 'none', borderRadius: '.5rem', cursor: 'pointer',
+            fontSize: '.875rem', fontWeight: 600,
+          }}
         >Retry</button>
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: '900px' }}>
+    <div style={{ maxWidth: '920px' }}>
 
-      {/* ── Breadcrumb + header ── */}
+      {/* Breadcrumb */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', marginBottom: '.75rem', fontSize: '.8rem' }}>
         <a href="/admin/products" style={{ color: '#9d174d', textDecoration: 'none', fontWeight: 500 }}>Products</a>
         <span style={{ color: '#d1d5db' }}>›</span>
@@ -218,9 +276,15 @@ function InventoryInner({ productId }: { productId: string }) {
         <span style={{ color: '#111827', fontWeight: 600 }}>Images &amp; Inventory</span>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+      {/* Page header */}
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+        gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap',
+      }}>
         <div>
-          <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#111827', marginBottom: '.2rem' }}>{product.name}</h1>
+          <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#111827', marginBottom: '.2rem' }}>
+            {product.name}
+          </h1>
           <div style={{ fontSize: '.78rem', color: '#6b7280', display: 'flex', gap: '.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <span>{product.category}</span>
             {product.gender && <span>· {product.gender}</span>}
@@ -228,65 +292,104 @@ function InventoryInner({ productId }: { productId: string }) {
             <span style={{
               fontSize: '.7rem', fontWeight: 700, borderRadius: '2rem', padding: '.15rem .5rem',
               background: totalStock === 0 ? '#fee2e2' : totalStock <= 5 ? '#fef9c3' : '#dcfce7',
-              color: totalStock === 0 ? '#991b1b' : totalStock <= 5 ? '#854d0e' : '#166534',
+              color:      totalStock === 0 ? '#991b1b' : totalStock <= 5 ? '#854d0e' : '#166534',
             }}>
               {totalStock === 0 ? '⚠ Out of stock' : `${totalStock} units total`}
             </span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '.5rem' }}>
-          <a href={`/admin/products/${productId}/edit`} style={{ fontSize: '.8rem', color: '#9d174d', fontWeight: 600, textDecoration: 'none', background: '#fdf2f8', border: '1px solid #fce7f3', borderRadius: '.4rem', padding: '.35rem .75rem' }}>✏️ Edit details</a>
+        <div style={{ display: 'flex', gap: '.5rem', flexShrink: 0 }}>
+          <a
+            href={`/admin/products/${productId}/edit`}
+            style={{
+              fontSize: '.8rem', color: '#9d174d', fontWeight: 600, textDecoration: 'none',
+              background: '#fdf2f8', border: '1px solid #fce7f3', borderRadius: '.4rem',
+              padding: '.35rem .75rem',
+            }}
+          >✏️ Edit details</a>
           <button
             onClick={() => setShowAddColour(v => !v)}
-            style={{ fontSize: '.8rem', color: 'white', fontWeight: 600, background: '#7c3aed', border: 'none', borderRadius: '.4rem', padding: '.35rem .75rem', cursor: 'pointer' }}
-          >
-            + Add colour
-          </button>
+            style={{
+              fontSize: '.8rem', color: 'white', fontWeight: 600, background: '#7c3aed',
+              border: 'none', borderRadius: '.4rem', padding: '.35rem .75rem', cursor: 'pointer',
+            }}
+          >+ Add colour</button>
         </div>
       </div>
 
-      {/* ── Add colour form ── */}
+      {/* Add colour inline form */}
       {showAddColour && (
-        <div style={{ background: 'white', border: '1px solid #ede9fe', borderRadius: '.65rem', padding: '1rem', marginBottom: '1rem', display: 'flex', gap: '.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '.82rem', fontWeight: 600, color: '#7c3aed' }}>New colour:</span>
+        <div style={{
+          background: 'white', border: '1px solid #ede9fe', borderRadius: '.65rem',
+          padding: '.85rem 1rem', marginBottom: '1rem',
+          display: 'flex', gap: '.5rem', alignItems: 'center', flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: '.82rem', fontWeight: 600, color: '#7c3aed', whiteSpace: 'nowrap' }}>New colour:</span>
           <input
             value={newColourName}
             onChange={e => setNewColourName(e.target.value)}
-            placeholder="e.g. Royal Blue, Maroon, Off-white"
+            placeholder="e.g. Royal Blue, Maroon…"
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addColourGroup(); } }}
-            style={{ flex: 1, minWidth: '160px', padding: '.4rem .6rem', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.82rem', outline: 'none' }}
+            style={{
+              flex: 1, minWidth: '160px', padding: '.4rem .6rem',
+              border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.82rem', outline: 'none',
+            }}
             autoFocus
           />
-          <button onClick={addColourGroup} disabled={!newColourName.trim()}
-            style={{ padding: '.4rem .85rem', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '.4rem', fontSize: '.82rem', fontWeight: 600, cursor: 'pointer', opacity: newColourName.trim() ? 1 : .5 }}
+          <button
+            onClick={addColourGroup}
+            disabled={!newColourName.trim()}
+            style={{
+              padding: '.4rem .85rem', background: '#7c3aed', color: 'white',
+              border: 'none', borderRadius: '.4rem', fontSize: '.82rem', fontWeight: 600,
+              cursor: 'pointer', opacity: newColourName.trim() ? 1 : .5,
+            }}
           >Add</button>
-          <button onClick={() => { setShowAddColour(false); setNewColourName(''); }}
-            style={{ padding: '.4rem .65rem', background: '#f9fafb', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.82rem', cursor: 'pointer' }}
+          <button
+            onClick={() => { setShowAddColour(false); setNewColourName(''); }}
+            style={{
+              padding: '.4rem .65rem', background: '#f9fafb', color: '#6b7280',
+              border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.82rem', cursor: 'pointer',
+            }}
           >Cancel</button>
         </div>
       )}
 
-      {/* ── Helper tip for pending colours ── */}
+      {/* Pending colour hint */}
       {pendingColours.length > 0 && (
-        <div style={{ fontSize: '.75rem', color: '#7c3aed', background: '#f5f3ff', border: '1px solid #ede9fe', borderRadius: '.5rem', padding: '.5rem .85rem', marginBottom: '.85rem' }}>
-          💡 <strong>{pendingColours.join(', ')}</strong> — colour added locally.
-          Upload an image or add a size below to save it permanently.
+        <div style={{
+          fontSize: '.75rem', color: '#7c3aed', background: '#f5f3ff',
+          border: '1px solid #ede9fe', borderRadius: '.5rem',
+          padding: '.5rem .85rem', marginBottom: '.85rem',
+        }}>
+          💡 <strong>{pendingColours.join(', ')}</strong> — added locally.
+          Upload an image or add a size to save permanently.
         </div>
       )}
 
-      {/* ── Colour sections ── */}
+      {/* ── Empty state ── */}
       {colours.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#9ca3af', background: 'white', borderRadius: '.7rem', border: '1px dashed #fce7f3' }}>
-          <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>🎨</div>
-          <p style={{ fontWeight: 600, color: '#6b7280', marginBottom: '.25rem' }}>No colours yet</p>
-          <p style={{ fontSize: '.8rem' }}>Click &quot;+ Add colour&quot; above to start building your product&apos;s colour variants.</p>
+        <div style={{
+          textAlign: 'center', padding: '3rem 1rem', color: '#9ca3af',
+          background: 'white', borderRadius: '.7rem', border: '1px dashed #fce7f3',
+        }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '.5rem' }}>🎨</div>
+          <p style={{ fontWeight: 600, color: '#6b7280', marginBottom: '.25rem' }}>No colour variants yet</p>
+          <p style={{ fontSize: '.8rem', marginBottom: '1rem' }}>
+            Click &quot;+ Add colour&quot; to create the first colour group,
+            then upload images and set stock per size.
+          </p>
           <button
             onClick={() => setShowAddColour(true)}
-            style={{ marginTop: '1rem', padding: '.5rem 1.25rem', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '.5rem', fontSize: '.85rem', fontWeight: 700, cursor: 'pointer' }}
+            style={{
+              padding: '.5rem 1.25rem', background: '#7c3aed', color: 'white',
+              border: 'none', borderRadius: '.5rem', fontSize: '.85rem', fontWeight: 700, cursor: 'pointer',
+            }}
           >+ Add first colour</button>
         </div>
       )}
 
+      {/* ── Colour sections ── */}
       {colours.map(colour => (
         <ColourSection
           key={colour}
@@ -302,14 +405,23 @@ function InventoryInner({ productId }: { productId: string }) {
           onDeleteVariant={deleteVariant}
           onDeleteImage={deleteImage}
           onAddVariant={(size, qty) => addVariant(colour, size, qty)}
-          onUploadFiles={(files) => uploadFiles(colour, files).then(newImgs => setImages(imgs => [...imgs, ...newImgs]))}
+          onUploadFiles={(files) =>
+            uploadFiles(colour, files).then(newImgs =>
+              setImages(imgs => [...imgs, ...newImgs])
+            )
+          }
         />
       ))}
 
-      {/* Variants with no colour */}
+      {/* Variants without a colour */}
       {noColourVariants.length > 0 && (
-        <section style={{ background: 'white', borderRadius: '.7rem', border: '1px solid #fce7f3', padding: '1.1rem', marginTop: '1rem' }}>
-          <h2 style={{ fontSize: '.85rem', fontWeight: 700, color: '#374151', marginBottom: '.75rem' }}>Size variants (no colour)</h2>
+        <section style={{
+          background: 'white', borderRadius: '.7rem',
+          border: '1px solid #fce7f3', padding: '1.1rem', marginTop: '1rem',
+        }}>
+          <h2 style={{ fontSize: '.85rem', fontWeight: 700, color: '#374151', marginBottom: '.75rem' }}>
+            Size variants (no colour assigned)
+          </h2>
           <VariantGrid
             variants={noColourVariants} drafts={drafts} saving={saving} setDrafts={setDrafts}
             onSave={(vid, size, qty) => saveStock(vid, productId, size, '', qty)}
@@ -321,9 +433,9 @@ function InventoryInner({ productId }: { productId: string }) {
   );
 }
 
-/* ─────────────────────────────────────────────────────────── */
+/* ─────────────────────── ColourSection ─────────────────────── */
 function ColourSection({
-  colour, productId, images, variants, drafts, saving, setDrafts, isPending,
+  colour, productId: _productId, images, variants, drafts, saving, setDrafts, isPending,
   onSaveStock, onDeleteVariant, onDeleteImage, onAddVariant, onUploadFiles,
 }: {
   colour: string;
@@ -349,11 +461,6 @@ function ColourSection({
   const [showSizeForm, setShowSizeForm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-open size form for new (pending) colours so the user sees what to do
-  useEffect(() => {
-    if (isPending) setShowSizeForm(true);
-  }, [isPending]);
-
   async function handleFiles(files: FileList | File[]) {
     const arr = Array.from(files).filter(f => f.type.startsWith('image/'));
     if (!arr.length) return;
@@ -372,56 +479,99 @@ function ColourSection({
     if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
   }
 
-  const totalVariantStock = variants.reduce((s,v) => s + (drafts[v.id] ?? v.stock_count), 0);
+  const totalVariantStock = variants.reduce((s, v) => s + (drafts[v.id] ?? v.stock_count), 0);
+
+  const accentColour = isPending ? '#7c3aed' : '#9d174d';
+  const borderColour = isPending ? '#ede9fe' : '#fce7f3';
+  const bgGradient   = isPending
+    ? 'linear-gradient(to right, #f5f3ff, #fdf8ff)'
+    : 'linear-gradient(to right, #fdf2f8, #fdf8ff)';
 
   return (
     <section style={{
       background: 'white', borderRadius: '.75rem',
-      border: `1px solid ${isPending ? '#ede9fe' : '#fce7f3'}`,
+      border: `1px solid ${borderColour}`,
       overflow: 'hidden', marginBottom: '1.1rem',
       boxShadow: '0 1px 4px rgba(0,0,0,.04)',
     }}>
-      {/* Section header */}
+
+      {/* Header */}
       <div style={{
-        background: isPending
-          ? 'linear-gradient(to right, #f5f3ff, #fdf8ff)'
-          : 'linear-gradient(to right, #fdf2f8, #fdf8ff)',
-        padding: '.65rem 1rem', borderBottom: `1px solid ${isPending ? '#ede9fe' : '#fce7f3'}`,
+        background: bgGradient,
+        padding: '.65rem 1rem',
+        borderBottom: `1px solid ${borderColour}`,
         display: 'flex', alignItems: 'center', gap: '.5rem',
       }}>
-        <span style={{ fontSize: '1.05rem' }}>🎨</span>
-        <span style={{ fontWeight: 700, fontSize: '.92rem', color: isPending ? '#7c3aed' : '#9d174d', textTransform: 'capitalize', flex: 1 }}>
+        <span style={{ fontSize: '1.1rem' }}>🎨</span>
+        <span style={{
+          fontWeight: 700, fontSize: '.92rem', color: accentColour,
+          textTransform: 'capitalize', flex: 1,
+        }}>
           {colour}
-          {isPending && <span style={{ marginLeft: '.5rem', fontSize: '.65rem', fontWeight: 600, background: '#ede9fe', color: '#7c3aed', borderRadius: '2rem', padding: '.1rem .45rem', verticalAlign: 'middle' }}>unsaved</span>}
+          {isPending && (
+            <span style={{
+              marginLeft: '.5rem', fontSize: '.65rem', fontWeight: 600,
+              background: '#ede9fe', color: '#7c3aed',
+              borderRadius: '2rem', padding: '.1rem .45rem', verticalAlign: 'middle',
+            }}>unsaved</span>
+          )}
         </span>
         <span style={{ fontSize: '.7rem', color: '#9ca3af' }}>
           {images.length} image{images.length !== 1 ? 's' : ''}
-          {variants.length > 0 && ` · ${variants.length} size${variants.length !== 1 ? 's' : ''} · ${totalVariantStock} units`}
+          {variants.length > 0 && (
+            ` · ${variants.length} size${variants.length !== 1 ? 's' : ''} · ${totalVariantStock} units`
+          )}
         </span>
       </div>
 
-      <div style={{ padding: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+      {/* Body: two columns */}
+      <div style={{
+        padding: '1rem',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gap: '1.25rem',
+      }}>
 
-        {/* ── LEFT: Images ── */}
+        {/* ── LEFT: Photos ── */}
         <div>
-          <div style={{ fontSize: '.72rem', fontWeight: 700, color: '#6b7280', marginBottom: '.6rem', textTransform: 'uppercase', letterSpacing: '.04em' }}>Photos</div>
+          <div style={{
+            fontSize: '.72rem', fontWeight: 700, color: '#6b7280',
+            marginBottom: '.6rem', textTransform: 'uppercase', letterSpacing: '.05em',
+          }}>Photos</div>
 
+          {/* Existing images grid */}
           {images.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.45rem', marginBottom: '.75rem' }}>
               {images.map((img, idx) => (
-                <div key={img.id} style={{ position: 'relative', width: 72, height: 72, flexShrink: 0 }}>
+                <div key={img.id} style={{ position: 'relative', width: 76, height: 76, flexShrink: 0 }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={img.url} alt={`${colour} ${idx + 1}`}
-                    width={72} height={72}
-                    style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: '.45rem', border: '1px solid #fce7f3' }}
+                    src={img.url}
+                    alt={`${colour} ${idx + 1}`}
+                    width={76} height={76}
+                    style={{
+                      width: 76, height: 76, objectFit: 'cover',
+                      borderRadius: '.45rem', border: `1px solid ${borderColour}`,
+                    }}
                   />
                   {idx === 0 && (
-                    <span style={{ position: 'absolute', bottom: 2, left: 2, fontSize: '.52rem', background: '#9d174d', color: 'white', borderRadius: '.25rem', padding: '.05rem .25rem', fontWeight: 700, lineHeight: 1.4 }}>MAIN</span>
+                    <span style={{
+                      position: 'absolute', bottom: 3, left: 3,
+                      fontSize: '.52rem', background: accentColour, color: 'white',
+                      borderRadius: '.25rem', padding: '.05rem .3rem',
+                      fontWeight: 700, lineHeight: 1.4,
+                    }}>MAIN</span>
                   )}
                   <button
                     onClick={() => onDeleteImage(img.id)}
-                    style={{ position: 'absolute', top: 2, right: 2, width: 18, height: 18, background: 'rgba(0,0,0,.6)', color: 'white', border: 'none', borderRadius: '50%', fontSize: '.58rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                    style={{
+                      position: 'absolute', top: 3, right: 3,
+                      width: 20, height: 20,
+                      background: 'rgba(0,0,0,.55)', color: 'white',
+                      border: 'none', borderRadius: '50%',
+                      fontSize: '.6rem', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
                     title="Remove image"
                   >✕</button>
                 </div>
@@ -429,28 +579,33 @@ function ColourSection({
             </div>
           )}
 
+          {/* Upload drop zone — always visible */}
           <div
             onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
             onDragLeave={() => setIsDragOver(false)}
             onDrop={onDrop}
             onClick={() => !uploading && fileInputRef.current?.click()}
             style={{
-              border: `2px dashed ${isDragOver ? '#9d174d' : '#fce7f3'}`,
+              border: `2px dashed ${isDragOver ? accentColour : borderColour}`,
               borderRadius: '.6rem',
-              padding: '.85rem .75rem',
+              padding: '.9rem .75rem',
               textAlign: 'center',
               cursor: uploading ? 'default' : 'pointer',
-              background: isDragOver ? '#fdf2f8' : '#fffbfd',
+              background: isDragOver ? (isPending ? '#f5f3ff' : '#fdf2f8') : '#fffbfd',
               transition: 'border-color .15s, background .15s',
             }}
           >
             {uploading ? (
-              <div style={{ fontSize: '.78rem', color: '#9d174d', fontWeight: 600 }}>Uploading… ⏳</div>
+              <div style={{ fontSize: '.78rem', color: accentColour, fontWeight: 600 }}>Uploading… ⏳</div>
             ) : (
               <>
-                <div style={{ fontSize: '1.2rem', marginBottom: '.2rem' }}>📤</div>
-                <div style={{ fontSize: '.75rem', color: '#6b7280', fontWeight: 600 }}>Click or drag images here</div>
-                <div style={{ fontSize: '.68rem', color: '#9ca3af', marginTop: '.15rem' }}>JPG, PNG, WEBP · multiple OK</div>
+                <div style={{ fontSize: '1.4rem', marginBottom: '.15rem' }}>📤</div>
+                <div style={{ fontSize: '.75rem', color: '#6b7280', fontWeight: 600 }}>
+                  {images.length > 0 ? 'Add more images' : 'Upload images for this colour'}
+                </div>
+                <div style={{ fontSize: '.68rem', color: '#9ca3af', marginTop: '.15rem' }}>
+                  Click or drag · JPG, PNG, WEBP · multiple OK
+                </div>
               </>
             )}
           </div>
@@ -462,30 +617,45 @@ function ColourSection({
             style={{ display: 'none' }}
             onChange={e => { if (e.target.files?.length) handleFiles(e.target.files); }}
           />
-          {uploadError && <p style={{ color: '#ef4444', fontSize: '.72rem', marginTop: '.35rem', margin: '.35rem 0 0' }}>{uploadError}</p>}
+          {uploadError && (
+            <p style={{ color: '#ef4444', fontSize: '.72rem', marginTop: '.35rem' }}>{uploadError}</p>
+          )}
         </div>
 
-        {/* ── RIGHT: Stock by size ── */}
+        {/* ── RIGHT: Sizes & Stock ── */}
         <div>
-          <div style={{ fontSize: '.72rem', fontWeight: 700, color: '#6b7280', marginBottom: '.6rem', textTransform: 'uppercase', letterSpacing: '.04em' }}>Sizes &amp; Stock</div>
+          <div style={{
+            fontSize: '.72rem', fontWeight: 700, color: '#6b7280',
+            marginBottom: '.6rem', textTransform: 'uppercase', letterSpacing: '.05em',
+          }}>Sizes &amp; Stock</div>
 
           {variants.length === 0 ? (
-            <p style={{ fontSize: '.78rem', color: '#9ca3af', marginBottom: '.6rem' }}>No sizes yet — add one below.</p>
+            <p style={{ fontSize: '.78rem', color: '#9ca3af', marginBottom: '.5rem' }}>
+              No sizes yet — add one below.
+            </p>
           ) : (
-            <VariantGrid
-              variants={variants} drafts={drafts} saving={saving} setDrafts={setDrafts}
-              onSave={onSaveStock}
-              onDelete={onDeleteVariant}
-            />
+            <div style={{ marginBottom: '.6rem' }}>
+              <VariantGrid
+                variants={variants} drafts={drafts} saving={saving} setDrafts={setDrafts}
+                onSave={onSaveStock}
+                onDelete={onDeleteVariant}
+              />
+            </div>
           )}
 
           {!showSizeForm ? (
             <button
               onClick={() => setShowSizeForm(true)}
-              style={{ marginTop: '.6rem', fontSize: '.75rem', color: '#9d174d', background: '#fdf2f8', border: '1px dashed #fce7f3', borderRadius: '.4rem', padding: '.3rem .7rem', cursor: 'pointer', fontWeight: 600 }}
+              style={{
+                fontSize: '.75rem', color: accentColour,
+                background: isPending ? '#f5f3ff' : '#fdf2f8',
+                border: `1px dashed ${borderColour}`,
+                borderRadius: '.4rem', padding: '.3rem .7rem',
+                cursor: 'pointer', fontWeight: 600,
+              }}
             >+ Add size</button>
           ) : (
-            <div style={{ marginTop: '.6rem', display: 'flex', gap: '.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <input
                 placeholder="Size (S, M, 38…)"
                 value={newSize}
@@ -494,10 +664,16 @@ function ColourSection({
                   if (e.key === 'Enter' && newSize.trim()) {
                     e.preventDefault();
                     setAddingSize(true);
-                    onAddVariant(newSize.trim(), newQty).then(() => { setNewSize(''); setNewQty(0); setAddingSize(false); });
+                    onAddVariant(newSize.trim(), newQty).then(() => {
+                      setNewSize(''); setNewQty(0); setAddingSize(false);
+                    });
                   }
                 }}
-                style={{ flex: '1 1 70px', minWidth: '65px', padding: '.3rem .45rem', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.78rem', outline: 'none' }}
+                style={{
+                  flex: '1 1 70px', minWidth: '65px', padding: '.3rem .45rem',
+                  border: '1px solid #e5e7eb', borderRadius: '.4rem',
+                  fontSize: '.78rem', outline: 'none',
+                }}
                 autoFocus
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: '.25rem' }}>
@@ -505,27 +681,44 @@ function ColourSection({
                 <input
                   type="number" min={0} value={newQty}
                   onChange={e => setNewQty(parseInt(e.target.value) || 0)}
-                  style={{ width: '3rem', padding: '.3rem .3rem', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.78rem', textAlign: 'center', outline: 'none' }}
+                  style={{
+                    width: '3rem', padding: '.3rem', border: '1px solid #e5e7eb',
+                    borderRadius: '.4rem', fontSize: '.78rem', textAlign: 'center', outline: 'none',
+                  }}
                 />
               </div>
               <button
                 disabled={addingSize || !newSize.trim()}
-                onClick={async () => { setAddingSize(true); await onAddVariant(newSize.trim(), newQty); setNewSize(''); setNewQty(0); setAddingSize(false); }}
-                style={{ padding: '.3rem .6rem', background: '#9d174d', color: 'white', border: 'none', borderRadius: '.4rem', fontSize: '.75rem', fontWeight: 700, cursor: 'pointer', opacity: addingSize || !newSize.trim() ? .6 : 1 }}
+                onClick={async () => {
+                  setAddingSize(true);
+                  await onAddVariant(newSize.trim(), newQty);
+                  setNewSize(''); setNewQty(0); setAddingSize(false);
+                }}
+                style={{
+                  padding: '.3rem .6rem', background: accentColour, color: 'white',
+                  border: 'none', borderRadius: '.4rem', fontSize: '.75rem',
+                  fontWeight: 700, cursor: 'pointer',
+                  opacity: addingSize || !newSize.trim() ? .6 : 1,
+                }}
               >{addingSize ? '…' : 'Add'}</button>
               <button
                 onClick={() => { setShowSizeForm(false); setNewSize(''); setNewQty(0); }}
-                style={{ padding: '.3rem .5rem', background: '#f9fafb', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.75rem', cursor: 'pointer' }}
+                style={{
+                  padding: '.3rem .5rem', background: '#f9fafb', color: '#6b7280',
+                  border: '1px solid #e5e7eb', borderRadius: '.4rem',
+                  fontSize: '.75rem', cursor: 'pointer',
+                }}
               >✕</button>
             </div>
           )}
         </div>
+
       </div>
     </section>
   );
 }
 
-/* ─────────────────────────────────────────────────────────── */
+/* ────────────────────── VariantGrid ────────────────────── */
 function VariantGrid({
   variants, drafts, saving, setDrafts, onSave, onDelete,
 }: {
@@ -539,7 +732,7 @@ function VariantGrid({
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem' }}>
       {variants.map(v => {
-        const qty = drafts[v.id] ?? v.stock_count;
+        const qty     = drafts[v.id] ?? v.stock_count;
         const isDirty = drafts[v.id] !== undefined && drafts[v.id] !== v.stock_count;
         return (
           <div key={v.id} style={{
@@ -548,19 +741,35 @@ function VariantGrid({
             border: `1px solid ${qty === 0 ? '#fecaca' : qty <= 3 ? '#fef08a' : '#e5e7eb'}`,
             borderRadius: '.45rem', padding: '.28rem .45rem',
           }}>
-            <span style={{ fontSize: '.75rem', fontWeight: 700, color: '#374151', minWidth: '1.8rem' }}>{v.size}</span>
+            <span style={{ fontSize: '.75rem', fontWeight: 700, color: '#374151', minWidth: '1.8rem' }}>
+              {v.size}
+            </span>
             <input
               type="number" min={0} value={qty}
               onChange={e => setDrafts(d => ({ ...d, [v.id]: parseInt(e.target.value) || 0 }))}
-              style={{ width: '3rem', padding: '.18rem .28rem', border: '1px solid #e5e7eb', borderRadius: '.3rem', fontSize: '.78rem', textAlign: 'center', outline: 'none' }}
+              style={{
+                width: '3rem', padding: '.18rem .28rem',
+                border: '1px solid #e5e7eb', borderRadius: '.3rem',
+                fontSize: '.78rem', textAlign: 'center', outline: 'none',
+              }}
             />
             {isDirty && (
-              <button disabled={saving[v.id]} onClick={() => onSave(v.id, v.size, qty)}
-                style={{ fontSize: '.7rem', background: '#9d174d', color: 'white', border: 'none', borderRadius: '.3rem', padding: '.18rem .35rem', cursor: 'pointer', fontWeight: 700 }}
+              <button
+                disabled={saving[v.id]}
+                onClick={() => onSave(v.id, v.size, qty)}
+                style={{
+                  fontSize: '.7rem', background: '#9d174d', color: 'white',
+                  border: 'none', borderRadius: '.3rem', padding: '.18rem .35rem',
+                  cursor: 'pointer', fontWeight: 700,
+                }}
               >{saving[v.id] ? '…' : '✓'}</button>
             )}
-            <button onClick={() => onDelete(v.id)}
-              style={{ fontSize: '.62rem', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '.1rem', lineHeight: 1 }}
+            <button
+              onClick={() => onDelete(v.id)}
+              style={{
+                fontSize: '.62rem', color: '#ef4444', background: 'none',
+                border: 'none', cursor: 'pointer', padding: '.1rem', lineHeight: 1,
+              }}
               title="Remove size"
             >✕</button>
           </div>
