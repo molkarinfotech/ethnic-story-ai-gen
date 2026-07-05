@@ -22,7 +22,6 @@ async function isAdmin(req: NextRequest): Promise<boolean> {
 
 function generateId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
-  // Fallback UUID v4
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = Math.random() * 16 | 0;
     return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
@@ -50,7 +49,6 @@ export async function GET(req: NextRequest) {
   const products = (data ?? []) as Record<string, unknown>[];
   if (products.length === 0) return NextResponse.json([]);
 
-  // Resolve first gallery image for each product
   const ids = products.map(p => p.id as string);
   const { data: imgRows } = await sb
     .from('product_images')
@@ -76,9 +74,6 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
 
-  // Always generate a fresh UUID — never trust client-supplied id
-  // (client-supplied ids that aren't valid UUIDs cause Supabase
-  //  "string did not match the expected pattern" errors)
   const id = generateId();
 
   const rawSlug = body.slug || body.name || id;
@@ -92,7 +87,6 @@ export async function POST(req: NextRequest) {
 
   const sb = getServiceSupabase();
 
-  // Ensure slug uniqueness
   const { data: existing } = await sb
     .from('products')
     .select('id')
@@ -100,7 +94,6 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
   if (existing) slug = `${slug}-${Date.now().toString(36)}`;
 
-  // Build the row — strip empty/undefined optional fields so Supabase uses column defaults
   const row: Record<string, unknown> = {
     id,
     slug,
@@ -110,11 +103,12 @@ export async function POST(req: NextRequest) {
     in_stock: body.in_stock ?? true,
   };
 
-  if (body.original_price)  row.original_price  = Number(body.original_price);
-  if (body.badge?.trim())   row.badge           = body.badge.trim();
-  if (body.description?.trim()) row.description = body.description.trim();
-  if (body.subcategory?.trim()) row.subcategory  = body.subcategory.trim();
-  if (body.gender?.trim())  row.gender          = body.gender.trim();
+  if (body.subtitle?.trim())      row.subtitle       = body.subtitle.trim();
+  if (body.original_price)        row.original_price  = Number(body.original_price);
+  if (body.badge?.trim())         row.badge           = body.badge.trim();
+  if (body.description?.trim())   row.description     = body.description.trim();
+  if (body.subcategory?.trim())   row.subcategory     = body.subcategory.trim();
+  if (body.gender?.trim())        row.gender          = body.gender.trim();
 
   const { data, error } = await sb.from('products').insert([row]).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

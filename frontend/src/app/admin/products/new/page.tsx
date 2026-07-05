@@ -14,7 +14,7 @@ export default function NewProductPage() {
   });
 
   useEffect(() => {
-    fetch('/api/admin/categories')
+    fetch('/api/admin/categories', { credentials: 'include' })
       .then(r => r.json())
       .then((cats: CategoryOption[]) => {
         setCategories(cats);
@@ -47,11 +47,14 @@ export default function NewProductPage() {
     };
     const res = await fetch('/api/admin/products', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     if (res.ok) {
-      router.push('/admin');
+      const created = await res.json();
+      // Go straight to inventory so the user can add colours, images & stock
+      router.push(`/admin/products/${created.id}/inventory`);
     } else {
       const d = await res.json();
       setError(d.error ?? 'Failed to save product.');
@@ -63,7 +66,7 @@ export default function NewProductPage() {
     <main style={{ minHeight: '100vh', background: 'var(--color-surface-offset)', padding: '2rem' }}>
       <div style={{ maxWidth: '600px', margin: '0 auto' }}>
         <div style={{ marginBottom: '1.5rem' }}>
-          <a href="/admin" style={{ color: 'var(--color-text-muted)', textDecoration: 'none', fontSize: '0.875rem' }}>← Back to dashboard</a>
+          <a href="/admin/products" style={{ color: 'var(--color-text-muted)', textDecoration: 'none', fontSize: '0.875rem' }}>← Back to products</a>
         </div>
         <div style={{ background: 'white', borderRadius: '.75rem', padding: '2rem', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
           <h1 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>Add new product</h1>
@@ -73,9 +76,9 @@ export default function NewProductPage() {
             <div style={{ display: 'flex', gap: '.75rem', marginTop: '1.5rem' }}>
               <button type="submit" disabled={saving} className="btn btn-primary"
                 style={{ flex: 1, justifyContent: 'center', minHeight: '44px' }}>
-                {saving ? 'Saving…' : 'Save product'}
+                {saving ? 'Saving…' : 'Save & manage stock →'}
               </button>
-              <a href="/admin" className="btn btn--outline"
+              <a href="/admin/products" className="btn btn--outline"
                 style={{ flex: 1, justifyContent: 'center', minHeight: '44px', textDecoration: 'none', display: 'flex', alignItems: 'center' }}>Cancel</a>
             </div>
           </form>
