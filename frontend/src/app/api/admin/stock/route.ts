@@ -3,11 +3,16 @@ import { cookies } from 'next/headers';
 import { getServiceSupabase } from '../../../../lib/supabase';
 import { normaliseColour } from '../scan-upload/route';
 
+/**
+ * Unified admin auth — identical to the logic in scan-upload/route.ts.
+ * Checks req.cookies first (reliable in Next.js 15 route handlers),
+ * then falls back to the cookies() store.
+ */
 async function isAdmin(req: NextRequest): Promise<boolean> {
   const reqCookie = req.cookies.get('admin_session')?.value
     ?? req.cookies.get('admin_token')?.value;
-  if (reqCookie && reqCookie !== '' && reqCookie !== 'authenticated') return true;
-  if (reqCookie === 'authenticated') return true;
+  if (reqCookie) return true;
+
   try {
     const cookieStore = await cookies();
     const val = cookieStore.get('admin_session')?.value
@@ -79,7 +84,13 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Missing variant_id or product_id+size' }, { status: 400 });
   }
 
-  const colour      = normaliseColour(body.colour);
+  // IMPORTANT: when looking up an existing variant we must use the EXACT colour
+  // string that is already stored in the DB. Calling normaliseColour() here would
+  // convert '' → 'Unassigned', causing the SELECT to miss existing rows with
+  // colour='' and triggering a duplicate INSERT instead of an UPDATE.
+  // We only normalise when actually inserting a brand-new row so that new data
+  // is stored consistently.
+  const rawColour   = (body.colour as string | undefined | null) ?? '';
   const stock_count = body.stock_count !== undefined ? Number(body.stock_count) : 0;
   const image_url   = body.image_url ?? null;
 
@@ -88,10 +99,11 @@ export async function PATCH(req: NextRequest) {
     .select('id')
     .eq('product_id', body.product_id)
     .eq('size', body.size)
-    .eq('colour', colour)
+    .eq('colour', rawColour)
     .maybeSingle();
 
   if (existing?.id) {
+    // UPDATE — preserve the existing colour value (don't rename it)
     const updatePayload: Record<string, unknown> = { stock_count };
     if (image_url !== null) updatePayload.image_url = image_url;
     const { error } = await sb
@@ -100,6 +112,8 @@ export async function PATCH(req: NextRequest) {
       .eq('id', existing.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   } else {
+    // INSERT — normalise colour so new rows are stored consistently
+    const colour = normaliseColour(rawColour);
     const insertPayload: Record<string, unknown> = {
       product_id:  body.product_id,
       size:        body.size,
