@@ -42,7 +42,7 @@ export function StorefrontShell({ children }: { children: React.ReactNode }) {
         <div className="site-header__inner">
           <a className="site-header__logo" href="/" aria-label="Ethnic Story — Home">
             <img
-              src="/logo.jpg"
+              src="/logo.svg"
               alt="Ethnic Story — Clothing &amp; Jewellery"
               width={160}
               height={54}
@@ -86,7 +86,7 @@ export function StorefrontShell({ children }: { children: React.ReactNode }) {
             <div>
               <div className="site-footer__brand">
                 <img
-                  src="/logo.jpg"
+                  src="/logo.svg"
                   alt="Ethnic Story"
                   width={140}
                   height={47}
@@ -95,7 +95,7 @@ export function StorefrontShell({ children }: { children: React.ReactNode }) {
                     height: '2.2rem',
                     width: 'auto',
                     objectFit: 'contain',
-                    /* logo has white bg — add subtle drop shadow so it reads on dark footer */
+                    /* SVG logos render crisply — drop-shadow still works */
                     filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.18))',
                     borderRadius: '4px',
                     marginBottom: '0.5rem',
