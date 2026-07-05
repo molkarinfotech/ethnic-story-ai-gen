@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef, use } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 type ProductImage = { id: string; colour: string; url: string; sort_order: number };
 type Variant      = { id: string; size: string; colour: string; stock_count: number };
@@ -25,16 +25,34 @@ function uniqueSorted(arr: string[]): string[] {
 }
 
 /* ─────────────────────────────────────────────────────────── */
-export default function InventoryPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id: productId } = use(params);
+export default function InventoryPage({ params }: { params: Promise<{ id: string }> | { id: string } }) {
+  // Support both Next.js 14 (params is plain object) and 15 (params is a Promise)
+  const [productId, setProductId] = useState<string | null>(null);
 
+  useEffect(() => {
+    // If params is a Promise (Next.js 15), resolve it; otherwise use directly
+    if (params && typeof (params as Promise<{id:string}>).then === 'function') {
+      (params as Promise<{ id: string }>).then(p => setProductId(p.id));
+    } else {
+      setProductId((params as { id: string }).id);
+    }
+  }, [params]);
+
+  if (!productId) {
+    return <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280', fontSize: '.875rem' }}>Loading…</div>;
+  }
+
+  return <InventoryInner productId={productId} />;
+}
+
+/* ─────────────────────────────────────────────────────────── */
+function InventoryInner({ productId }: { productId: string }) {
   const [product,        setProduct]        = useState<Product | null>(null);
   const [images,         setImages]         = useState<ProductImage[]>([]);
   const [loading,        setLoading]        = useState(true);
+  const [loadError,      setLoadError]      = useState<string | null>(null);
   const [saving,         setSaving]         = useState<Record<string,boolean>>({});
   const [drafts,         setDrafts]         = useState<Record<string,number>>({});
-  // Colours that exist only in local state — no DB row yet.
-  // They become "real" as soon as the user adds a size or uploads an image.
   const [pendingColours, setPendingColours] = useState<string[]>([]);
 
   const [showAddColour, setShowAddColour] = useState(false);
@@ -42,27 +60,34 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    const [prodRes, imgRes] = await Promise.all([
-      fetch(`/api/admin/products/${productId}`, { credentials: 'include' }).then(r => r.json()),
-      fetch(`/api/product-images/${productId}`, { credentials: 'include' }).then(r => r.json()),
-    ]);
-    if (!prodRes.error) {
+    setLoadError(null);
+    try {
+      const [prodRes, imgRes] = await Promise.all([
+        fetch(`/api/admin/products/${productId}`, { credentials: 'include' }).then(r => r.json()),
+        fetch(`/api/product-images/${productId}`).then(r => r.json()),
+      ]);
+      if (prodRes.error) {
+        setLoadError(prodRes.error);
+        setLoading(false);
+        return;
+      }
       setProduct(prodRes);
-      // Promote any pending colours that now exist in real data
       const realColours = new Set([
         ...(prodRes.variants ?? []).map((v: Variant) => v.colour).filter(Boolean),
         ...(Array.isArray(imgRes) ? imgRes : []).map((i: ProductImage) => i.colour).filter(Boolean),
       ]);
       setPendingColours(prev => prev.filter(c => !realColours.has(c)));
+      setImages(Array.isArray(imgRes) ? imgRes : []);
+    } catch (e: unknown) {
+      setLoadError(e instanceof Error ? e.message : 'Failed to load product');
+    } finally {
+      setLoading(false);
     }
-    setImages(Array.isArray(imgRes) ? imgRes : []);
-    setLoading(false);
   }, [productId]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
   /* ── Derived data ── */
-  // Union of DB-backed colours + pending (local-only) colours
   const dbColours = product
     ? uniqueSorted([
         ...product.variants.map(v => v.colour).filter(Boolean) as string[],
@@ -138,23 +163,27 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
         if (d.image) results.push(d.image);
       }
     }
-    // Once an image is uploaded the colour is real — remove from pending
     setPendingColours(prev => prev.filter(c => c !== colour));
     return results;
   }
 
-  /* ── Add new colour group (local-only — no DB write) ── */
+  /* ── Add colour group ── */
   function addColourGroup() {
     const name = newColourName.trim();
     if (!name) return;
-    // Normalise to Title Case to match what the API will store
     const normalised = name
       .split(/\s+/)
       .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
       .join(' ');
-    if (!colours.includes(normalised)) {
-      setPendingColours(prev => [...prev, normalised]);
-    }
+    setPendingColours(prev => {
+      const currentColours = uniqueSorted([
+        ...(product?.variants.map(v => v.colour).filter(Boolean) as string[] ?? []),
+        ...images.map(i => i.colour).filter(Boolean) as string[],
+        ...prev,
+      ]);
+      if (currentColours.includes(normalised)) return prev;
+      return [...prev, normalised];
+    });
     setNewColourName('');
     setShowAddColour(false);
   }
@@ -164,11 +193,15 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
     return <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280', fontSize: '.875rem' }}>Loading…</div>;
   }
 
-  if (!product) {
+  if (loadError || !product) {
     return (
       <div style={{ padding: '2rem' }}>
         <a href="/admin/products" style={{ color: '#9d174d', textDecoration: 'none', fontSize: '.875rem' }}>← Back to Products</a>
-        <p style={{ marginTop: '1rem', color: '#ef4444' }}>Product not found.</p>
+        <p style={{ marginTop: '1rem', color: '#ef4444' }}>{loadError ?? 'Product not found.'}</p>
+        <button
+          onClick={loadAll}
+          style={{ marginTop: '.75rem', padding: '.5rem 1rem', background: '#9d174d', color: 'white', border: 'none', borderRadius: '.5rem', cursor: 'pointer', fontSize: '.875rem', fontWeight: 600 }}
+        >Retry</button>
       </div>
     );
   }
@@ -182,7 +215,7 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
         <span style={{ color: '#d1d5db' }}>›</span>
         <span style={{ color: '#6b7280' }}>{product.name}</span>
         <span style={{ color: '#d1d5db' }}>›</span>
-        <span style={{ color: '#111827', fontWeight: 600 }}>Images & Inventory</span>
+        <span style={{ color: '#111827', fontWeight: 600 }}>Images &amp; Inventory</span>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
@@ -220,7 +253,7 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
             value={newColourName}
             onChange={e => setNewColourName(e.target.value)}
             placeholder="e.g. Royal Blue, Maroon, Off-white"
-            onKeyDown={e => e.key === 'Enter' && addColourGroup()}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addColourGroup(); } }}
             style={{ flex: 1, minWidth: '160px', padding: '.4rem .6rem', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.82rem', outline: 'none' }}
             autoFocus
           />
@@ -233,7 +266,7 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
         </div>
       )}
 
-      {/* ── Helper tip shown only when there are pending (unsaved) colours ── */}
+      {/* ── Helper tip for pending colours ── */}
       {pendingColours.length > 0 && (
         <div style={{ fontSize: '.75rem', color: '#7c3aed', background: '#f5f3ff', border: '1px solid #ede9fe', borderRadius: '.5rem', padding: '.5rem .85rem', marginBottom: '.85rem' }}>
           💡 <strong>{pendingColours.join(', ')}</strong> — colour added locally.
@@ -247,6 +280,10 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
           <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>🎨</div>
           <p style={{ fontWeight: 600, color: '#6b7280', marginBottom: '.25rem' }}>No colours yet</p>
           <p style={{ fontSize: '.8rem' }}>Click &quot;+ Add colour&quot; above to start building your product&apos;s colour variants.</p>
+          <button
+            onClick={() => setShowAddColour(true)}
+            style={{ marginTop: '1rem', padding: '.5rem 1.25rem', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '.5rem', fontSize: '.85rem', fontWeight: 700, cursor: 'pointer' }}
+          >+ Add first colour</button>
         </div>
       )}
 
@@ -311,6 +348,11 @@ function ColourSection({
   const [addingSize,   setAddingSize]   = useState(false);
   const [showSizeForm, setShowSizeForm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-open size form for new (pending) colours so the user sees what to do
+  useEffect(() => {
+    if (isPending) setShowSizeForm(true);
+  }, [isPending]);
 
   async function handleFiles(files: FileList | File[]) {
     const arr = Array.from(files).filter(f => f.type.startsWith('image/'));
@@ -387,7 +429,6 @@ function ColourSection({
             </div>
           )}
 
-          {/* Upload drop zone */}
           <div
             onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
             onDragLeave={() => setIsDragOver(false)}
@@ -426,7 +467,7 @@ function ColourSection({
 
         {/* ── RIGHT: Stock by size ── */}
         <div>
-          <div style={{ fontSize: '.72rem', fontWeight: 700, color: '#6b7280', marginBottom: '.6rem', textTransform: 'uppercase', letterSpacing: '.04em' }}>Sizes & Stock</div>
+          <div style={{ fontSize: '.72rem', fontWeight: 700, color: '#6b7280', marginBottom: '.6rem', textTransform: 'uppercase', letterSpacing: '.04em' }}>Sizes &amp; Stock</div>
 
           {variants.length === 0 ? (
             <p style={{ fontSize: '.78rem', color: '#9ca3af', marginBottom: '.6rem' }}>No sizes yet — add one below.</p>
@@ -451,6 +492,7 @@ function ColourSection({
                 onChange={e => setNewSize(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && newSize.trim()) {
+                    e.preventDefault();
                     setAddingSize(true);
                     onAddVariant(newSize.trim(), newQty).then(() => { setNewSize(''); setNewQty(0); setAddingSize(false); });
                   }

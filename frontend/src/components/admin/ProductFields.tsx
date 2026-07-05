@@ -1,21 +1,74 @@
 'use client';
+import { useState } from 'react';
 
-// Gender is not applicable for accessories — the dropdown hides it in that case.
 const GENDERS = ['women', 'men', 'kids', 'unisex'];
 const BADGES  = ['', 'Bestseller', 'New', 'Sale', 'Premium', 'Test'];
 
 export type CategoryOption = { slug: string; label: string };
 
+function slugify(str: string) {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
+
 export function ProductFields({
   form,
   set,
   categories,
+  onCategoryCreated,
 }: {
   form: Record<string, string>;
   set: (field: string, value: string) => void;
   categories: CategoryOption[];
+  onCategoryCreated?: (cat: CategoryOption) => void;
 }) {
   const isAccessories = form.category === 'accessories';
+
+  const [showNewCat,    setShowNewCat]    = useState(false);
+  const [newCatLabel,   setNewCatLabel]   = useState('');
+  const [newCatSlug,    setNewCatSlug]    = useState('');
+  const [slugTouched,   setSlugTouched]   = useState(false);
+  const [creatingCat,   setCreatingCat]   = useState(false);
+  const [catError,      setCatError]      = useState('');
+
+  function handleCatLabelChange(val: string) {
+    setNewCatLabel(val);
+    if (!slugTouched) setNewCatSlug(slugify(val));
+  }
+
+  async function handleCreateCategory() {
+    if (!newCatLabel.trim() || !newCatSlug.trim()) {
+      setCatError('Both name and slug are required.');
+      return;
+    }
+    setCreatingCat(true);
+    setCatError('');
+    try {
+      const res = await fetch('/api/admin/categories', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: newCatSlug.trim(), label: newCatLabel.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to create category');
+      const newCat: CategoryOption = { slug: data.slug, label: data.label };
+      onCategoryCreated?.(newCat);
+      // Reset form
+      setShowNewCat(false);
+      setNewCatLabel('');
+      setNewCatSlug('');
+      setSlugTouched(false);
+    } catch (e: unknown) {
+      setCatError(e instanceof Error ? e.message : 'Failed to create category');
+    } finally {
+      setCreatingCat(false);
+    }
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -61,16 +114,97 @@ export function ProductFields({
           <label className="checkout-label">Category *</label>
           <select
             className="checkout-input"
-            value={form.category}
-            onChange={e => set('category', e.target.value)}
-            required
+            value={showNewCat ? '__new__' : (form.category || '')}
+            onChange={e => {
+              if (e.target.value === '__new__') {
+                setShowNewCat(true);
+              } else {
+                setShowNewCat(false);
+                set('category', e.target.value);
+              }
+            }}
+            required={!showNewCat}
           >
             {categories.map(c => (
               <option key={c.slug} value={c.slug}>{c.label}</option>
             ))}
+            <option value="__new__">＋ New category…</option>
           </select>
         </div>
       </div>
+
+      {/* ── Inline new-category form ── */}
+      {showNewCat && (
+        <div style={{
+          background: '#f5f3ff',
+          border: '1px solid #ede9fe',
+          borderRadius: '.65rem',
+          padding: '1rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '.6rem',
+        }}>
+          <div style={{ fontWeight: 700, fontSize: '.82rem', color: '#7c3aed' }}>✨ New category</div>
+
+          <div className="checkout-field" style={{ margin: 0 }}>
+            <label className="checkout-label" style={{ fontSize: '.75rem' }}>Display name *</label>
+            <input
+              className="checkout-input"
+              placeholder="e.g. Kurtis"
+              value={newCatLabel}
+              onChange={e => handleCatLabelChange(e.target.value)}
+              autoFocus
+            />
+          </div>
+
+          <div className="checkout-field" style={{ margin: 0 }}>
+            <label className="checkout-label" style={{ fontSize: '.75rem' }}>URL slug * <span style={{ fontWeight: 400, color: '#9ca3af', textTransform: 'none' }}>(auto-filled)</span></label>
+            <input
+              className="checkout-input"
+              placeholder="e.g. kurtis"
+              value={newCatSlug}
+              onChange={e => { setNewCatSlug(e.target.value); setSlugTouched(true); }}
+            />
+          </div>
+
+          {catError && (
+            <p style={{ color: '#dc2626', fontSize: '.78rem', margin: 0 }}>{catError}</p>
+          )}
+
+          <div style={{ display: 'flex', gap: '.5rem' }}>
+            <button
+              type="button"
+              onClick={handleCreateCategory}
+              disabled={creatingCat || !newCatLabel.trim() || !newCatSlug.trim()}
+              style={{
+                flex: 1, padding: '.55rem', background: '#7c3aed', color: 'white',
+                border: 'none', borderRadius: '.45rem', fontSize: '.82rem',
+                fontWeight: 700, cursor: 'pointer',
+                opacity: creatingCat || !newCatLabel.trim() || !newCatSlug.trim() ? .5 : 1,
+              }}
+            >
+              {creatingCat ? 'Creating…' : 'Create & select'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowNewCat(false);
+                setNewCatLabel('');
+                setNewCatSlug('');
+                setSlugTouched(false);
+                setCatError('');
+                // Restore to first existing category
+                if (categories.length > 0) set('category', categories[0].slug);
+              }}
+              style={{
+                padding: '.55rem .75rem', background: 'white', color: '#6b7280',
+                border: '1px solid #e5e7eb', borderRadius: '.45rem',
+                fontSize: '.82rem', cursor: 'pointer',
+              }}
+            >Cancel</button>
+          </div>
+        </div>
+      )}
 
       {isAccessories && (
         <div className="checkout-field">
@@ -102,7 +236,7 @@ export function ProductFields({
       </div>
 
       <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', margin: 0, padding: '.5rem .75rem', background: 'var(--color-surface-offset)', borderRadius: '.5rem' }}>
-        🖼️ To manage product images, go to the <strong>Images</strong> tab in the Admin Dashboard.
+        🖼️ Images and stock are managed on the next screen.
       </p>
     </div>
   );

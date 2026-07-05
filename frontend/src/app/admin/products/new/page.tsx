@@ -17,9 +17,11 @@ export default function NewProductPage() {
     fetch('/api/admin/categories', { credentials: 'include' })
       .then(r => r.json())
       .then((cats: CategoryOption[]) => {
+        if (!Array.isArray(cats)) return;
         setCategories(cats);
         if (cats.length > 0) setForm(f => ({ ...f, category: f.category || cats[0].slug }));
-      });
+      })
+      .catch(() => {/* silent — user can still type */});
   }, []);
 
   function set(field: string, value: string) {
@@ -45,19 +47,28 @@ export default function NewProductPage() {
       image: form.image || null,
       gender: form.gender || 'women',
     };
-    const res = await fetch('/api/admin/products', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch('/api/admin/products', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
       const created = await res.json();
-      // Go straight to inventory so the user can add colours, images & stock
-      router.push(`/admin/products/${created.id}/inventory`);
-    } else {
-      const d = await res.json();
-      setError(d.error ?? 'Failed to save product.');
+      if (!res.ok) {
+        setError(created.error ?? 'Failed to save product.');
+        setSaving(false);
+        return;
+      }
+      // Guard: if id is missing fall back to products list
+      const id = created?.id;
+      if (!id) {
+        router.push('/admin/products');
+        return;
+      }
+      router.push(`/admin/products/${id}/inventory`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to save product.');
       setSaving(false);
     }
   }
@@ -71,7 +82,15 @@ export default function NewProductPage() {
         <div style={{ background: 'white', borderRadius: '.75rem', padding: '2rem', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
           <h1 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>Add new product</h1>
           <form onSubmit={handleSubmit}>
-            <ProductFields form={form} set={set} categories={categories} />
+            <ProductFields
+              form={form}
+              set={set}
+              categories={categories}
+              onCategoryCreated={(cat) => {
+                setCategories(prev => [...prev, cat]);
+                set('category', cat.slug);
+              }}
+            />
             {error && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '1rem' }}>{error}</p>}
             <div style={{ display: 'flex', gap: '.75rem', marginTop: '1.5rem' }}>
               <button type="submit" disabled={saving} className="btn btn-primary"
