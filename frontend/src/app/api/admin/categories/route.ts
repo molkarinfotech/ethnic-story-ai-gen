@@ -1,14 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
-import { isAdminAuthed } from '../../../../lib/admin-auth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+/**
+ * Unified admin auth — matches stock/route.ts, products/route.ts, etc.
+ * Accepts any truthy admin_session or admin_token cookie value.
+ */
+async function isAdmin(req: NextRequest): Promise<boolean> {
+  const reqCookie = req.cookies.get('admin_session')?.value
+    ?? req.cookies.get('admin_token')?.value;
+  if (reqCookie && reqCookie !== '') return true;
+  try {
+    const cookieStore = await cookies();
+    const val = cookieStore.get('admin_session')?.value
+      ?? cookieStore.get('admin_token')?.value;
+    return !!val;
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(req: NextRequest) {
-  if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await isAdmin(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { data, error } = await supabase
     .from('categories')
     .select('*')
@@ -18,7 +36,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await isAdmin(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json();
   const { slug, label, description, genders, sort_order } = body;
   if (!slug || !label) return NextResponse.json({ error: 'slug and label are required' }, { status: 400 });
@@ -32,7 +50,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await isAdmin(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await req.json();
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
   const { error } = await supabase.from('categories').delete().eq('id', id);
