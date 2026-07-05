@@ -26,16 +26,17 @@ function uniqueSorted(arr: string[]): string[] {
 
 /* ─────────────────────────────────────────────────────────── */
 export default function InventoryPage({ params }: { params: Promise<{ id: string }> }) {
-  // Next.js 15: params is a Promise — must be unwrapped
   const { id: productId } = use(params);
 
-  const [product, setProduct] = useState<Product | null>(null);
-  const [images,  setImages]  = useState<ProductImage[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving,  setSaving]  = useState<Record<string,boolean>>({});
-  const [drafts,  setDrafts]  = useState<Record<string,number>>({});
+  const [product,        setProduct]        = useState<Product | null>(null);
+  const [images,         setImages]         = useState<ProductImage[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [saving,         setSaving]         = useState<Record<string,boolean>>({});
+  const [drafts,         setDrafts]         = useState<Record<string,number>>({});
+  // Colours that exist only in local state — no DB row yet.
+  // They become "real" as soon as the user adds a size or uploads an image.
+  const [pendingColours, setPendingColours] = useState<string[]>([]);
 
-  // New colour form (to create a brand-new colour group)
   const [showAddColour, setShowAddColour] = useState(false);
   const [newColourName, setNewColourName] = useState('');
 
@@ -45,7 +46,15 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
       fetch(`/api/admin/products/${productId}`, { credentials: 'include' }).then(r => r.json()),
       fetch(`/api/product-images/${productId}`, { credentials: 'include' }).then(r => r.json()),
     ]);
-    if (!prodRes.error) setProduct(prodRes);
+    if (!prodRes.error) {
+      setProduct(prodRes);
+      // Promote any pending colours that now exist in real data
+      const realColours = new Set([
+        ...(prodRes.variants ?? []).map((v: Variant) => v.colour).filter(Boolean),
+        ...(Array.isArray(imgRes) ? imgRes : []).map((i: ProductImage) => i.colour).filter(Boolean),
+      ]);
+      setPendingColours(prev => prev.filter(c => !realColours.has(c)));
+    }
     setImages(Array.isArray(imgRes) ? imgRes : []);
     setLoading(false);
   }, [productId]);
@@ -53,12 +62,14 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
   useEffect(() => { loadAll(); }, [loadAll]);
 
   /* ── Derived data ── */
-  const colours = product
+  // Union of DB-backed colours + pending (local-only) colours
+  const dbColours = product
     ? uniqueSorted([
         ...product.variants.map(v => v.colour).filter(Boolean) as string[],
         ...images.map(i => i.colour).filter(Boolean) as string[],
       ])
     : [];
+  const colours = uniqueSorted([...dbColours, ...pendingColours]);
 
   function imagesByColour(c: string) {
     return images.filter(i => i.colour === c).sort((a,b) => a.sort_order - b.sort_order);
@@ -112,7 +123,6 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
     setImages(imgs => imgs.filter(i => i.id !== imageId));
   }
 
-  // Multi-file upload via existing scan-upload API (reuses Supabase Storage bucket)
   async function uploadFiles(colour: string, files: File[]): Promise<ProductImage[]> {
     const results: ProductImage[] = [];
     const baseOrder = imagesByColour(colour).length;
@@ -128,24 +138,25 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
         if (d.image) results.push(d.image);
       }
     }
+    // Once an image is uploaded the colour is real — remove from pending
+    setPendingColours(prev => prev.filter(c => c !== colour));
     return results;
   }
 
-  /* ── Add new colour group ── */
-  async function addColourGroup() {
+  /* ── Add new colour group (local-only — no DB write) ── */
+  function addColourGroup() {
     const name = newColourName.trim();
     if (!name) return;
-    // Create a placeholder variant so the colour appears immediately
-    // (user then adds proper sizes)
-    await fetch('/api/admin/stock', {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product_id: productId, size: 'TBA', colour: name, stock_count: 0 }),
-    });
+    // Normalise to Title Case to match what the API will store
+    const normalised = name
+      .split(/\s+/)
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ');
+    if (!colours.includes(normalised)) {
+      setPendingColours(prev => [...prev, normalised]);
+    }
     setNewColourName('');
     setShowAddColour(false);
-    await loadAll();
   }
 
   /* ─── Render ─── */
@@ -211,13 +222,22 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
             placeholder="e.g. Royal Blue, Maroon, Off-white"
             onKeyDown={e => e.key === 'Enter' && addColourGroup()}
             style={{ flex: 1, minWidth: '160px', padding: '.4rem .6rem', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.82rem', outline: 'none' }}
+            autoFocus
           />
           <button onClick={addColourGroup} disabled={!newColourName.trim()}
             style={{ padding: '.4rem .85rem', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '.4rem', fontSize: '.82rem', fontWeight: 600, cursor: 'pointer', opacity: newColourName.trim() ? 1 : .5 }}
-          >Create</button>
-          <button onClick={() => setShowAddColour(false)}
+          >Add</button>
+          <button onClick={() => { setShowAddColour(false); setNewColourName(''); }}
             style={{ padding: '.4rem .65rem', background: '#f9fafb', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.82rem', cursor: 'pointer' }}
           >Cancel</button>
+        </div>
+      )}
+
+      {/* ── Helper tip shown only when there are pending (unsaved) colours ── */}
+      {pendingColours.length > 0 && (
+        <div style={{ fontSize: '.75rem', color: '#7c3aed', background: '#f5f3ff', border: '1px solid #ede9fe', borderRadius: '.5rem', padding: '.5rem .85rem', marginBottom: '.85rem' }}>
+          💡 <strong>{pendingColours.join(', ')}</strong> — colour added locally.
+          Upload an image or add a size below to save it permanently.
         </div>
       )}
 
@@ -226,7 +246,7 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
         <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#9ca3af', background: 'white', borderRadius: '.7rem', border: '1px dashed #fce7f3' }}>
           <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>🎨</div>
           <p style={{ fontWeight: 600, color: '#6b7280', marginBottom: '.25rem' }}>No colours yet</p>
-          <p style={{ fontSize: '.8rem' }}>Click "+ Add colour" above to start building your product&apos;s colour variants.</p>
+          <p style={{ fontSize: '.8rem' }}>Click &quot;+ Add colour&quot; above to start building your product&apos;s colour variants.</p>
         </div>
       )}
 
@@ -239,6 +259,7 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
           variants={variantsByColour(colour)}
           drafts={drafts}
           saving={saving}
+          isPending={pendingColours.includes(colour)}
           setDrafts={setDrafts}
           onSaveStock={(vid, size, qty) => saveStock(vid, productId, size, colour, qty)}
           onDeleteVariant={deleteVariant}
@@ -265,7 +286,7 @@ export default function InventoryPage({ params }: { params: Promise<{ id: string
 
 /* ─────────────────────────────────────────────────────────── */
 function ColourSection({
-  colour, productId, images, variants, drafts, saving, setDrafts,
+  colour, productId, images, variants, drafts, saving, setDrafts, isPending,
   onSaveStock, onDeleteVariant, onDeleteImage, onAddVariant, onUploadFiles,
 }: {
   colour: string;
@@ -274,6 +295,7 @@ function ColourSection({
   variants: Variant[];
   drafts: Record<string, number>;
   saving: Record<string, boolean>;
+  isPending: boolean;
   setDrafts: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   onSaveStock: (vid: string, size: string, qty: number) => Promise<void>;
   onDeleteVariant: (vid: string) => Promise<void>;
@@ -281,12 +303,12 @@ function ColourSection({
   onAddVariant: (size: string, qty: number) => Promise<void>;
   onUploadFiles: (files: File[]) => Promise<void>;
 }) {
-  const [uploading,   setUploading]   = useState(false);
-  const [uploadError, setUploadError] = useState('');
-  const [isDragOver,  setIsDragOver]  = useState(false);
-  const [newSize,     setNewSize]     = useState('');
-  const [newQty,      setNewQty]      = useState(0);
-  const [addingSize,  setAddingSize]  = useState(false);
+  const [uploading,    setUploading]    = useState(false);
+  const [uploadError,  setUploadError]  = useState('');
+  const [isDragOver,   setIsDragOver]   = useState(false);
+  const [newSize,      setNewSize]      = useState('');
+  const [newQty,       setNewQty]       = useState(0);
+  const [addingSize,   setAddingSize]   = useState(false);
   const [showSizeForm, setShowSizeForm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -313,13 +335,23 @@ function ColourSection({
   return (
     <section style={{
       background: 'white', borderRadius: '.75rem',
-      border: '1px solid #fce7f3', overflow: 'hidden', marginBottom: '1.1rem',
+      border: `1px solid ${isPending ? '#ede9fe' : '#fce7f3'}`,
+      overflow: 'hidden', marginBottom: '1.1rem',
       boxShadow: '0 1px 4px rgba(0,0,0,.04)',
     }}>
       {/* Section header */}
-      <div style={{ background: 'linear-gradient(to right, #fdf2f8, #fdf8ff)', padding: '.65rem 1rem', borderBottom: '1px solid #fce7f3', display: 'flex', alignItems: 'center', gap: '.5rem' }}>
+      <div style={{
+        background: isPending
+          ? 'linear-gradient(to right, #f5f3ff, #fdf8ff)'
+          : 'linear-gradient(to right, #fdf2f8, #fdf8ff)',
+        padding: '.65rem 1rem', borderBottom: `1px solid ${isPending ? '#ede9fe' : '#fce7f3'}`,
+        display: 'flex', alignItems: 'center', gap: '.5rem',
+      }}>
         <span style={{ fontSize: '1.05rem' }}>🎨</span>
-        <span style={{ fontWeight: 700, fontSize: '.92rem', color: '#9d174d', textTransform: 'capitalize', flex: 1 }}>{colour}</span>
+        <span style={{ fontWeight: 700, fontSize: '.92rem', color: isPending ? '#7c3aed' : '#9d174d', textTransform: 'capitalize', flex: 1 }}>
+          {colour}
+          {isPending && <span style={{ marginLeft: '.5rem', fontSize: '.65rem', fontWeight: 600, background: '#ede9fe', color: '#7c3aed', borderRadius: '2rem', padding: '.1rem .45rem', verticalAlign: 'middle' }}>unsaved</span>}
+        </span>
         <span style={{ fontSize: '.7rem', color: '#9ca3af' }}>
           {images.length} image{images.length !== 1 ? 's' : ''}
           {variants.length > 0 && ` · ${variants.length} size${variants.length !== 1 ? 's' : ''} · ${totalVariantStock} units`}
@@ -332,7 +364,6 @@ function ColourSection({
         <div>
           <div style={{ fontSize: '.72rem', fontWeight: 700, color: '#6b7280', marginBottom: '.6rem', textTransform: 'uppercase', letterSpacing: '.04em' }}>Photos</div>
 
-          {/* Existing images */}
           {images.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.45rem', marginBottom: '.75rem' }}>
               {images.map((img, idx) => (
@@ -343,7 +374,6 @@ function ColourSection({
                     width={72} height={72}
                     style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: '.45rem', border: '1px solid #fce7f3' }}
                   />
-                  {/* Primary badge */}
                   {idx === 0 && (
                     <span style={{ position: 'absolute', bottom: 2, left: 2, fontSize: '.52rem', background: '#9d174d', color: 'white', borderRadius: '.25rem', padding: '.05rem .25rem', fontWeight: 700, lineHeight: 1.4 }}>MAIN</span>
                   )}
@@ -408,7 +438,6 @@ function ColourSection({
             />
           )}
 
-          {/* Add size toggle */}
           {!showSizeForm ? (
             <button
               onClick={() => setShowSizeForm(true)}
@@ -420,7 +449,12 @@ function ColourSection({
                 placeholder="Size (S, M, 38…)"
                 value={newSize}
                 onChange={e => setNewSize(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && newSize.trim()) { setAddingSize(true); onAddVariant(newSize.trim(), newQty).then(() => { setNewSize(''); setNewQty(0); setAddingSize(false); }); } }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && newSize.trim()) {
+                    setAddingSize(true);
+                    onAddVariant(newSize.trim(), newQty).then(() => { setNewSize(''); setNewQty(0); setAddingSize(false); });
+                  }
+                }}
                 style={{ flex: '1 1 70px', minWidth: '65px', padding: '.3rem .45rem', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.78rem', outline: 'none' }}
                 autoFocus
               />
