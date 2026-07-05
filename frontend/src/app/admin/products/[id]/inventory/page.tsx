@@ -9,19 +9,24 @@ type Product      = {
   variants: Variant[];
 };
 
-// Placeholder size used to anchor a colour in the DB before any real size is added.
-// These rows are kept for colour derivation but hidden from the sizes grid.
-const COLOUR_ANCHOR_SIZE = '__colour__';
+// Internal anchor sizes — used to persist a colour group in the DB before
+// any real size is added. Never shown in the UI size grid.
+const ANCHOR_SIZES = new Set(['__colour__', 'TBA']);
 
 const SIZE_ORDER = ['XS','S','M','L','XL','XXL','Free Size'];
-function sortVariants(vs: Variant[]) {
-  const real    = vs.filter(v => v.size !== COLOUR_ANCHOR_SIZE);
-  const letter  = real.filter(v => SIZE_ORDER.includes(v.size)).sort((a,b) => SIZE_ORDER.indexOf(a.size)-SIZE_ORDER.indexOf(b.size));
-  const numeric = real.filter(v => /^\d/.test(v.size)).sort((a,b) => parseFloat(a.size)-parseFloat(b.size));
+
+// Returns only real (non-anchor) variants, sorted by size order
+function sortVariants(vs: Variant[]): Variant[] {
+  const real    = vs.filter(v => !ANCHOR_SIZES.has(v.size));
+  const letter  = real.filter(v => SIZE_ORDER.includes(v.size))
+    .sort((a,b) => SIZE_ORDER.indexOf(a.size) - SIZE_ORDER.indexOf(b.size));
+  const numeric = real.filter(v => /^\d/.test(v.size))
+    .sort((a,b) => parseFloat(a.size) - parseFloat(b.size));
   const other   = real.filter(v => !SIZE_ORDER.includes(v.size) && !/^\d/.test(v.size));
   return [...letter, ...numeric, ...other];
 }
 
+// Unique sorted list, filtering out blanks
 function uniqueSorted(arr: (string | undefined | null)[]): string[] {
   const seen: Record<string,true> = {};
   const out: string[] = [];
@@ -93,44 +98,52 @@ function InventoryInner({ productId }: { productId: string }) {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // Colours derived from ALL variants (including anchor rows) + images
+  // Colours derived from ALL variants (anchor rows included) + images.
+  // This is intentional: anchor rows exist specifically to persist a colour
+  // before any real size or image is added.
   const variantColours = product
     ? uniqueSorted(product.variants.map(v => v.colour))
     : [];
-  const imageColours = uniqueSorted(images.map(i => i.colour));
-  const colours = uniqueSorted([...variantColours, ...imageColours]);
+  const imageColours   = uniqueSorted(images.map(i => i.colour));
+  const colours        = uniqueSorted([...variantColours, ...imageColours]);
 
   function imagesByColour(c: string) {
     return images
       .filter(i => i.colour === c)
       .sort((a, b) => a.sort_order - b.sort_order);
   }
-  // Real variants only — anchor rows filtered out by sortVariants
+
+  // sortVariants strips anchor rows — only real sizes shown in the grid
   function variantsByColour(c: string) {
     return sortVariants(product?.variants.filter(v => v.colour === c) ?? []);
   }
+
   const noColourVariants = sortVariants(
     product?.variants.filter(v => !v.colour) ?? []
   );
+
+  // Total stock counts real variants only
   const totalStock = product?.variants
-    .filter(v => v.size !== COLOUR_ANCHOR_SIZE)
+    .filter(v => !ANCHOR_SIZES.has(v.size))
     .reduce((s, v) => s + v.stock_count, 0) ?? 0;
 
   async function saveStock(variantId: string, pid: string, size: string, colour: string, qty: number) {
     setSaving(s => ({ ...s, [variantId]: true }));
-    await fetch('/api/admin/stock', {
+    const res = await fetch('/api/admin/stock', {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ variant_id: variantId, product_id: pid, size, colour, stock_count: qty }),
     });
-    setProduct(p =>
-      !p ? p : { ...p, variants: p.variants.map(v =>
-        v.id === variantId ? { ...v, stock_count: qty } : v
-      )}
-    );
+    if (res.ok) {
+      setProduct(p =>
+        !p ? p : { ...p, variants: p.variants.map(v =>
+          v.id === variantId ? { ...v, stock_count: qty } : v
+        )}
+      );
+      setDrafts(d => { const n = { ...d }; delete n[variantId]; return n; });
+    }
     setSaving(s => { const n = { ...s }; delete n[variantId]; return n; });
-    setDrafts(d => { const n = { ...d }; delete n[variantId]; return n; });
   }
 
   async function deleteVariant(variantId: string) {
@@ -146,16 +159,22 @@ function InventoryInner({ productId }: { productId: string }) {
 
   async function addVariant(colour: string, size: string, qty = 0) {
     if (!size.trim()) return;
-    await fetch('/api/admin/stock', {
+    const res = await fetch('/api/admin/stock', {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ product_id: productId, size: size.trim(), colour, stock_count: qty }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(`Failed to add size: ${d.error ?? res.status}`);
+      return;
+    }
     await loadAll();
   }
 
-  // Persist colour anchor to DB immediately so colour survives page reloads
+  // Persist colour anchor to DB immediately so the colour section survives
+  // page reloads before any real size or image is added.
   async function addColourGroup() {
     const name = newColourName.trim();
     if (!name) return;
@@ -176,20 +195,30 @@ function InventoryInner({ productId }: { productId: string }) {
     }
 
     setAddingColour(true);
-    await fetch('/api/admin/stock', {
+    const res = await fetch('/api/admin/stock', {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         product_id:  productId,
-        size:        COLOUR_ANCHOR_SIZE,
+        size:        '__colour__',
         colour:      normalised,
         stock_count: 0,
       }),
     });
+
+    setAddingColour(false);
+
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(`Failed to add colour: ${d.error ?? res.status}`);
+      setNewColourName('');
+      setShowAddColour(false);
+      return;
+    }
+
     setNewColourName('');
     setShowAddColour(false);
-    setAddingColour(false);
     // Reload from DB so colour section appears with correct state
     await loadAll();
   }
@@ -344,7 +373,7 @@ function InventoryInner({ productId }: { productId: string }) {
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty state — only shown when truly no colours at all */}
       {colours.length === 0 && (
         <div style={{
           textAlign: 'center', padding: '3rem 1rem', color: '#9ca3af',
@@ -503,11 +532,20 @@ function ColourSection({
                     style={{ width: 76, height: 76, objectFit: 'cover', borderRadius: '.45rem', border: '1px solid #fce7f3' }}
                   />
                   {idx === 0 && (
-                    <span style={{ position: 'absolute', bottom: 3, left: 3, fontSize: '.52rem', background: '#9d174d', color: 'white', borderRadius: '.25rem', padding: '.05rem .3rem', fontWeight: 700, lineHeight: 1.4 }}>MAIN</span>
+                    <span style={{
+                      position: 'absolute', bottom: 3, left: 3, fontSize: '.52rem',
+                      background: '#9d174d', color: 'white', borderRadius: '.25rem',
+                      padding: '.05rem .3rem', fontWeight: 700, lineHeight: 1.4,
+                    }}>MAIN</span>
                   )}
                   <button
                     onClick={() => onDeleteImage(img.id)}
-                    style={{ position: 'absolute', top: 3, right: 3, width: 20, height: 20, background: 'rgba(0,0,0,.55)', color: 'white', border: 'none', borderRadius: '50%', fontSize: '.6rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    style={{
+                      position: 'absolute', top: 3, right: 3, width: 20, height: 20,
+                      background: 'rgba(0,0,0,.55)', color: 'white', border: 'none',
+                      borderRadius: '50%', fontSize: '.6rem', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
                     title="Remove image"
                   >✕</button>
                 </div>
@@ -515,7 +553,7 @@ function ColourSection({
             </div>
           )}
 
-          {/* Upload drop zone */}
+          {/* Upload drop zone — always visible */}
           <div
             onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
             onDragLeave={() => setIsDragOver(false)}
@@ -541,8 +579,10 @@ function ColourSection({
               </>
             )}
           </div>
-          <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
-            onChange={e => { if (e.target.files?.length) handleFiles(e.target.files); }} />
+          <input
+            ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
+            onChange={e => { if (e.target.files?.length) handleFiles(e.target.files); }}
+          />
           {uploadError && <p style={{ color: '#ef4444', fontSize: '.72rem', marginTop: '.35rem' }}>{uploadError}</p>}
         </div>
 
@@ -564,7 +604,11 @@ function ColourSection({
           {!showSizeForm ? (
             <button
               onClick={() => setShowSizeForm(true)}
-              style={{ fontSize: '.75rem', color: '#9d174d', background: '#fdf2f8', border: '1px dashed #fce7f3', borderRadius: '.4rem', padding: '.3rem .7rem', cursor: 'pointer', fontWeight: 600 }}
+              style={{
+                fontSize: '.75rem', color: '#9d174d', background: '#fdf2f8',
+                border: '1px dashed #fce7f3', borderRadius: '.4rem',
+                padding: '.3rem .7rem', cursor: 'pointer', fontWeight: 600,
+              }}
             >+ Add size</button>
           ) : (
             <div style={{ display: 'flex', gap: '.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -575,10 +619,15 @@ function ColourSection({
                   if (e.key === 'Enter' && newSize.trim()) {
                     e.preventDefault();
                     setAddingSize(true);
-                    onAddVariant(newSize.trim(), newQty).then(() => { setNewSize(''); setNewQty(0); setAddingSize(false); });
+                    onAddVariant(newSize.trim(), newQty)
+                      .then(() => { setNewSize(''); setNewQty(0); setAddingSize(false); });
                   }
                 }}
-                style={{ flex: '1 1 70px', minWidth: '65px', padding: '.3rem .45rem', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.78rem', outline: 'none' }}
+                style={{
+                  flex: '1 1 70px', minWidth: '65px', padding: '.3rem .45rem',
+                  border: '1px solid #e5e7eb', borderRadius: '.4rem',
+                  fontSize: '.78rem', outline: 'none',
+                }}
                 autoFocus
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: '.25rem' }}>
@@ -586,17 +635,33 @@ function ColourSection({
                 <input
                   type="number" min={0} value={newQty}
                   onChange={e => setNewQty(parseInt(e.target.value) || 0)}
-                  style={{ width: '3rem', padding: '.3rem', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.78rem', textAlign: 'center', outline: 'none' }}
+                  style={{
+                    width: '3rem', padding: '.3rem', border: '1px solid #e5e7eb',
+                    borderRadius: '.4rem', fontSize: '.78rem', textAlign: 'center', outline: 'none',
+                  }}
                 />
               </div>
               <button
                 disabled={addingSize || !newSize.trim()}
-                onClick={async () => { setAddingSize(true); await onAddVariant(newSize.trim(), newQty); setNewSize(''); setNewQty(0); setAddingSize(false); }}
-                style={{ padding: '.3rem .6rem', background: '#9d174d', color: 'white', border: 'none', borderRadius: '.4rem', fontSize: '.75rem', fontWeight: 700, cursor: 'pointer', opacity: addingSize || !newSize.trim() ? .6 : 1 }}
+                onClick={async () => {
+                  setAddingSize(true);
+                  await onAddVariant(newSize.trim(), newQty);
+                  setNewSize(''); setNewQty(0); setAddingSize(false);
+                }}
+                style={{
+                  padding: '.3rem .6rem', background: '#9d174d', color: 'white',
+                  border: 'none', borderRadius: '.4rem', fontSize: '.75rem',
+                  fontWeight: 700, cursor: 'pointer',
+                  opacity: addingSize || !newSize.trim() ? .6 : 1,
+                }}
               >{addingSize ? '…' : 'Add'}</button>
               <button
                 onClick={() => { setShowSizeForm(false); setNewSize(''); setNewQty(0); }}
-                style={{ padding: '.3rem .5rem', background: '#f9fafb', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.75rem', cursor: 'pointer' }}
+                style={{
+                  padding: '.3rem .5rem', background: '#f9fafb', color: '#6b7280',
+                  border: '1px solid #e5e7eb', borderRadius: '.4rem',
+                  fontSize: '.75rem', cursor: 'pointer',
+                }}
               >✕</button>
             </div>
           )}
@@ -631,18 +696,28 @@ function VariantGrid({ variants, drafts, saving, setDrafts, onSave, onDelete }: 
             <input
               type="number" min={0} value={qty}
               onChange={e => setDrafts(d => ({ ...d, [v.id]: parseInt(e.target.value) || 0 }))}
-              style={{ width: '3rem', padding: '.18rem .28rem', border: '1px solid #e5e7eb', borderRadius: '.3rem', fontSize: '.78rem', textAlign: 'center', outline: 'none' }}
+              style={{
+                width: '3rem', padding: '.18rem .28rem', border: '1px solid #e5e7eb',
+                borderRadius: '.3rem', fontSize: '.78rem', textAlign: 'center', outline: 'none',
+              }}
             />
             {isDirty && (
               <button
                 disabled={saving[v.id]}
                 onClick={() => onSave(v.id, v.size, qty)}
-                style={{ fontSize: '.7rem', background: '#9d174d', color: 'white', border: 'none', borderRadius: '.3rem', padding: '.18rem .35rem', cursor: 'pointer', fontWeight: 700 }}
+                style={{
+                  fontSize: '.7rem', background: '#9d174d', color: 'white',
+                  border: 'none', borderRadius: '.3rem', padding: '.18rem .35rem',
+                  cursor: 'pointer', fontWeight: 700,
+                }}
               >{saving[v.id] ? '…' : '✓'}</button>
             )}
             <button
               onClick={() => onDelete(v.id)}
-              style={{ fontSize: '.62rem', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '.1rem', lineHeight: 1 }}
+              style={{
+                fontSize: '.62rem', color: '#ef4444', background: 'none',
+                border: 'none', cursor: 'pointer', padding: '.1rem', lineHeight: 1,
+              }}
               title="Remove size"
             >✕</button>
           </div>

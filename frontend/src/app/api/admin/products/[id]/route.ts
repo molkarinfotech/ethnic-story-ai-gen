@@ -18,9 +18,15 @@ async function isAdmin(req: NextRequest): Promise<boolean> {
 
 const LETTER_SIZE_ORDER = ['XS','S','M','L','XL','XXL','Free Size'];
 
-function sortVariants(variants: { id: string; size: string; colour?: string; stock_count: number; price?: number }[]) {
-  // Always exclude __colour__ anchor rows — they are internal bookkeeping only
-  const real    = variants.filter(v => v.size !== '__colour__');
+// Sizes that are internal bookkeeping anchors — never shown to shoppers
+// but kept in the DB so colour groups survive before any real size is added.
+const ANCHOR_SIZES = new Set(['__colour__', 'TBA']);
+
+function sortVariantsForShop(
+  variants: { id: string; size: string; colour?: string; stock_count: number; price?: number }[]
+) {
+  // Strip anchor rows for storefront/stock-list use (GET /api/admin/stock uses this too)
+  const real    = variants.filter(v => !ANCHOR_SIZES.has(v.size));
   const letter  = real.filter(v => LETTER_SIZE_ORDER.includes(v.size))
     .sort((a, b) => LETTER_SIZE_ORDER.indexOf(a.size) - LETTER_SIZE_ORDER.indexOf(b.size));
   const numeric = real.filter(v => /^\d/.test(v.size))
@@ -61,9 +67,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const firstGalleryImage = imgRows?.[0]?.url ?? null;
 
-  // Fetch ALL variants (including anchors) so the inventory page can
-  // derive colour groups — client-side sortVariants strips anchor rows
-  // from the display grid but uses them for colour derivation.
+  // Return ALL variants including anchor rows (__colour__, TBA).
+  // The admin inventory page client uses them for colour group derivation.
+  // The client-side sortVariants() strips anchors from the size chips display.
   const { data: variants, error: varErr } = await sb
     .from('product_variants')
     .select('id, size, colour, stock_count, price')
@@ -73,11 +79,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     console.error('[products/[id] GET] variants error:', varErr);
   }
 
+  // For this admin endpoint we return all variants (including anchors).
+  // Storefront endpoints should use sortVariantsForShop() to strip them.
   return NextResponse.json({
     ...product,
     image: firstGalleryImage ?? product.image ?? null,
-    // sortVariants strips __colour__ anchor rows server-side too
-    variants: sortVariants(variants ?? []),
+    variants: variants ?? [],
   });
 }
 
