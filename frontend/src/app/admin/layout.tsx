@@ -76,15 +76,28 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Top bar */}
       <div style={{
         background: '#9d174d', color: 'white',
-        padding: '.85rem 1.25rem',
+        padding: '.65rem 1.25rem',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         position: 'sticky', top: 0, zIndex: 30,
         boxShadow: '0 2px 8px rgba(0,0,0,.18)',
       }}>
-        <a href="/admin/dashboard" style={{ display: 'flex', alignItems: 'center', gap: '.65rem', textDecoration: 'none', color: 'white' }}>
-          <span style={{ fontWeight: 800, fontSize: '1.05rem', letterSpacing: '-.01em' }}>Ethnic Story</span>
-          <span style={{ opacity: .4, fontSize: '1.1rem' }}>|</span>
-          <span style={{ fontSize: '.82rem', opacity: .75, fontWeight: 500 }}>Admin Portal</span>
+        <a href="/admin/dashboard" style={{ display: 'flex', alignItems: 'center', gap: '.75rem', textDecoration: 'none' }}>
+          {/* Logo image — white bg; mix-blend-mode:multiply makes the white transparent on the pink bar */}
+          <img
+            src="/logo.jpg"
+            alt="Ethnic Story"
+            width={100}
+            height={34}
+            style={{
+              height: '2rem',
+              width: 'auto',
+              objectFit: 'contain',
+              borderRadius: '4px',
+              mixBlendMode: 'multiply',
+            }}
+          />
+          <span style={{ opacity: .35, fontSize: '1.1rem', color: 'white' }}>|</span>
+          <span style={{ fontSize: '.82rem', opacity: .85, fontWeight: 600, color: 'white', letterSpacing: '-.01em' }}>Admin Portal</span>
         </a>
         <button
           onClick={handleLogout}

@@ -40,14 +40,20 @@ export function StorefrontShell({ children }: { children: React.ReactNode }) {
       {/* Header */}
       <header className="site-header">
         <div className="site-header__inner">
-          <a className="site-header__logo" href="/">
-            <span className="brand-mark" aria-hidden="true">
-              <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-                <path d="M8 24C12 22 13.5 17 16 11C18.5 17 20 22 24 24" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M12 20C13.5 18.5 14.7 16.8 16 14C17.3 16.8 18.5 18.5 20 20" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
-              </svg>
-            </span>
-            Ethnic Story
+          <a className="site-header__logo" href="/" aria-label="Ethnic Story — Home">
+            <img
+              src="/logo.jpg"
+              alt="Ethnic Story — Clothing &amp; Jewellery"
+              width={160}
+              height={54}
+              loading="eager"
+              style={{
+                height: '2.5rem',  /* 40px */
+                width: 'auto',
+                objectFit: 'contain',
+                display: 'block',
+              }}
+            />
           </a>
           <nav className="site-header__nav" aria-label="Primary navigation">
             <a href="/collections">All</a>
@@ -78,7 +84,24 @@ export function StorefrontShell({ children }: { children: React.ReactNode }) {
           <div className="site-footer__grid">
             {/* Brand */}
             <div>
-              <div className="site-footer__brand">Ethnic Story</div>
+              <div className="site-footer__brand">
+                <img
+                  src="/logo.jpg"
+                  alt="Ethnic Story"
+                  width={140}
+                  height={47}
+                  loading="lazy"
+                  style={{
+                    height: '2.2rem',
+                    width: 'auto',
+                    objectFit: 'contain',
+                    /* logo has white bg — add subtle drop shadow so it reads on dark footer */
+                    filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.18))',
+                    borderRadius: '4px',
+                    marginBottom: '0.5rem',
+                  }}
+                />
+              </div>
               <p className="site-footer__tagline">Celebrating the richness of Indian textile heritage. Handpicked sarees, lehengas and ethnic wear — delivered across Australia.</p>
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
                 <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Ethnic Story on Facebook" style={{ fontSize: '1.2rem', opacity: 0.6, transition: 'opacity 0.15s' }}
