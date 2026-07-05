@@ -21,7 +21,7 @@ export default function NewProductPage() {
         setCategories(cats);
         if (cats.length > 0) setForm(f => ({ ...f, category: f.category || cats[0].slug }));
       })
-      .catch(() => {/* silent — user can still type */});
+      .catch(() => {});
   }, []);
 
   function set(field: string, value: string) {
@@ -60,12 +60,8 @@ export default function NewProductPage() {
         body: JSON.stringify(payload),
       });
 
-      // Parse JSON safely — a network error or proxy may return non-JSON
       let created: Record<string, unknown> = {};
-      try {
-        created = await res.json();
-      } catch {
-        // Body was not JSON (e.g. a 502 HTML error page)
+      try { created = await res.json(); } catch {
         setSaving(false);
         setError(`Server error (${res.status}). Please try again.`);
         return;
@@ -77,16 +73,8 @@ export default function NewProductPage() {
         return;
       }
 
-      const id = created?.id as string | undefined;
-      if (!id) {
-        // API returned 2xx but no id — should never happen, but handle gracefully
-        setSaving(false);
-        setError('Product saved but no ID was returned. Please check the products list.');
-        return;
-      }
-
-      // Use replace so the create form is not in the back-stack
-      router.replace(`/admin/products/${id}/inventory`);
+      // Navigate back to products list — admin clicks 📸 Manage to open inventory
+      router.replace('/admin/products');
     } catch (err: unknown) {
       setSaving(false);
       setError(err instanceof Error ? err.message : 'Network error — failed to save product.');
@@ -123,7 +111,7 @@ export default function NewProductPage() {
                 className="btn btn-primary"
                 style={{ flex: 1, justifyContent: 'center', minHeight: '44px', opacity: saving ? 0.7 : 1 }}
               >
-                {saving ? 'Saving…' : 'Save & manage stock →'}
+                {saving ? 'Saving…' : 'Save product'}
               </button>
               <a
                 href="/admin/products"
