@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { useCart } from '../../context/CartContext';
 
 export function Header() {
@@ -32,11 +33,22 @@ export function Header() {
           transition: 'background 0.3s ease, box-shadow 0.3s ease',
         }}
       >
-        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '68px' }}>
-          <a href="/" style={{ fontFamily: 'Georgia, serif', fontSize: '1.4rem', fontWeight: 700, color: 'var(--color-primary)', letterSpacing: '-0.01em', transition: 'opacity 0.2s' }}
-            onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
-            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}>
-            Ethnic Story
+        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '72px' }}>
+          <a
+            href="/"
+            style={{ display: 'flex', alignItems: 'center', transition: 'opacity 0.2s' }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '0.8')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+            aria-label="Ethnic Story — Home"
+          >
+            <Image
+              src="/logo.png"
+              alt="Ethnic Story"
+              width={200}
+              height={60}
+              priority
+              style={{ objectFit: 'contain', height: '60px', width: 'auto', maxWidth: '200px' }}
+            />
           </a>
 
           <nav style={{ display: 'flex', gap: '1.6rem', alignItems: 'center' }}>

@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useCart } from '../../context/CartContext';
 import { usePathname } from 'next/navigation';
 
@@ -76,14 +77,15 @@ export function MobileNav() {
         style={{ background: '#fff9f5' }}
       >
         <div className="mobile-nav-drawer__header" style={{ background: '#fff9f5', borderBottom: '1px solid #fce7f3' }}>
-          <a className="site-header__logo" href="/" onClick={close}>
-            <span className="brand-mark" aria-hidden="true">
-              <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-                <path d="M8 24C12 22 13.5 17 16 11C18.5 17 20 22 24 24" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M12 20C13.5 18.5 14.7 16.8 16 14C17.3 16.8 18.5 18.5 20 20" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
-              </svg>
-            </span>
-            Ethnic Story
+          <a className="site-header__logo" href="/" onClick={close} aria-label="Ethnic Story — Home">
+            <Image
+              src="/logo.png"
+              alt="Ethnic Story"
+              width={160}
+              height={48}
+              priority
+              style={{ objectFit: 'contain', height: '48px', width: 'auto', maxWidth: '160px' }}
+            />
           </a>
           <button className="mobile-nav-drawer__close" aria-label="Close menu" onClick={close}>✕</button>
         </div>
