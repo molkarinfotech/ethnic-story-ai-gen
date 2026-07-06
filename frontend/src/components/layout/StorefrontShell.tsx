@@ -42,14 +42,15 @@ export function StorefrontShell({ children }: { children: React.ReactNode }) {
         <div className="site-header__inner">
           <a className="site-header__logo" href="/" aria-label="Ethnic Story — Home">
             <img
-              src="/logo.svg"
-              alt="Ethnic Story — Clothing &amp; Jewellery"
-              width={160}
-              height={54}
+              src="/logo.png"
+              alt="Ethnic Story"
+              width={220}
+              height={56}
               loading="eager"
               style={{
-                height: '2.5rem',  /* 40px */
+                height: '56px',
                 width: 'auto',
+                maxWidth: '220px',
                 objectFit: 'contain',
                 display: 'block',
               }}
@@ -86,18 +87,17 @@ export function StorefrontShell({ children }: { children: React.ReactNode }) {
             <div>
               <div className="site-footer__brand">
                 <img
-                  src="/logo.svg"
+                  src="/logo.png"
                   alt="Ethnic Story"
-                  width={140}
-                  height={47}
+                  width={180}
+                  height={48}
                   loading="lazy"
                   style={{
-                    height: '2.2rem',
+                    height: '48px',
                     width: 'auto',
+                    maxWidth: '180px',
                     objectFit: 'contain',
-                    /* SVG logos render crisply — drop-shadow still works */
-                    filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.18))',
-                    borderRadius: '4px',
+                    display: 'block',
                     marginBottom: '0.5rem',
                   }}
                 />
