@@ -10,7 +10,7 @@ export default function NewProductPage() {
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [form, setForm] = useState({
     slug: '', name: '', subtitle: '', price: '', original_price: '',
-    category: '', gender: 'women', badge: '', image: '',
+    category: '', subcategory: '', gender: 'women', badge: '', image: '',
   });
 
   useEffect(() => {
@@ -48,6 +48,7 @@ export default function NewProductPage() {
       original_price: form.original_price ? parseFloat(form.original_price) : null,
       badge: form.badge || null,
       subtitle: form.subtitle || null,
+      subcategory: form.subcategory?.trim() || null,
       image: form.image || null,
       gender: form.gender || 'women',
     };
@@ -73,11 +74,10 @@ export default function NewProductPage() {
         return;
       }
 
-      // Navigate back to products list — admin clicks 📸 Manage to open inventory
       router.replace('/admin/products');
     } catch (err: unknown) {
       setSaving(false);
-      setError(err instanceof Error ? err.message : 'Network error — failed to save product.');
+      setError(err instanceof Error ? err.message : 'Failed to save product.');
     }
   }
 
@@ -88,7 +88,7 @@ export default function NewProductPage() {
           <a href="/admin/products" style={{ color: 'var(--color-text-muted)', textDecoration: 'none', fontSize: '0.875rem' }}>← Back to products</a>
         </div>
         <div style={{ background: 'white', borderRadius: '.75rem', padding: '2rem', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-          <h1 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>Add new product</h1>
+          <h1 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>New product</h1>
           <form onSubmit={handleSubmit}>
             <ProductFields
               form={form}
@@ -99,27 +99,14 @@ export default function NewProductPage() {
                 set('category', cat.slug);
               }}
             />
-            {error && (
-              <p style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '1rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.4rem', padding: '.5rem .75rem' }}>
-                ⚠ {error}
-              </p>
-            )}
+            {error && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '1rem' }}>{error}</p>}
             <div style={{ display: 'flex', gap: '.75rem', marginTop: '1.5rem' }}>
-              <button
-                type="submit"
-                disabled={saving}
-                className="btn btn-primary"
-                style={{ flex: 1, justifyContent: 'center', minHeight: '44px', opacity: saving ? 0.7 : 1 }}
-              >
-                {saving ? 'Saving…' : 'Save product'}
+              <button type="submit" disabled={saving} className="btn btn-primary"
+                style={{ flex: 1, justifyContent: 'center', minHeight: '44px' }}>
+                {saving ? 'Saving…' : 'Create product'}
               </button>
-              <a
-                href="/admin/products"
-                className="btn btn--outline"
-                style={{ flex: 1, justifyContent: 'center', minHeight: '44px', textDecoration: 'none', display: 'flex', alignItems: 'center' }}
-              >
-                Cancel
-              </a>
+              <a href="/admin/products" className="btn btn--outline"
+                style={{ flex: 1, justifyContent: 'center', minHeight: '44px', textDecoration: 'none', display: 'flex', alignItems: 'center' }}>Cancel</a>
             </div>
           </form>
         </div>

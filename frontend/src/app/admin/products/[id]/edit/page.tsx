@@ -17,7 +17,7 @@ export default function EditProductPage({
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [form,       setForm]       = useState<Record<string, string>>({
     slug: '', name: '', subtitle: '', price: '', original_price: '',
-    category: '', gender: 'women', badge: '', image: '',
+    category: '', subcategory: '', gender: 'women', badge: '', image: '',
   });
 
   // Unwrap params safely for Next.js 14 and 15
@@ -45,6 +45,7 @@ export default function EditProductPage({
           price:          String(p.price          ?? ''),
           original_price: String(p.original_price ?? ''),
           category:       String(p.category       ?? (safeCategories[0]?.slug ?? '')),
+          subcategory:    String(p.subcategory    ?? ''),
           gender:         String(p.gender         ?? 'women'),
           badge:          String(p.badge          ?? ''),
           image:          String(p.image          ?? ''),
@@ -66,10 +67,11 @@ export default function EditProductPage({
       ...form,
       price:          parseFloat(form.price),
       original_price: form.original_price ? parseFloat(form.original_price) : null,
-      badge:          form.badge    || null,
-      subtitle:       form.subtitle || null,
-      image:          form.image    || null,
-      gender:         form.gender   || 'women',
+      badge:          form.badge     || null,
+      subtitle:       form.subtitle  || null,
+      subcategory:    form.subcategory?.trim() || null,
+      image:          form.image     || null,
+      gender:         form.gender    || 'women',
     };
     try {
       const res = await fetch(`/api/admin/products/${productId}`, {
@@ -99,7 +101,7 @@ export default function EditProductPage({
     <main style={{ minHeight: '100vh', background: 'var(--color-surface-offset)', padding: '2rem' }}>
       <div style={{ maxWidth: '600px', margin: '0 auto' }}>
         <div style={{ marginBottom: '1.5rem' }}>
-          <a href={`/admin/products/${productId}/inventory`} style={{ color: 'var(--color-text-muted)', textDecoration: 'none', fontSize: '0.875rem' }}>← Back to inventory</a>
+          <a href="/admin/products" style={{ color: 'var(--color-text-muted)', textDecoration: 'none', fontSize: '0.875rem' }}>← Back to products</a>
         </div>
         <div style={{ background: 'white', borderRadius: '.75rem', padding: '2rem', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
           <h1 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>Edit product</h1>
@@ -119,7 +121,7 @@ export default function EditProductPage({
                 style={{ flex: 1, justifyContent: 'center', minHeight: '44px' }}>
                 {saving ? 'Saving…' : 'Update product'}
               </button>
-              <a href={`/admin/products/${productId}/inventory`} className="btn btn--outline"
+              <a href="/admin/products" className="btn btn--outline"
                 style={{ flex: 1, justifyContent: 'center', minHeight: '44px', textDecoration: 'none', display: 'flex', alignItems: 'center' }}>Cancel</a>
             </div>
           </form>
