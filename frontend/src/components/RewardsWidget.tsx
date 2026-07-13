@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 
 interface PointsRow {
   action: string;
@@ -30,6 +31,7 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
 const REDEEM_STEPS = [200, 400, 800, 1600];
 
 export default function RewardsWidget() {
+  const { session } = useAuth();
   const [data, setData]         = useState<RewardsData | null>(null);
   const [loading, setLoading]   = useState(true);
   const [fetchErr, setFetchErr] = useState<string | null>(null);
@@ -39,26 +41,41 @@ export default function RewardsWidget() {
     code?: string; discount?: number; error?: string; loading: boolean;
   }>({ loading: false });
 
-  useEffect(() => {
-    fetch('/api/rewards/points')
+  // Build auth headers from Supabase session token
+  function authHeaders(): HeadersInit {
+    const token = session?.access_token;
+    return token
+      ? { 'Authorization': `Bearer ${token}` }
+      : {};
+  }
+
+  function loadPoints() {
+    setLoading(true);
+    setFetchErr(null);
+    fetch('/api/rewards/points', { headers: authHeaders() })
       .then(async r => {
         const json = await r.json();
         if (!r.ok) throw new Error(json.error ?? `HTTP ${r.status}`);
-        // Validate shape — guard against { error: '...' } being stored as data
         if (typeof json.total !== 'number') throw new Error('Unexpected response shape');
         return json as RewardsData;
       })
       .then(d => setData(d))
       .catch(e => setFetchErr(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }
+
+  useEffect(() => {
+    // Wait for auth to resolve before fetching (session may be null on first render)
+    if (session !== undefined) loadPoints();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   async function handleRedeem() {
     setRedeemState({ loading: true });
     try {
       const res = await fetch('/api/rewards/redeem', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ points: redeemPts }),
       });
       const json = await res.json();
@@ -67,7 +84,7 @@ export default function RewardsWidget() {
       } else {
         setRedeemState({ loading: false, code: json.coupon_code, discount: json.discount_aud });
         // Refresh totals
-        fetch('/api/rewards/points')
+        fetch('/api/rewards/points', { headers: authHeaders() })
           .then(r => r.json())
           .then(d => typeof d.total === 'number' && setData(d));
       }
@@ -95,7 +112,7 @@ export default function RewardsWidget() {
       <div style={{ fontWeight: 700, color: '#111', marginBottom: '.25rem' }}>Couldn't load rewards</div>
       <div style={{ fontSize: '.82rem', color: '#6b7280', marginBottom: '1rem' }}>{fetchErr}</div>
       <button
-        onClick={() => { setFetchErr(null); setLoading(true); fetch('/api/rewards/points').then(r => r.json()).then(d => { if (typeof d.total === 'number') setData(d); else setFetchErr(d.error ?? 'Unknown error'); }).catch(e => setFetchErr(e.message)).finally(() => setLoading(false)); }}
+        onClick={loadPoints}
         style={{ padding: '.45rem 1.25rem', background: '#111', color: '#fff', border: 'none', borderRadius: '.5rem', cursor: 'pointer', fontSize: '.85rem', fontWeight: 600 }}
       >
         Retry
