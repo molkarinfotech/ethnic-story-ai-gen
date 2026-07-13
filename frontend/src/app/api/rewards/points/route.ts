@@ -3,48 +3,43 @@
  * Returns the authenticated user's total points and point history.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { getServiceSupabase } from '../../../../lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-/** Extract the Supabase JWT from the chunked or legacy session cookie. */
-function getTokenFromRequest(req: NextRequest): string | null {
-  // Legacy cookie used by older Supabase setups
-  const legacy = req.cookies.get('sb-access-token')?.value;
-  if (legacy) return legacy;
+/** Extract the Supabase JWT — matches the helper used across all other routes. */
+function getToken(req: NextRequest): string | null {
+  const auth = req.headers.get('authorization') ?? '';
+  if (auth.startsWith('Bearer ')) return auth.slice(7);
 
-  // New chunked cookie: sb-<project-ref>-auth-token  (may be split into .0, .1, …)
-  // Collect all matching chunks and join them
+  // Chunked cookie: sb-<ref>-auth-token, sb-<ref>-auth-token.1, .2, ...
   const chunks: string[] = [];
   let i = 0;
   while (true) {
-    const chunk = req.cookies.get(
-      i === 0 ? 'sb-jcqywnbawpwtuaujqyyt-auth-token'
-              : `sb-jcqywnbawpwtuaujqyyt-auth-token.${i - 1}`,
-    )?.value;
+    const key = i === 0
+      ? 'sb-jcqywnbawpwtuaujqyyt-auth-token'
+      : `sb-jcqywnbawpwtuaujqyyt-auth-token.${i}`;
+    const chunk = req.cookies.get(key)?.value;
     if (!chunk) break;
     chunks.push(chunk);
     i++;
   }
-  if (chunks.length > 0) {
+  if (chunks.length) {
     try {
-      const session = JSON.parse(chunks.join(''));
-      return session?.access_token ?? null;
+      const parsed = JSON.parse(chunks.join(''));
+      return parsed.access_token ?? null;
     } catch {
-      return chunks[0]; // might already be a raw JWT
+      return chunks[0]; // raw JWT fallback
     }
   }
 
-  // Fallback: Authorization header
-  return req.headers.get('authorization')?.replace('Bearer ', '') ?? null;
+  return req.cookies.get('sb-access-token')?.value ?? null;
 }
 
 export async function GET(req: NextRequest) {
-  const token = getTokenFromRequest(req);
+  const token = getToken(req);
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Verify token and get user via service role
   const svc = getServiceSupabase();
   const { data: { user }, error: authErr } = await svc.auth.getUser(token);
   if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
