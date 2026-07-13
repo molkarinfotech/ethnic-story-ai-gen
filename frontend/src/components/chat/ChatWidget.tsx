@@ -6,34 +6,45 @@ const FAQS = [
   {
     q: 'What sizes do you carry?',
     a: 'We stock sizes XS–3XL across most styles. Each product page shows exact size availability. For custom sizing requests, use the sourcing form below.',
+    // keywords that ONLY relate to sizing
+    keywords: ['size', 'sizes', 'sizing', 'xs', 'small', 'medium', 'large', 'xl', '2xl', '3xl', 'fit', 'measurements', 'measure'],
   },
   {
     q: 'How long does delivery take?',
     a: 'Standard Australia-wide delivery takes 3–7 business days. Pre-Order items ship directly from India and take 2–4 weeks. Express options are available at checkout.',
+    // delivery TIME keywords — deliberately excludes "ship" to avoid collision with international shipping FAQ
+    keywords: ['delivery', 'how long', 'days', 'weeks', 'arrive', 'arrives', 'arrival', 'when will', 'express', 'fast shipping', 'quick', 'standard shipping', 'business days', 'preorder', 'pre-order'],
   },
   {
     q: 'Do you ship internationally?',
     a: 'We currently ship within Australia only. International shipping is coming soon — sign up to our newsletter to be notified.',
+    // international / overseas keywords
+    keywords: ['international', 'internationally', 'overseas', 'outside australia', 'ship to', 'nz', 'new zealand', 'uk', 'usa', 'india', 'canada', 'worldwide', 'global', 'abroad', 'other countries', 'outside'],
   },
   {
     q: 'What is your return policy?',
     a: 'We accept returns within 14 days of delivery for unworn, unwashed items with original tags attached. Sale and pre-order items are final sale. Email us at returns@ethnicstory.com.au to start a return.',
+    keywords: ['return', 'returns', 'refund', 'refunds', 'exchange', 'policy', 'send back', 'wrong item', 'damaged', 'unworn', 'unwashed', '14 days', 'money back'],
   },
   {
     q: 'Are your fabrics authentic?',
     a: 'Yes — all pieces are handcrafted in India by skilled artisans using traditional techniques and authentic fabrics including pure silk, chanderi, georgette, and hand-block printed cotton.',
+    keywords: ['fabric', 'fabrics', 'authentic', 'silk', 'chanderi', 'georgette', 'cotton', 'handcraft', 'handcrafted', 'artisan', 'artisans', 'traditional', 'real', 'genuine', 'material', 'quality', 'block print', 'handmade', 'made in india'],
   },
   {
     q: 'Can I pay with Afterpay?',
     a: 'Yes! We support Afterpay, as well as all major credit/debit cards and Apple Pay at checkout.',
+    keywords: ['afterpay', 'pay', 'payment', 'credit card', 'debit card', 'apple pay', 'klarna', 'buy now pay later', 'bnpl', 'visa', 'mastercard', 'checkout', 'how to pay', 'payment options'],
   },
   {
     q: 'How do I care for my garment?',
     a: 'Most silk and embroidered pieces should be dry-cleaned. Cotton kurtas and casual wear can be hand-washed in cold water. Care instructions are printed on each garment label.',
+    keywords: ['care', 'wash', 'washing', 'clean', 'cleaning', 'dry clean', 'dry-clean', 'hand wash', 'garment', 'label', 'laundry', 'maintain', 'maintenance', 'iron', 'ironing', 'delicate'],
   },
   {
     q: 'Can I track my order?',
     a: 'Yes — once your order ships you will receive a tracking link via email. You can also log in to your account and view order status anytime.',
+    keywords: ['track', 'tracking', 'where is my order', 'order status', 'my order', 'shipped', 'dispatch', 'dispatched', 'tracking link', 'tracking number', 'parcel', 'package', 'courier'],
   },
 ];
 
@@ -221,16 +232,37 @@ export function ChatWidget() {
 
   function findAnswer(q: string): string {
     const lower = q.toLowerCase();
-    for (const faq of FAQS) {
-      const keywords = faq.q.toLowerCase().split(/\W+/).filter(w => w.length > 3);
-      if (keywords.some(kw => lower.includes(kw))) return faq.a;
-    }
-    if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
+
+    // Greetings — checked before FAQ loop to avoid false matches
+    if (/\b(hello|hi|hey|g'day|howdy)\b/.test(lower)) {
       return 'Hello! 😊 How can I help you today? You can ask about sizing, delivery, returns, or anything else.';
     }
-    if (lower.includes('thank')) {
+    if (/\bthank/.test(lower)) {
       return 'You\'re welcome! Is there anything else I can help you with? 🌸';
     }
+
+    // Score each FAQ by how many of its curated keywords appear in the user's message.
+    // Return the FAQ with the highest score (ties go to the first FAQ in the list).
+    let bestFaq: (typeof FAQS)[number] | null = null;
+    let bestScore = 0;
+
+    for (const faq of FAQS) {
+      let score = 0;
+      for (const kw of faq.keywords) {
+        if (lower.includes(kw)) {
+          // Longer keyword matches are weighted more heavily so specific phrases
+          // (e.g. "ship to" or "how long") beat short overlapping words.
+          score += kw.length;
+        }
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestFaq = faq;
+      }
+    }
+
+    if (bestFaq && bestScore > 0) return bestFaq.a;
+
     return 'I\'m not sure about that one! Try one of the quick questions below, or use the 🔍 "Can\'t Find It?" button to send us a direct request.';
   }
 
