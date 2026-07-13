@@ -4,23 +4,14 @@
  * Minimum 200 pts = $2.50 AUD (80 pts = $1 AUD).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 import { getServiceSupabase } from '../../../../lib/supabase';
 
-const RATE_PTS_PER_DOLLAR = 80; // 80 pts = $1 AUD
-const MIN_REDEEM_PTS      = 200;
+export const dynamic = 'force-dynamic';
 
-function getSupabaseUser(req: NextRequest) {
-  const token =
-    req.cookies.get('sb-access-token')?.value ??
-    req.headers.get('authorization')?.replace('Bearer ', '');
-  if (!token) return null;
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: `Bearer ${token}` } } },
-  );
-}
+const RATE_PTS_PER_DOLLAR = 80;
+const MIN_REDEEM_PTS      = 200;
 
 function generateCoupon(): string {
   const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -28,11 +19,13 @@ function generateCoupon(): string {
 }
 
 export async function POST(req: NextRequest) {
-  const sb = getSupabaseUser(req);
-  if (!sb) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const cookieStore = cookies();
+  const sb = createRouteHandlerClient({ cookies: () => cookieStore });
 
   const { data: { user }, error: authErr } = await sb.auth.getUser();
-  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (authErr || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   const body = await req.json() as { points?: number };
   const points = body.points;
@@ -46,7 +39,6 @@ export async function POST(req: NextRequest) {
 
   const svc = getServiceSupabase();
 
-  // Check balance via view (service role bypasses RLS)
   const { data: summary } = await svc
     .from('user_points_summary')
     .select('total_points')
@@ -65,7 +57,6 @@ export async function POST(req: NextRequest) {
   const coupon_code = generateCoupon();
   const idem_key    = `redeem:${user.id}:${coupon_code}`;
 
-  // Deduct points (idempotent)
   const { error: deductErr } = await svc.rpc('award_points', {
     p_user_id:  user.id,
     p_action:   'redeem',
@@ -75,7 +66,6 @@ export async function POST(req: NextRequest) {
   });
   if (deductErr) return NextResponse.json({ error: deductErr.message }, { status: 500 });
 
-  // Record redemption
   const { error: redeemErr } = await svc.from('reward_redemptions').insert({
     user_id:      user.id,
     points_spent: points,
@@ -88,12 +78,13 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  // Return list of user's past redemptions
-  const sb = getSupabaseUser(req);
-  if (!sb) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const cookieStore = cookies();
+  const sb = createRouteHandlerClient({ cookies: () => cookieStore });
 
   const { data: { user }, error: authErr } = await sb.auth.getUser();
-  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (authErr || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   const svc = getServiceSupabase();
   const { data, error } = await svc

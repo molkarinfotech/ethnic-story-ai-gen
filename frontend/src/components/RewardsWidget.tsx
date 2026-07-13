@@ -14,54 +14,69 @@ interface RewardsData {
 }
 
 const TIER_CONFIG = [
-  { name: 'Bronze', min: 0,    max: 399,  color: '#cd7f32', emoji: '🥉' },
-  { name: 'Silver', min: 400,  max: 999,  color: '#9b9b9b', emoji: '🥈' },
+  { name: 'Bronze', min: 0,    max: 399,      color: '#cd7f32', emoji: '🥉' },
+  { name: 'Silver', min: 400,  max: 999,      color: '#9b9b9b', emoji: '🥈' },
   { name: 'Gold',   min: 1000, max: Infinity, color: '#d4af37', emoji: '🥇' },
 ];
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
-  signup: { label: 'Welcome bonus',        color: '#7c3aed' },
-  order:  { label: 'Purchase reward',      color: '#059669' },
-  like:   { label: 'Liked a product',      color: '#db2777' },
-  review: { label: 'Product review',       color: '#2563eb' },
-  redeem: { label: 'Redeemed for coupon',  color: '#dc2626' },
+  signup: { label: 'Welcome bonus',       color: '#7c3aed' },
+  order:  { label: 'Purchase reward',     color: '#059669' },
+  like:   { label: 'Liked a product',     color: '#db2777' },
+  review: { label: 'Product review',      color: '#2563eb' },
+  redeem: { label: 'Redeemed for coupon', color: '#dc2626' },
 };
 
 const REDEEM_STEPS = [200, 400, 800, 1600];
 
 export default function RewardsWidget() {
-  const [data, setData] = useState<RewardsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'overview' | 'history' | 'redeem'>('overview');
+  const [data, setData]         = useState<RewardsData | null>(null);
+  const [loading, setLoading]   = useState(true);
+  const [fetchErr, setFetchErr] = useState<string | null>(null);
+  const [tab, setTab]           = useState<'overview' | 'history' | 'redeem'>('overview');
   const [redeemPts, setRedeemPts] = useState(REDEEM_STEPS[0]);
-  const [redeemState, setRedeemState] = useState<{ code?: string; discount?: number; error?: string; loading: boolean }>({ loading: false });
+  const [redeemState, setRedeemState] = useState<{
+    code?: string; discount?: number; error?: string; loading: boolean;
+  }>({ loading: false });
 
   useEffect(() => {
     fetch('/api/rewards/points')
-      .then(r => r.json())
+      .then(async r => {
+        const json = await r.json();
+        if (!r.ok) throw new Error(json.error ?? `HTTP ${r.status}`);
+        // Validate shape — guard against { error: '...' } being stored as data
+        if (typeof json.total !== 'number') throw new Error('Unexpected response shape');
+        return json as RewardsData;
+      })
       .then(d => setData(d))
-      .catch(() => {})
+      .catch(e => setFetchErr(e.message))
       .finally(() => setLoading(false));
   }, []);
 
   async function handleRedeem() {
     setRedeemState({ loading: true });
-    const res = await fetch('/api/rewards/redeem', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ points: redeemPts }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      setRedeemState({ loading: false, error: json.error });
-    } else {
-      setRedeemState({ loading: false, code: json.coupon_code, discount: json.discount_aud });
-      // Refresh totals
-      fetch('/api/rewards/points').then(r => r.json()).then(setData);
+    try {
+      const res = await fetch('/api/rewards/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ points: redeemPts }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setRedeemState({ loading: false, error: json.error });
+      } else {
+        setRedeemState({ loading: false, code: json.coupon_code, discount: json.discount_aud });
+        // Refresh totals
+        fetch('/api/rewards/points')
+          .then(r => r.json())
+          .then(d => typeof d.total === 'number' && setData(d));
+      }
+    } catch (e: any) {
+      setRedeemState({ loading: false, error: e.message });
     }
   }
 
-  const tier = TIER_CONFIG.find(t => (data?.total ?? 0) >= t.min && (data?.total ?? 0) <= t.max) ?? TIER_CONFIG[0];
+  const tier     = TIER_CONFIG.find(t => (data?.total ?? 0) >= t.min && (data?.total ?? 0) <= t.max) ?? TIER_CONFIG[0];
   const nextTier = TIER_CONFIG[TIER_CONFIG.indexOf(tier) + 1];
   const progress = nextTier
     ? Math.min(100, (((data?.total ?? 0) - tier.min) / (nextTier.min - tier.min)) * 100)
@@ -71,6 +86,20 @@ export default function RewardsWidget() {
     <div style={styles.card}>
       <div style={styles.skeleton} />
       <div style={{ ...styles.skeleton, width: '60%' }} />
+    </div>
+  );
+
+  if (fetchErr) return (
+    <div style={{ ...styles.card, textAlign: 'center', padding: '2rem 1.5rem' }}>
+      <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>⚠️</div>
+      <div style={{ fontWeight: 700, color: '#111', marginBottom: '.25rem' }}>Couldn't load rewards</div>
+      <div style={{ fontSize: '.82rem', color: '#6b7280', marginBottom: '1rem' }}>{fetchErr}</div>
+      <button
+        onClick={() => { setFetchErr(null); setLoading(true); fetch('/api/rewards/points').then(r => r.json()).then(d => { if (typeof d.total === 'number') setData(d); else setFetchErr(d.error ?? 'Unknown error'); }).catch(e => setFetchErr(e.message)).finally(() => setLoading(false)); }}
+        style={{ padding: '.45rem 1.25rem', background: '#111', color: '#fff', border: 'none', borderRadius: '.5rem', cursor: 'pointer', fontSize: '.85rem', fontWeight: 600 }}
+      >
+        Retry
+      </button>
     </div>
   );
 
@@ -102,10 +131,10 @@ export default function RewardsWidget() {
       {/* Earn summary */}
       <div style={styles.earnGrid}>
         {[
-          { action: 'signup', pts: '+50', label: 'Sign up' },
-          { action: 'order',  pts: '+1/AU$1', label: 'Every order' },
-          { action: 'like',   pts: '+10', label: 'Like product' },
-          { action: 'review', pts: '+25', label: 'Verified review' },
+          { action: 'signup', pts: '+50',      label: 'Sign up' },
+          { action: 'order',  pts: '+1/AU$1',  label: 'Every order' },
+          { action: 'like',   pts: '+10',      label: 'Like product' },
+          { action: 'review', pts: '+25',      label: 'Verified review' },
         ].map(item => (
           <div key={item.action} style={styles.earnItem}>
             <span style={styles.earnPts(ACTION_LABELS[item.action].color)}>{item.pts}</span>
@@ -158,7 +187,7 @@ export default function RewardsWidget() {
                 <div>
                   <div style={{ fontWeight: 600, fontSize: '.875rem' }}>{cfg.label}</div>
                   <div style={{ fontSize: '.75rem', color: '#9ca3af' }}>
-                    {new Date(row.created_at).toLocaleDateString('en-AU', { day:'numeric', month:'short', year:'numeric' })}
+                    {new Date(row.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </div>
                 </div>
                 <span style={styles.ptsBadge(row.points > 0 ? '#059669' : '#dc2626')}>
@@ -183,7 +212,7 @@ export default function RewardsWidget() {
                 disabled={data.total < step}
               >
                 <div style={{ fontWeight: 700 }}>{step} pts</div>
-                <div style={{ fontSize: '.75rem', opacity: .8 }}>${(step/80).toFixed(2)} AU</div>
+                <div style={{ fontSize: '.75rem', opacity: .8 }}>${(step / 80).toFixed(2)} AU</div>
               </button>
             ))}
           </div>
@@ -206,7 +235,7 @@ export default function RewardsWidget() {
                 disabled={redeemState.loading || data.total < redeemPts}
                 style={styles.redeemBtn(data.total >= redeemPts)}
               >
-                {redeemState.loading ? 'Generating…' : `Redeem ${redeemPts} pts for $${(redeemPts/80).toFixed(2)} AU`}
+                {redeemState.loading ? 'Generating…' : `Redeem ${redeemPts} pts for $${(redeemPts / 80).toFixed(2)} AU`}
               </button>
             </>
           )}

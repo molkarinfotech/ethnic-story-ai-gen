@@ -4,33 +4,26 @@
  * Uses user_points_summary view for the running total.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 
-function getSupabaseUser(req: NextRequest) {
-  const token =
-    req.cookies.get('sb-access-token')?.value ??
-    req.headers.get('authorization')?.replace('Bearer ', '');
-  if (!token) return null;
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: `Bearer ${token}` } } },
-  );
-}
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const sb = getSupabaseUser(req);
-  if (!sb) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const cookieStore = cookies();
+  const sb = createRouteHandlerClient({ cookies: () => cookieStore });
 
   const { data: { user }, error: authErr } = await sb.auth.getUser();
-  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (authErr || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   const [summaryRes, historyRes] = await Promise.all([
     sb
       .from('user_points_summary')
       .select('total_points')
       .eq('user_id', user.id)
-      .maybeSingle(), // maybeSingle so no error when user has 0 rows yet
+      .maybeSingle(),
     sb
       .from('user_points')
       .select('action, points, ref_id, created_at')
