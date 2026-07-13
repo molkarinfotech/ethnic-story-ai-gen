@@ -7,7 +7,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '../../../../lib/supabase';
 
 export async function POST(req: NextRequest) {
-  // Validate the user JWT supplied in the request
   const token =
     req.cookies.get('sb-access-token')?.value ??
     req.headers.get('authorization')?.replace('Bearer ', '');
@@ -21,15 +20,19 @@ export async function POST(req: NextRequest) {
   const { data: { user }, error: authErr } = await sbUser.auth.getUser();
   if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Idempotent insert via service role
   const sb = getServiceSupabase();
-  const { error } = await sb.from('user_points').insert({
-    user_id: user.id,
-    action: 'signup',
-    points: 50,
-    ref_id: user.id,
-    idempotency_key: `signup:${user.id}`,
-  }).onConflict('idempotency_key').ignore();
+
+  // Use upsert with ignoreDuplicates — compatible with supabase-js v2
+  const { error } = await sb.from('user_points').upsert(
+    {
+      user_id: user.id,
+      action: 'signup',
+      points: 50,
+      ref_id: user.id,
+      idempotency_key: `signup:${user.id}`,
+    },
+    { onConflict: 'idempotency_key', ignoreDuplicates: true },
+  );
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, points_earned: 50 });
