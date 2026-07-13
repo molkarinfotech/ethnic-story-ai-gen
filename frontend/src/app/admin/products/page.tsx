@@ -31,7 +31,6 @@ function totalStock(variants: Variant[]) {
 }
 
 // Derive unique colour names from ALL variant rows (including __colour__ anchors)
-// This means a colour shows up as soon as it's added, even before any size exists
 function uniqueColours(variants: Variant[], images: ProductImage[]): string[] {
   const seen: Record<string,true> = {};
   const out: string[] = [];
@@ -56,6 +55,10 @@ export default function AdminProductsPage() {
   const [fetchError,    setFetchError]   = useState<string | null>(null);
   const [imageMap,      setImageMap]     = useState<Record<string, ProductImage[]>>({});
   const [imagesLoaded,  setImagesLoaded] = useState<Record<string,boolean>>({});
+
+  // ── Bulk selection state ──
+  const [selectedIds,   setSelectedIds]  = useState<Set<string>>(new Set());
+  const [bulkDeleting,  setBulkDeleting] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -106,6 +109,48 @@ export default function AdminProductsPage() {
       return 0;
     });
 
+  // ── Bulk selection helpers ──
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length && filtered.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(p => p.id)));
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    if (!confirm(`Permanently delete ${count} product${count > 1 ? 's' : ''} and all their photos? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    try {
+      const res = await fetch('/api/admin/products/bulk-delete', {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [...selectedIds] }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? res.status);
+      }
+      setProducts(ps => ps.filter(p => !selectedIds.has(p.id)));
+      setSelectedIds(new Set());
+    } catch (e: unknown) {
+      alert('Bulk delete failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
   async function saveVariantStock(variantId: string, productId: string, size: string, colour: string, qty: number) {
     setSaving(s => ({ ...s, [variantId]: true }));
     const res = await fetch('/api/admin/stock', {
@@ -150,8 +195,6 @@ export default function AdminProductsPage() {
     load();
   }
 
-  // addColourGroup: saves a __colour__ anchor row so the colour appears immediately
-  // even before any real size variant exists for it
   async function addColourGroup(productId: string, colourName: string) {
     const name = colourName.trim()
       .split(/\s+/)
@@ -165,11 +208,8 @@ export default function AdminProductsPage() {
       body: JSON.stringify({ product_id: productId, size: '__colour__', colour: name, stock_count: 0 }),
     });
     if (!res.ok) { const d = await res.json().catch(() => ({})); alert(`Failed: ${d.error ?? res.status}`); return; }
-    // Optimistically add the anchor row to local state immediately
-    // so the colour group shows without waiting for a full reload
     setProducts(ps => ps.map(p => {
       if (p.id !== productId) return p;
-      // only add if not already present
       const already = p.variants.some(v => v.colour === name && v.size === '__colour__');
       if (already) return p;
       return {
@@ -227,6 +267,9 @@ export default function AdminProductsPage() {
     setProducts(ps => ps.filter(p => p.id !== id));
   }
 
+  const allSelected = filtered.length > 0 && selectedIds.size === filtered.length;
+  const someSelected = selectedIds.size > 0 && !allSelected;
+
   return (
     <div>
       {/* Header */}
@@ -244,17 +287,66 @@ export default function AdminProductsPage() {
       {/* Search */}
       <input
         type="search" placeholder="Search products or category…"
-        value={search} onChange={e => setSearch(e.target.value)}
+        value={search} onChange={e => { setSearch(e.target.value); setSelectedIds(new Set()); }}
         style={{ width: '100%', padding: '.55rem .85rem', borderRadius: '.5rem', border: '1px solid #e5e7eb', fontSize: '.875rem', marginBottom: '1rem', outline: 'none', boxSizing: 'border-box' }}
       />
 
-      {/* Summary */}
-      {!loading && !fetchError && (
-        <div style={{ fontSize: '.75rem', color: '#9ca3af', marginBottom: '.75rem', display: 'flex', gap: '1rem' }}>
+      {/* Summary + Select All row */}
+      {!loading && !fetchError && filtered.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '.75rem', color: '#9ca3af', marginBottom: '.75rem', flexWrap: 'wrap' }}>
+          {/* Select all checkbox */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', cursor: 'pointer', userSelect: 'none', color: '#6b7280', fontWeight: 600 }}>
+            <input
+              type="checkbox"
+              checked={allSelected}
+              ref={el => { if (el) el.indeterminate = someSelected; }}
+              onChange={toggleSelectAll}
+              style={{ width: 15, height: 15, accentColor: '#9d174d', cursor: 'pointer' }}
+            />
+            Select all
+          </label>
           <span>{filtered.length} product{filtered.length !== 1 ? 's' : ''}{search && ` matching "${search}"`}</span>
           {filtered.filter(p => totalStock(p.variants) === 0).length > 0 && (
             <span style={{ color: '#991b1b', fontWeight: 600 }}>⚠ {filtered.filter(p => totalStock(p.variants) === 0).length} out of stock</span>
           )}
+        </div>
+      )}
+
+      {/* ── Bulk action toolbar (shown only when items are selected) ── */}
+      {selectedIds.size > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '.75rem',
+          background: '#fff1f2', border: '1.5px solid #fca5a5',
+          borderRadius: '.7rem', padding: '.6rem 1rem',
+          marginBottom: '1rem', flexWrap: 'wrap',
+        }}>
+          <span style={{ fontWeight: 700, color: '#9d174d', fontSize: '.88rem' }}>
+            {selectedIds.size} selected
+          </span>
+          <button
+            onClick={handleBulkDelete}
+            disabled={bulkDeleting}
+            style={{
+              background: '#be123c', color: 'white', border: 'none',
+              borderRadius: '.45rem', padding: '.38rem .9rem',
+              cursor: bulkDeleting ? 'default' : 'pointer',
+              fontSize: '.83rem', fontWeight: 700,
+              opacity: bulkDeleting ? .65 : 1,
+              transition: 'opacity .15s',
+            }}
+          >
+            {bulkDeleting ? 'Deleting…' : `🗑 Delete ${selectedIds.size} product${selectedIds.size > 1 ? 's' : ''}`}
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            style={{
+              background: 'none', border: '1px solid #fca5a5',
+              borderRadius: '.45rem', padding: '.38rem .7rem',
+              color: '#6b7280', cursor: 'pointer', fontSize: '.83rem',
+            }}
+          >
+            Clear
+          </button>
         </div>
       )}
 
@@ -277,22 +369,34 @@ export default function AdminProductsPage() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
         {filtered.map(p => {
-          const total   = totalStock(p.variants);
-          const low     = total > 0 && total <= 5;
-          const isOpen  = expandedId === p.id;
-          const images  = imageMap[p.id] ?? [];
-          const colours = uniqueColours(p.variants, images);
+          const total    = totalStock(p.variants);
+          const low      = total > 0 && total <= 5;
+          const isOpen   = expandedId === p.id;
+          const images   = imageMap[p.id] ?? [];
+          const colours  = uniqueColours(p.variants, images);
+          const selected = selectedIds.has(p.id);
 
           return (
             <div key={p.id} style={{
               background: 'white', borderRadius: '.7rem',
-              border: `1px solid ${total === 0 ? '#fecaca' : '#fce7f3'}`,
-              boxShadow: '0 1px 3px rgba(0,0,0,.04)', overflow: 'hidden',
-              opacity: total === 0 ? .88 : 1,
+              border: `1.5px solid ${selected ? '#9d174d' : total === 0 ? '#fecaca' : '#fce7f3'}`,
+              boxShadow: selected ? '0 0 0 3px rgba(157,23,77,.1)' : '0 1px 3px rgba(0,0,0,.04)',
+              overflow: 'hidden',
+              opacity: total === 0 && !selected ? .88 : 1,
+              transition: 'border-color .12s, box-shadow .12s',
             }}>
 
               {/* ─── Product row ─── */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '.85rem', padding: '.75rem 1rem', flexWrap: 'wrap' }}>
+
+                {/* Checkbox */}
+                <input
+                  type="checkbox"
+                  checked={selected}
+                  onChange={() => toggleSelect(p.id)}
+                  onClick={e => e.stopPropagation()}
+                  style={{ width: 16, height: 16, accentColor: '#9d174d', cursor: 'pointer', flexShrink: 0 }}
+                />
 
                 {/* Thumbnail */}
                 {p.image ? (
@@ -413,7 +517,6 @@ function ExpandedPanel({
   function imagesByColour(c: string) {
     return images.filter(i => i.colour === c).sort((a,b) => a.sort_order - b.sort_order);
   }
-  // Variants with no colour assigned and not internal
   const noColourVariants = sortVariants(product.variants.filter(v => !v.colour || v.colour.trim() === ''));
 
   return (
@@ -474,7 +577,7 @@ function ExpandedPanel({
         </div>
       )}
 
-      {/* Empty state — shown only when truly no colours at all */}
+      {/* Empty state */}
       {colours.length === 0 && (
         <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#9ca3af' }}>
           <div style={{ fontSize: '2rem', marginBottom: '.35rem' }}>🎨</div>
@@ -553,7 +656,6 @@ function ColourGroup({
     if (fileRef.current) fileRef.current.value = '';
   }
 
-  // Only count real (non-internal) variants for stock total
   const stockTotal = variants.reduce((s,v) => s + (variantDrafts[v.id] ?? v.stock_count), 0);
 
   return (
