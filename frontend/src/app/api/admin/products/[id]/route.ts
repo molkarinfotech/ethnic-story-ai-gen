@@ -16,6 +16,20 @@ async function isAdmin(req: NextRequest): Promise<boolean> {
   }
 }
 
+/** Derive the Supabase Storage path from a public URL.
+ *  URLs look like: https://<project>.supabase.co/storage/v1/object/public/<bucket>/<path>
+ */
+function storagePathFromUrl(url: string): { bucket: string; storagePath: string } | null {
+  try {
+    const u = new URL(url);
+    const match = u.pathname.match(/^\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+    if (!match) return null;
+    return { bucket: match[1], storagePath: match[2] };
+  } catch {
+    return null;
+  }
+}
+
 const LETTER_SIZE_ORDER = ['XS','S','M','L','XL','XXL','Free Size'];
 
 // Sizes that are internal bookkeeping anchors — never shown to shoppers
@@ -113,7 +127,37 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!(await isAdmin(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const sb = getServiceSupabase();
+
+  // 1. Fetch all images for this product so we can clean up storage
+  const { data: imageRows } = await sb
+    .from('product_images')
+    .select('url')
+    .eq('product_id', id);
+
+  // 2. Delete the product (cascades to product_variants and product_images via FK)
   const { error } = await sb.from('products').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // 3. Delete associated storage files grouped by bucket (best-effort)
+  if (imageRows && imageRows.length > 0) {
+    const byBucket: Record<string, string[]> = {};
+    for (const row of imageRows) {
+      const loc = storagePathFromUrl(row.url);
+      if (loc) {
+        if (!byBucket[loc.bucket]) byBucket[loc.bucket] = [];
+        byBucket[loc.bucket].push(loc.storagePath);
+      }
+    }
+    for (const [bucket, paths] of Object.entries(byBucket)) {
+      const { error: storageErr } = await sb.storage.from(bucket).remove(paths);
+      if (storageErr) {
+        console.warn(`[products DELETE] storage removal failed for bucket "${bucket}":`, storageErr.message);
+      }
+    }
+  }
+
   return NextResponse.json({ ok: true });
 }
+
+/** Exported so the bulk-delete route can reuse the storage cleanup logic */
+export { storagePathFromUrl };
