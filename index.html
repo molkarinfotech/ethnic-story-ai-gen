@@ -67,8 +67,8 @@
     }
 
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    html{-webkit-text-size-adjust:none;text-size-adjust:none;scroll-behavior:smooth;scroll-padding-top:5rem}
-    body{min-height:100dvh;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:var(--text-base);line-height:1.6;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+    html{-webkit-text-size-adjust:none;text-size-adjust:none;scroll-behavior:smooth;scroll-padding-top:5rem;overflow-x:hidden}
+    body{min-height:100dvh;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:var(--text-base);line-height:1.6;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
     img,svg{display:block;max-width:100%;height:auto}
     a{text-decoration:none;color:inherit}
     button,input{font:inherit;color:inherit}
@@ -171,18 +171,25 @@
 
     @media (max-width: 960px){
       .nav{display:none}
-      .hero-grid,.story-grid,.newsletter-wrap,.collections,.services{grid-template-columns:1fr}
-      .hero-side{grid-template-columns:1fr;min-height:auto}
-      .metrics{grid-template-columns:1fr}
+      .hero-grid,.story-grid,.collections,.services{grid-template-columns:1fr}
+      .hero-side{grid-template-columns:1fr;min-height:auto;overflow:hidden}
+      .visual-card,.mini-card{max-width:100%;overflow:hidden}
+      .metrics{grid-template-columns:repeat(3,1fr)}
       .section-head{display:grid;align-items:start}
       .footer-inner{flex-direction:column}
+      .newsletter-wrap{display:flex;flex-direction:column;align-items:stretch}
+      .newsletter-form{flex-direction:column}
+      .newsletter-form input{min-width:100%;width:100%}
+      .newsletter-form .btn{width:100%}
     }
     @media (max-width: 640px){
       .header-inner{padding:var(--space-3) 0}
       .hero{padding-top:var(--space-8)}
-      .hero-copy h1{font-size:clamp(2.35rem,11vw,3.7rem)}
+      .hero-copy h1{font-size:clamp(2.2rem,9vw,3.2rem)}
       .newsletter-form input{min-width:100%}
       .services{gap:var(--space-3)}
+      .metrics{grid-template-columns:1fr}
+      .collection-card{min-height:18rem}
     }
     @media (prefers-reduced-motion: reduce){
       html{scroll-behavior:auto}
