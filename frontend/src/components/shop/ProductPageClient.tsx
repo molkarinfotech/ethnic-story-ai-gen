@@ -2,6 +2,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { ProductImageCarousel } from './ProductImageCarousel';
 import { SizeSelector } from './SizeSelector';
+import { LikeButton } from './LikeButton';
+import { ReviewSection } from './ReviewSection';
 import { useCart } from '../../context/CartContext';
 import { formatAUD } from '../../lib/products';
 
@@ -159,7 +161,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
             )}
           </div>
 
-          {/* ── Pre-Order disclaimer banner ─────────────────────────────── */}
+          {/* Pre-Order disclaimer */}
           {isPreOrder && (
             <div style={{
               display: 'flex',
@@ -206,7 +208,6 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
 
           {/* Variant selector + inline ATC */}
           <div ref={atcRef} className="pdp-atc">
-            {/* Only show size selector when NOT coming soon and NOT OOS */}
             {!isComingSoon && !globalOOS && (
               <>
                 <SizeSelector productId={product.id} onSizeChange={handleSizeChange} />
@@ -251,7 +252,6 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
                 : 'Add to Bag'}
             </button>
 
-            {/* Buy Now: hidden for coming soon */}
             {!isComingSoon && !globalOOS && (
               <a
                 href="#"
@@ -262,8 +262,18 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
                 Buy Now
               </a>
             )}
+
+            {/* Like button — below ATC */}
+            <div style={{ marginTop: 'var(--space-4)', display: 'flex', alignItems: 'center' }}>
+              <LikeButton productId={product.id} />
+            </div>
           </div>
         </div>
+      </div>
+
+      {/* Reviews — full width below the two-column layout */}
+      <div className="pdp-reviews-wrap" style={{ maxWidth: 'var(--content-default)', margin: '0 auto', padding: '0 var(--space-4)' }}>
+        <ReviewSection productId={product.id} />
       </div>
     </>
   );
