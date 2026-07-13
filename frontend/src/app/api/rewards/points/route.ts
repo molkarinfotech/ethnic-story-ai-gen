@@ -1,30 +1,61 @@
 /**
  * GET /api/rewards/points
  * Returns the authenticated user's total points and point history.
- * Uses user_points_summary view for the running total.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
+import { getServiceSupabase } from '../../../../lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest) {
-  const cookieStore = cookies();
-  const sb = createRouteHandlerClient({ cookies: () => cookieStore });
+/** Extract the Supabase JWT from the chunked or legacy session cookie. */
+function getTokenFromRequest(req: NextRequest): string | null {
+  // Legacy cookie used by older Supabase setups
+  const legacy = req.cookies.get('sb-access-token')?.value;
+  if (legacy) return legacy;
 
-  const { data: { user }, error: authErr } = await sb.auth.getUser();
-  if (authErr || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // New chunked cookie: sb-<project-ref>-auth-token  (may be split into .0, .1, …)
+  // Collect all matching chunks and join them
+  const chunks: string[] = [];
+  let i = 0;
+  while (true) {
+    const chunk = req.cookies.get(
+      i === 0 ? 'sb-jcqywnbawpwtuaujqyyt-auth-token'
+              : `sb-jcqywnbawpwtuaujqyyt-auth-token.${i - 1}`,
+    )?.value;
+    if (!chunk) break;
+    chunks.push(chunk);
+    i++;
+  }
+  if (chunks.length > 0) {
+    try {
+      const session = JSON.parse(chunks.join(''));
+      return session?.access_token ?? null;
+    } catch {
+      return chunks[0]; // might already be a raw JWT
+    }
   }
 
+  // Fallback: Authorization header
+  return req.headers.get('authorization')?.replace('Bearer ', '') ?? null;
+}
+
+export async function GET(req: NextRequest) {
+  const token = getTokenFromRequest(req);
+  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Verify token and get user via service role
+  const svc = getServiceSupabase();
+  const { data: { user }, error: authErr } = await svc.auth.getUser(token);
+  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const [summaryRes, historyRes] = await Promise.all([
-    sb
+    svc
       .from('user_points_summary')
       .select('total_points')
       .eq('user_id', user.id)
       .maybeSingle(),
-    sb
+    svc
       .from('user_points')
       .select('action, points, ref_id, created_at')
       .eq('user_id', user.id)

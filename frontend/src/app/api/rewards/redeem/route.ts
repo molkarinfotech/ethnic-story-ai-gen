@@ -4,8 +4,6 @@
  * Minimum 200 pts = $2.50 AUD (80 pts = $1 AUD).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
 import { getServiceSupabase } from '../../../../lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -13,19 +11,46 @@ export const dynamic = 'force-dynamic';
 const RATE_PTS_PER_DOLLAR = 80;
 const MIN_REDEEM_PTS      = 200;
 
+/** Extract the Supabase JWT from the chunked or legacy session cookie. */
+function getTokenFromRequest(req: NextRequest): string | null {
+  const legacy = req.cookies.get('sb-access-token')?.value;
+  if (legacy) return legacy;
+
+  const chunks: string[] = [];
+  let i = 0;
+  while (true) {
+    const chunk = req.cookies.get(
+      i === 0 ? 'sb-jcqywnbawpwtuaujqyyt-auth-token'
+              : `sb-jcqywnbawpwtuaujqyyt-auth-token.${i - 1}`,
+    )?.value;
+    if (!chunk) break;
+    chunks.push(chunk);
+    i++;
+  }
+  if (chunks.length > 0) {
+    try {
+      const session = JSON.parse(chunks.join(''));
+      return session?.access_token ?? null;
+    } catch {
+      return chunks[0];
+    }
+  }
+
+  return req.headers.get('authorization')?.replace('Bearer ', '') ?? null;
+}
+
 function generateCoupon(): string {
   const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
   return `ES-${rand}`;
 }
 
 export async function POST(req: NextRequest) {
-  const cookieStore = cookies();
-  const sb = createRouteHandlerClient({ cookies: () => cookieStore });
+  const token = getTokenFromRequest(req);
+  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { data: { user }, error: authErr } = await sb.auth.getUser();
-  if (authErr || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const svc = getServiceSupabase();
+  const { data: { user }, error: authErr } = await svc.auth.getUser(token);
+  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json() as { points?: number };
   const points = body.points;
@@ -37,8 +62,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const svc = getServiceSupabase();
-
+  // Check balance
   const { data: summary } = await svc
     .from('user_points_summary')
     .select('total_points')
@@ -57,6 +81,7 @@ export async function POST(req: NextRequest) {
   const coupon_code = generateCoupon();
   const idem_key    = `redeem:${user.id}:${coupon_code}`;
 
+  // Deduct points
   const { error: deductErr } = await svc.rpc('award_points', {
     p_user_id:  user.id,
     p_action:   'redeem',
@@ -66,6 +91,7 @@ export async function POST(req: NextRequest) {
   });
   if (deductErr) return NextResponse.json({ error: deductErr.message }, { status: 500 });
 
+  // Record redemption
   const { error: redeemErr } = await svc.from('reward_redemptions').insert({
     user_id:      user.id,
     points_spent: points,
@@ -78,15 +104,13 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const cookieStore = cookies();
-  const sb = createRouteHandlerClient({ cookies: () => cookieStore });
-
-  const { data: { user }, error: authErr } = await sb.auth.getUser();
-  if (authErr || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const token = getTokenFromRequest(req);
+  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const svc = getServiceSupabase();
+  const { data: { user }, error: authErr } = await svc.auth.getUser(token);
+  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const { data, error } = await svc
     .from('reward_redemptions')
     .select('coupon_code, points_spent, discount_aud, redeemed_at, used_at')
