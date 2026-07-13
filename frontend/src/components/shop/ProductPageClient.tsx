@@ -24,6 +24,9 @@ const TAB_BAR_HEIGHT = 'calc(64px + env(safe-area-inset-bottom))';
 export function ProductPageClient({ product, colourImages, badge, discount, origPrice }: Props) {
   const { addItem, openCart } = useCart();
 
+  // ── Coming Soon gate ──────────────────────────────────────────────────────
+  const isComingSoon = badge === 'Coming Soon';
+
   const [selectedColour, setSelectedColour] = useState<string>(() =>
     Object.keys(colourImages)[0] ?? ''
   );
@@ -53,6 +56,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
   const [stockChecked, setStockChecked] = useState(false);
 
   useEffect(() => {
+    if (isComingSoon) { setStockChecked(true); return; }
     fetch(`/api/variants/${product.id}`)
       .then(r => r.json())
       .then((data: { stock_count: number }[]) => {
@@ -64,7 +68,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
       })
       .catch(() => {})
       .finally(() => setStockChecked(true));
-  }, [product.id]);
+  }, [product.id, isComingSoon]);
 
   const images: string[] = (
     colourImages[selectedColour] ??
@@ -87,7 +91,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
   }, [selectedColour]);
 
   function doAdd(sticky = false) {
-    if (globalOOS) return;
+    if (isComingSoon || globalOOS) return;
     if (!size) { setError(true); return; }
     if (!sizeInStock) return;
     const safeQty = Math.min(qty, maxQty);
@@ -99,7 +103,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     openCart();
   }
 
-  const outOfStock = globalOOS || (size !== null && !sizeInStock);
+  const outOfStock = !isComingSoon && (globalOOS || (size !== null && !sizeInStock));
   const atMax      = size !== null && qty >= maxQty;
 
   return (
@@ -143,13 +147,27 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
             <span className="pdp-price-main">{formatAUD(product.price)}</span>
             {origPrice && <s style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-faint)' }}>{formatAUD(origPrice)}</s>}
             {discount && <span style={{ background: 'var(--color-gold-soft)', color: 'var(--color-gold)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: '.25rem .7rem', borderRadius: 'var(--radius-full)' }}>Save {discount}%</span>}
-            {stockChecked && globalOOS && (
+            {stockChecked && globalOOS && !isComingSoon && (
               <span style={{ background: '#fee2e2', color: '#b91c1c', fontSize: 'var(--text-xs)', fontWeight: 700, padding: '.25rem .7rem', borderRadius: 'var(--radius-full)', border: '1px solid #fca5a5' }}>Out of Stock</span>
+            )}
+            {isComingSoon && (
+              <span style={{ background: '#eff6ff', color: '#1d4ed8', fontSize: 'var(--text-xs)', fontWeight: 700, padding: '.25rem .7rem', borderRadius: 'var(--radius-full)', border: '1px solid #bfdbfe' }}>Coming Soon</span>
             )}
           </div>
 
+          {/* Coming Soon banner */}
+          {isComingSoon && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4) var(--space-5)', marginBottom: 'var(--space-5)' }}>
+              <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>⏳</span>
+              <div>
+                <div style={{ fontWeight: 700, color: '#1d4ed8', fontSize: 'var(--text-sm)' }}>Coming Soon</div>
+                <div style={{ color: '#6b7280', fontSize: 'var(--text-xs)', marginTop: '.2rem' }}>This piece is not yet available for purchase. Check back soon or sign up below to be notified.</div>
+              </div>
+            </div>
+          )}
+
           {/* OOS banner */}
-          {stockChecked && globalOOS && (
+          {stockChecked && globalOOS && !isComingSoon && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4) var(--space-5)', marginBottom: 'var(--space-5)' }}>
               <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>🚫</span>
               <div>
@@ -161,7 +179,8 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
 
           {/* Variant selector + inline ATC */}
           <div ref={atcRef} className="pdp-atc">
-            {!globalOOS && (
+            {/* Only show size selector when NOT coming soon and NOT OOS */}
+            {!isComingSoon && !globalOOS && (
               <>
                 <SizeSelector productId={product.id} onSizeChange={handleSizeChange} />
                 {error && !size && (
@@ -187,27 +206,32 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
             <button
               className={`btn btn-primary pdp-atc-btn${added ? ' pdp-atc-btn--added' : ''}`}
               onClick={() => doAdd(false)}
-              disabled={outOfStock}
+              disabled={isComingSoon || outOfStock}
+              aria-disabled={isComingSoon || outOfStock}
               style={{
                 width: '100%', justifyContent: 'center',
                 marginTop: 'var(--space-4)',
-                opacity: outOfStock ? 0.5 : 1,
-                ...(globalOOS ? { background: '#9ca3af', cursor: 'not-allowed', boxShadow: 'none' } : {}),
+                opacity: (isComingSoon || outOfStock) ? 0.5 : 1,
+                cursor: (isComingSoon || outOfStock) ? 'not-allowed' : 'pointer',
+                ...((isComingSoon || globalOOS) ? { background: '#9ca3af', boxShadow: 'none' } : {}),
               }}
             >
-              {added ? '✓ Added to Bag'
-                : globalOOS ? '🚫 Out of Stock'
-                : outOfStock ? 'Out of Stock'
+              {isComingSoon     ? '⏳ Coming Soon'
+                : added         ? '✓ Added to Bag'
+                : globalOOS     ? '🚫 Out of Stock'
+                : outOfStock    ? 'Out of Stock'
                 : 'Add to Bag'}
             </button>
 
-            {!globalOOS && (
+            {/* Buy Now: hidden for coming soon */}
+            {!isComingSoon && !globalOOS && (
               <a href="/checkout" className="btn btn--outline" style={{ width: '100%', justifyContent: 'center', display: 'flex', marginTop: 'var(--space-3)' }}>
                 Buy Now
               </a>
             )}
 
-            {stockChecked && globalOOS && (
+            {/* Notify Me: shown for both OOS and Coming Soon */}
+            {stockChecked && (globalOOS || isComingSoon) && (
               <NotifyMe
                 productId={product.id}
                 productName={product.name}
@@ -289,30 +313,33 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
           <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', marginTop: '.15rem' }}>
             <span style={{ fontWeight: 700, color: 'var(--color-primary)', fontSize: '.9rem' }}>{formatAUD(product.price)}</span>
             {origPrice && <s style={{ fontSize: '.75rem', color: 'var(--color-text-faint)' }}>{formatAUD(origPrice)}</s>}
-            {size && <span style={{ background: 'var(--color-primary-highlight)', color: 'var(--color-primary)', borderRadius: '.3rem', padding: '.1rem .4rem', fontSize: '.68rem', fontWeight: 700 }}>{size}</span>}
+            {size && !isComingSoon && <span style={{ background: 'var(--color-primary-highlight)', color: 'var(--color-primary)', borderRadius: '.3rem', padding: '.1rem .4rem', fontSize: '.68rem', fontWeight: 700 }}>{size}</span>}
+            {isComingSoon && <span style={{ background: '#eff6ff', color: '#1d4ed8', borderRadius: '.3rem', padding: '.1rem .4rem', fontSize: '.68rem', fontWeight: 700 }}>Coming Soon</span>}
           </div>
         </div>
         <button
           onClick={() => doAdd(true)}
-          disabled={outOfStock}
+          disabled={isComingSoon || outOfStock}
+          aria-disabled={isComingSoon || outOfStock}
           style={{
             flexShrink: 0,
             padding: '.7rem 1.4rem',
             borderRadius: 'var(--radius-full)',
             border: 'none',
-            background: outOfStock ? '#9ca3af' : 'var(--color-primary)',
+            background: (isComingSoon || outOfStock) ? '#9ca3af' : 'var(--color-primary)',
             color: 'white',
             fontWeight: 700,
             fontSize: '.88rem',
-            cursor: outOfStock ? 'not-allowed' : 'pointer',
+            cursor: (isComingSoon || outOfStock) ? 'not-allowed' : 'pointer',
             transition: 'background .2s',
             whiteSpace: 'nowrap',
-            boxShadow: outOfStock ? 'none' : '0 4px 14px rgba(157,23,77,0.35)',
+            boxShadow: (isComingSoon || outOfStock) ? 'none' : '0 4px 14px rgba(157,23,77,0.35)',
           }}
         >
-          {stickyAdded ? '✓ Added!'
-            : globalOOS  ? '🚫 Out of Stock'
-            : outOfStock ? 'Out of Stock'
+          {isComingSoon    ? '⏳ Coming Soon'
+            : stickyAdded ? '✓ Added!'
+            : globalOOS    ? '🚫 Out of Stock'
+            : outOfStock   ? 'Out of Stock'
             : '🛒 Add to Bag'}
         </button>
       </div>
@@ -320,7 +347,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
   );
 }
 
-// ── Notify Me widget — wired to /api/notify-restock ──────────────────────────
+// ── Notify Me widget — wired to /api/notify-restock ─────────────────────────────────────────────
 function NotifyMe({ productId, productName, productSlug }: { productId: string; productName: string; productSlug: string }) {
   const [email, setEmail] = useState('');
   const [sent, setSent]   = useState(false);
@@ -355,7 +382,7 @@ function NotifyMe({ productId, productName, productSlug }: { productId: string; 
 
   return (
     <form onSubmit={submit} style={{ marginTop: 'var(--space-4)' }}>
-      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em' }}>🔔 Notify me when back in stock</p>
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em' }}>🔔 Notify me when available</p>
       <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
         <input
           type="email" value={email} onChange={e => setEmail(e.target.value)}
