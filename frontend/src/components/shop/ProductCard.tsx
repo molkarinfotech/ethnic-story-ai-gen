@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Product, formatAUD } from '../../lib/products';
 import { useCart } from '../../context/CartContext';
+import { LikeButton } from './LikeButton';
 
 type Variant = { id: string; size: string; colour: string; stock_count: number };
 
@@ -14,11 +15,6 @@ function uniqueColours(variants: Variant[]): string[] {
   return out;
 }
 
-/** Build a deduplicated image list from a fresh /api/products/[id] response.
- *  prod.image  = resolved first gallery image (server already picks this)
- *  prod.images = flat array of ALL gallery images
- *  fallback    = the stale prop value passed from the parent (used only when API returns nothing)
- */
 function normaliseImageList(prod: any, fallback?: string | null): string[] {
   const ordered = [
     prod?.image,
@@ -45,7 +41,6 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
 
   const isPreOrder = badge === 'Pre-Order';
 
-  // Pre-fetch variants (for OOS state) + fresh images on mount
   useEffect(() => {
     fetch(`/api/variants/${id}`)
       .then(r => r.json())
@@ -57,7 +52,6 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
       })
       .catch(() => setStockLoaded(true));
 
-    // Always replace card image with the fresh resolved gallery image
     fetch(`/api/products/${id}`)
       .then(r => r.json())
       .then(prod => {
@@ -67,7 +61,6 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
       .catch(() => {});
   }, [id, image]);
 
-  // Fetch variants + images on expand (in-stock only for the picker)
   useEffect(() => {
     if (!expanded) return;
     setLoading(true);
@@ -149,26 +142,13 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
             {formatAUD(price)}
             {originalPrice && <s>{formatAUD(originalPrice)}</s>}
           </div>
-          {/* Pre-Order disclaimer on card */}
           {isPreOrder && (
             <div style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '.35rem',
-              marginTop: '.45rem',
-              background: '#fff1f2',
-              border: '1px solid #fca5a5',
-              borderRadius: '.45rem',
-              padding: '.4rem .55rem',
+              display: 'flex', alignItems: 'flex-start', gap: '.35rem', marginTop: '.45rem',
+              background: '#fff1f2', border: '1px solid #fca5a5', borderRadius: '.45rem', padding: '.4rem .55rem',
             }}>
               <span style={{ fontSize: '.75rem', flexShrink: 0, marginTop: '.05rem' }}>⚠️</span>
-              <p style={{
-                fontSize: '.68rem',
-                color: '#dc2626',
-                lineHeight: 1.45,
-                margin: 0,
-                maxWidth: '100%',
-              }}>
+              <p style={{ fontSize: '.68rem', color: '#dc2626', lineHeight: 1.45, margin: 0, maxWidth: '100%' }}>
                 Not available locally. Ships from India — allow <strong>2–4 weeks</strong> delivery.
               </p>
             </div>
@@ -227,6 +207,11 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
             : expanded && variants.length === 0 && !loading ? 'Out of stock'
             : 'Add to Bag'}
         </button>
+
+        {/* Like button — below Add to Bag on card */}
+        <div style={{ marginTop: '.55rem', display: 'flex', justifyContent: 'center' }}>
+          <LikeButton productId={id} />
+        </div>
       </div>
     </div>
   );
