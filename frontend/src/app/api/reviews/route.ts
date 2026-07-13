@@ -39,7 +39,10 @@ export async function GET(req: NextRequest) {
   const sb = getServiceSupabase();
   const { data, error, count } = await sb
     .from('product_reviews')
-    .select('id, rating, body, created_at, user_id, profiles(display_name, avatar_url)', { count: 'exact' })
+    .select(
+      'id, rating, body, created_at, user_id, profiles!product_reviews_user_id_profiles_fkey(display_name, avatar_url)',
+      { count: 'exact' }
+    )
     .eq('product_id', productId)
     .order('created_at', { ascending: false })
     .range(from, from + limit - 1);
