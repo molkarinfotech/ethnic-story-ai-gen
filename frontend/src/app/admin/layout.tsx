@@ -27,12 +27,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/appearance', label: 'Appearance', icon: '🎨' },
   ];
 
+  // All nav items available on mobile via horizontally-scrollable bottom bar
   const mobileNav = [
-    { href: '/admin/dashboard', label: 'Home',     icon: '📊' },
-    { href: '/admin/products',  label: 'Products', icon: '👗' },
-    { href: '/admin/orders',    label: 'Orders',   icon: '📦' },
-    { href: '/admin/checkout',  label: 'Checkout', icon: '🛒' },
-    { href: '/admin/scan',      label: 'Scan',     icon: '📷' },
+    { href: '/admin/dashboard',  label: 'Home',       icon: '📊' },
+    { href: '/admin/products',   label: 'Products',   icon: '👗' },
+    { href: '/admin/orders',     label: 'Orders',     icon: '📦' },
+    { href: '/admin/checkout',   label: 'Checkout',   icon: '🛒' },
+    { href: '/admin/scan',       label: 'Scan',       icon: '📷' },
+    { href: '/admin/import',     label: 'Import',     icon: '📥' },
+    { href: '/admin/categories', label: 'Categories', icon: '🏷️' },
+    { href: '/admin/appearance', label: 'Appearance', icon: '🎨' },
   ];
 
   function isActive(href: string) {
@@ -82,7 +86,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         boxShadow: '0 2px 8px rgba(0,0,0,.18)',
       }}>
         <a href="/admin/dashboard" style={{ display: 'flex', alignItems: 'center', gap: '.75rem', textDecoration: 'none' }}>
-          {/* Logo image — white bg; mix-blend-mode:multiply makes the white transparent on the pink bar */}
           <img
             src="/logo.jpg"
             alt="Ethnic Story"
@@ -115,6 +118,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           @media (min-width: 768px) { .admin-bottom-nav { display: none !important; } }
           @media (min-width: 768px) { .admin-content { padding: 2rem 2.5rem !important; } }
           .admin-nav-link:hover { background: #fdf2f8 !important; color: #9d174d !important; }
+          .admin-bottom-nav { scrollbar-width: none; }
+          .admin-bottom-nav::-webkit-scrollbar { display: none; }
+          .admin-bottom-nav > a { flex: 0 0 auto; min-width: 62px; }
         `}</style>
 
         <aside className="admin-sidebar" style={{
@@ -144,13 +150,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </main>
       </div>
 
-      {/* Mobile bottom nav */}
-      <nav className="admin-bottom-nav" style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0,
-        background: 'white', borderTop: '1.5px solid #fce7f3',
-        display: 'flex', zIndex: 20,
-        boxShadow: '0 -2px 12px rgba(0,0,0,.07)',
-      }}>
+      {/* Mobile bottom nav — horizontally scrollable so all sections are reachable */}
+      <nav
+        className="admin-bottom-nav"
+        style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0,
+          background: 'white', borderTop: '1.5px solid #fce7f3',
+          display: 'flex', overflowX: 'auto', zIndex: 20,
+          boxShadow: '0 -2px 12px rgba(0,0,0,.07)',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
         {mobileNav.map(item => {
           const active = isActive(item.href);
           return (
@@ -158,7 +168,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               key={item.href}
               href={item.href}
               style={{
-                flex: 1, display: 'flex', flexDirection: 'column',
+                flex: '0 0 auto',
+                minWidth: '62px',
+                display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',
                 padding: '.5rem .5rem .4rem',
                 textDecoration: 'none',
