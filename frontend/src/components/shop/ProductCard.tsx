@@ -43,6 +43,8 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
   const [imgIdx, setImgIdx]             = useState(0);
   const timerRef                        = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const isPreOrder = badge === 'Pre-Order';
+
   // Pre-fetch variants (for OOS state) + fresh images on mount
   useEffect(() => {
     fetch(`/api/variants/${id}`)
@@ -147,6 +149,30 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
             {formatAUD(price)}
             {originalPrice && <s>{formatAUD(originalPrice)}</s>}
           </div>
+          {/* Pre-Order disclaimer on card */}
+          {isPreOrder && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '.35rem',
+              marginTop: '.45rem',
+              background: '#fff1f2',
+              border: '1px solid #fca5a5',
+              borderRadius: '.45rem',
+              padding: '.4rem .55rem',
+            }}>
+              <span style={{ fontSize: '.75rem', flexShrink: 0, marginTop: '.05rem' }}>⚠️</span>
+              <p style={{
+                fontSize: '.68rem',
+                color: '#dc2626',
+                lineHeight: 1.45,
+                margin: 0,
+                maxWidth: '100%',
+              }}>
+                Not available locally. Ships from India — allow <strong>2–4 weeks</strong> delivery.
+              </p>
+            </div>
+          )}
         </div>
       </a>
 
@@ -195,6 +221,7 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
         >
           {added ? '✓ Added to Bag'
             : isOOS ? 'Out of Stock'
+            : isPreOrder && !expanded ? '🛒 Pre-Order'
             : expanded && hasColours && !selectedColour ? 'Select a colour'
             : expanded && !selectedSize && variants.length > 0 ? 'Select a size'
             : expanded && variants.length === 0 && !loading ? 'Out of stock'
