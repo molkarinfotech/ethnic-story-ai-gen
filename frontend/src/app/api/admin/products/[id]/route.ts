@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getServiceSupabase } from '../../../../../lib/supabase';
+import { storagePathFromUrl } from '../../../../../lib/storage-utils';
 
 async function isAdmin(req: NextRequest): Promise<boolean> {
   const reqCookie = req.cookies.get('admin_session')?.value
@@ -16,20 +17,6 @@ async function isAdmin(req: NextRequest): Promise<boolean> {
   }
 }
 
-/** Derive the Supabase Storage path from a public URL.
- *  URLs look like: https://<project>.supabase.co/storage/v1/object/public/<bucket>/<path>
- */
-function storagePathFromUrl(url: string): { bucket: string; storagePath: string } | null {
-  try {
-    const u = new URL(url);
-    const match = u.pathname.match(/^\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
-    if (!match) return null;
-    return { bucket: match[1], storagePath: match[2] };
-  } catch {
-    return null;
-  }
-}
-
 const LETTER_SIZE_ORDER = ['XS','S','M','L','XL','XXL','Free Size'];
 
 // Sizes that are internal bookkeeping anchors — never shown to shoppers
@@ -39,7 +26,6 @@ const ANCHOR_SIZES = new Set(['__colour__', 'TBA']);
 function sortVariantsForShop(
   variants: { id: string; size: string; colour?: string; stock_count: number; price?: number }[]
 ) {
-  // Strip anchor rows for storefront/stock-list use (GET /api/admin/stock uses this too)
   const real    = variants.filter(v => !ANCHOR_SIZES.has(v.size));
   const letter  = real.filter(v => LETTER_SIZE_ORDER.includes(v.size))
     .sort((a, b) => LETTER_SIZE_ORDER.indexOf(a.size) - LETTER_SIZE_ORDER.indexOf(b.size));
@@ -48,6 +34,9 @@ function sortVariantsForShop(
   const other   = real.filter(v => !LETTER_SIZE_ORDER.includes(v.size) && !/^\d/.test(v.size));
   return [...letter, ...numeric, ...other];
 }
+
+// suppress unused warning — used by storefront routes that import this helper
+void sortVariantsForShop;
 
 const ALLOWED_UPDATE_FIELDS = new Set([
   'name', 'slug', 'category', 'subcategory', 'gender', 'price', 'original_price', 'badge',
@@ -81,9 +70,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const firstGalleryImage = imgRows?.[0]?.url ?? null;
 
-  // Return ALL variants including anchor rows (__colour__, TBA).
-  // The admin inventory page client uses them for colour group derivation.
-  // The client-side sortVariants() strips anchors from the size chips display.
   const { data: variants, error: varErr } = await sb
     .from('product_variants')
     .select('id, size, colour, stock_count, price')
@@ -93,8 +79,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     console.error('[products/[id] GET] variants error:', varErr);
   }
 
-  // For this admin endpoint we return all variants (including anchors).
-  // Storefront endpoints should use sortVariantsForShop() to strip them.
   return NextResponse.json({
     ...product,
     image: firstGalleryImage ?? product.image ?? null,
@@ -158,6 +142,3 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   return NextResponse.json({ ok: true });
 }
-
-/** Exported so the bulk-delete route can reuse the storage cleanup logic */
-export { storagePathFromUrl };

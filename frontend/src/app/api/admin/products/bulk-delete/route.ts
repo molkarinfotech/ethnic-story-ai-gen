@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getServiceSupabase } from '../../../../../lib/supabase';
+import { storagePathFromUrl } from '../../../../../lib/storage-utils';
 
 async function isAdmin(req: NextRequest): Promise<boolean> {
   const reqCookie = req.cookies.get('admin_session')?.value
@@ -16,57 +17,32 @@ async function isAdmin(req: NextRequest): Promise<boolean> {
   }
 }
 
-function storagePathFromUrl(url: string): { bucket: string; storagePath: string } | null {
-  try {
-    const u = new URL(url);
-    const match = u.pathname.match(/^\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
-    if (!match) return null;
-    return { bucket: match[1], storagePath: match[2] };
-  } catch {
-    return null;
-  }
-}
-
 export async function DELETE(req: NextRequest) {
-  if (!(await isAdmin(req))) {
+  if (!(await isAdmin(req)))
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
 
-  let ids: string[];
-  try {
-    const body = await req.json();
-    ids = body.ids;
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
+  const body = await req.json().catch(() => ({}));
+  const { ids } = body as { ids?: string[] };
 
-  if (!Array.isArray(ids) || ids.length === 0) {
-    return NextResponse.json({ error: 'ids must be a non-empty array' }, { status: 400 });
-  }
+  if (!Array.isArray(ids) || ids.length === 0)
+    return NextResponse.json({ error: 'ids array required' }, { status: 400 });
 
   const sb = getServiceSupabase();
 
-  // 1. Fetch all image URLs before deleting so we can clean up storage
+  // 1. Fetch all image URLs before deleting (cascade will remove the rows)
   const { data: imageRows } = await sb
     .from('product_images')
     .select('url')
     .in('product_id', ids);
 
-  // 2. Delete all products (DB cascade removes product_variants + product_images rows)
-  const { error: deleteError } = await sb
-    .from('products')
-    .delete()
-    .in('id', ids);
+  // 2. Delete all products (cascades to product_variants + product_images)
+  const { error } = await sb.from('products').delete().in('id', ids);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 500 });
-  }
-
-  // 3. Delete storage files grouped by bucket (best-effort — don't fail the response)
+  // 3. Clean up storage files grouped by bucket (best-effort)
   if (imageRows && imageRows.length > 0) {
     const byBucket: Record<string, string[]> = {};
     for (const row of imageRows) {
-      if (!row.url) continue;
       const loc = storagePathFromUrl(row.url);
       if (loc) {
         if (!byBucket[loc.bucket]) byBucket[loc.bucket] = [];
@@ -76,7 +52,7 @@ export async function DELETE(req: NextRequest) {
     for (const [bucket, paths] of Object.entries(byBucket)) {
       const { error: storageErr } = await sb.storage.from(bucket).remove(paths);
       if (storageErr) {
-        console.warn(`[bulk-delete] storage removal failed for bucket "${bucket}":`, storageErr.message);
+        console.warn(`[bulk-delete] storage error for "${bucket}":`, storageErr.message);
       }
     }
   }
