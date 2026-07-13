@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 type ParsedRow = {
@@ -18,30 +18,33 @@ type ParsedRow = {
   _errors: string[];
 };
 
-const REQUIRED = ['name','category','price','size','stock'] as const;
-const VALID_CATEGORIES = ['sarees','lehengas','kurtas','sherwanis','kids'];
-const VALID_GENDERS    = ['women','men','kids','unisex'];
+type CategoryOption = { slug: string; label: string };
 
-function validateRow(row: ParsedRow): string[] {
+const REQUIRED    = ['name','category','price','size','stock'] as const;
+const VALID_GENDERS = ['women','men','kids','unisex'];
+
+function validateRow(row: ParsedRow, validCategorySlugs: string[]): string[] {
   const errs: string[] = [];
   for (const f of REQUIRED) if (!row[f]?.trim()) errs.push(`${f} required`);
   if (row.price && isNaN(Number(row.price))) errs.push('price must be a number');
   if (row.original_price && isNaN(Number(row.original_price))) errs.push('original_price must be a number');
   if (row.stock && isNaN(Number(row.stock))) errs.push('stock must be a number');
-  if (row.category && !VALID_CATEGORIES.includes(row.category.trim().toLowerCase()))
-    errs.push(`category must be one of: ${VALID_CATEGORIES.join(', ')}`);
+  if (row.category && validCategorySlugs.length > 0 && !validCategorySlugs.includes(row.category.trim().toLowerCase()))
+    errs.push(`category must be one of: ${validCategorySlugs.join(', ')}`);
   if (row.gender && !VALID_GENDERS.includes(row.gender.trim().toLowerCase()))
-    errs.push(`gender must be one of: ${VALID_GENDERS.join(', ')}`);
+    errs.push(`gender must be one of: ${VALID_GENDERS.join('، ')}`);
   return errs;
 }
 
-function downloadTemplate() {
+function downloadTemplate(categories: CategoryOption[]) {
+  const catExample = categories[0]?.slug ?? 'sarees';
+  const catExample2 = categories.find(c => c.slug !== catExample)?.slug ?? catExample;
   const headers = ['name','subtitle','category','gender','price','original_price','badge','slug','description','size','colour','stock'];
   const rows = [
-    ['Banarasi Silk Saree','Handwoven zari border','sarees','women','129','159','New','banarasi-silk','Luxurious silk saree','Free Size','Red','10'],
-    ['Banarasi Silk Saree','','sarees','women','129','','','','','Free Size','Blue','6'],
-    ['Ivory Sherwani Set','Groom collection','sherwanis','men','349','','Premium','','','M','Ivory','8'],
-    ['Boys Kurta Pyjama','Soft cotton ages 1-8','kurtas','kids','19','25','Sale','','','S','White','15'],
+    ['Banarasi Silk Saree','Handwoven zari border',catExample,'women','129','159','New','banarasi-silk','Luxurious silk saree','Free Size','Red','10'],
+    ['Banarasi Silk Saree','',catExample,'women','129','','','','','Free Size','Blue','6'],
+    ['Ivory Sherwani Set','Groom collection',catExample2,'men','349','','Premium','','','M','Ivory','8'],
+    ['Boys Kurta Pyjama','Soft cotton ages 1-8',catExample,'kids','19','25','Sale','','','S','White','15'],
   ];
   const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -52,7 +55,7 @@ function downloadTemplate() {
 }
 
 export default function ImportPage() {
-  const router = useRouter();
+  const router  = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [rows,       setRows]       = useState<ParsedRow[]>([]);
   const [fileName,   setFileName]   = useState('');
@@ -61,9 +64,32 @@ export default function ImportPage() {
   const [result,     setResult]     = useState<{created:number;updated:number;variantsUpserted:number;total:number;errors:string[]} | null>(null);
   const [parseError, setParseError] = useState('');
 
-  const errorRows  = rows.filter(r => r._errors.length > 0);
-  const validRows  = rows.filter(r => r._errors.length === 0);
-  const canImport  = validRows.length > 0 && !importing;
+  // Live categories from DB — same source as scan page and edit page
+  const [categories,       setCategories]       = useState<CategoryOption[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/admin/categories', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then((cats: CategoryOption[]) => {
+        if (Array.isArray(cats)) setCategories(cats);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingCategories(false));
+  }, []);
+
+  const validCategorySlugs = categories.map(c => c.slug);
+
+  // Re-validate rows whenever categories load (in case file was chosen before cats arrived)
+  useEffect(() => {
+    if (categories.length === 0 || rows.length === 0) return;
+    setRows(prev => prev.map(r => ({ ...r, _errors: validateRow(r, validCategorySlugs) })));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories]);
+
+  const errorRows = rows.filter(r => r._errors.length > 0);
+  const validRows = rows.filter(r => r._errors.length === 0);
+  const canImport = validRows.length > 0 && !importing;
 
   async function handleFile(file: File) {
     setParsing(true); setParseError(''); setRows([]); setResult(null);
@@ -72,7 +98,7 @@ export default function ImportPage() {
       let parsed: ParsedRow[] = [];
 
       if (file.name.endsWith('.csv')) {
-        const text = await file.text();
+        const text  = await file.text();
         const lines = text.split('\n').filter(l => l.trim());
         if (lines.length < 2) throw new Error('File has no data rows');
         const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g,'').trim().toLowerCase());
@@ -81,7 +107,7 @@ export default function ImportPage() {
           const obj: Record<string,string> = {};
           headers.forEach((h,i) => { obj[h] = (vals[i]??'').trim(); });
           const row = obj as unknown as ParsedRow;
-          row._errors = validateRow(row);
+          row._errors = validateRow(row, validCategorySlugs);
           return row;
         });
       } else {
@@ -94,7 +120,7 @@ export default function ImportPage() {
           const row: Record<string,string> = {};
           for (const k of Object.keys(r)) row[k.toLowerCase().trim()] = String(r[k] ?? '').trim();
           const pr = row as unknown as ParsedRow;
-          pr._errors = validateRow(pr);
+          pr._errors = validateRow(pr, validCategorySlugs);
           return pr;
         });
       }
@@ -148,17 +174,33 @@ export default function ImportPage() {
 
       <div style={{ maxWidth:'680px', margin:'0 auto', padding:'1rem' }}>
 
+        {/* Live categories pill strip */}
+        {!loadingCategories && categories.length > 0 && (
+          <div style={{ display:'flex', gap:'.4rem', flexWrap:'wrap', marginBottom:'.75rem', alignItems:'center' }}>
+            <span style={{ fontSize:'.73rem', color:'#9ca3af', fontWeight:600, textTransform:'uppercase', letterSpacing:'.04em' }}>Valid categories:</span>
+            {categories.map(c => (
+              <span key={c.slug} style={{ background:'#fdf2f8', border:'1px solid #fbcfe8', color:'#9d174d', borderRadius:'2rem', padding:'.15rem .6rem', fontSize:'.73rem', fontWeight:600 }}>
+                {c.slug}
+              </span>
+            ))}
+          </div>
+        )}
+        {loadingCategories && (
+          <div style={{ fontSize:'.78rem', color:'#9ca3af', marginBottom:'.75rem' }}>⏳ Loading categories…</div>
+        )}
+
         <div style={card}>
           <div style={{ fontWeight:700, fontSize:'.95rem', marginBottom:'.5rem' }}>How it works</div>
           <ol style={{ margin:0, paddingLeft:'1.2rem', fontSize:'.84rem', color:'#6b7280', lineHeight:1.7 }}>
             <li>Download the template and fill in your products</li>
             <li>Each row = one size/colour variant; rows with the same <strong>name</strong> become one product</li>
             <li>Set <strong>gender</strong> to: women, men, kids, or unisex</li>
+            <li>Set <strong>category</strong> to one of the slugs shown above (from your Categories page)</li>
             <li>Upload the completed file (CSV or Excel .xlsx/.xls)</li>
             <li>Review the preview, fix any errors, then tap <strong>Import</strong></li>
           </ol>
           <div style={{ display:'flex', gap:'.6rem', marginTop:'.85rem', flexWrap:'wrap' }}>
-            <button onClick={downloadTemplate} style={btn('#7e22ce')}>📄 Download Template (.csv)</button>
+            <button onClick={() => downloadTemplate(categories)} style={btn('#7e22ce')}>📄 Download Template (.csv)</button>
             <a href="/admin" style={{ ...btn('#f3f4f6','#374151'), textDecoration:'none', display:'inline-flex', alignItems:'center' }}>← Admin</a>
           </div>
         </div>
