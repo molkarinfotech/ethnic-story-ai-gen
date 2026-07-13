@@ -2,7 +2,19 @@
 import { useState } from 'react';
 
 const GENDERS = ['women', 'men', 'kids', 'unisex'];
-const BADGES  = ['', 'Bestseller', 'New', 'Sale', 'Premium', 'Test'];
+const BADGES  = [
+  '',
+  'Bestseller',
+  'New',
+  'Sale',
+  'Premium',
+  'Coming Soon',
+  'Pre-Order',
+  'Limited Edition',
+  'Sold Out',
+  'Staff Pick',
+  'Test',
+];
 
 export type CategoryOption = { slug: string; label: string };
 
