@@ -1,54 +1,30 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 
-// ─── FAQ data ────────────────────────────────────────────────────────────────
-const FAQS = [
-  {
-    q: 'What sizes do you carry?',
-    a: 'We stock sizes XS–3XL across most styles. Each product page shows exact size availability. For custom sizing requests, use the sourcing form below.',
-    // keywords that ONLY relate to sizing
-    keywords: ['size', 'sizes', 'sizing', 'xs', 'small', 'medium', 'large', 'xl', '2xl', '3xl', 'fit', 'measurements', 'measure'],
-  },
-  {
-    q: 'How long does delivery take?',
-    a: 'Standard Australia-wide delivery takes 3–7 business days. Pre-Order items ship directly from India and take 2–4 weeks. Express options are available at checkout.',
-    // delivery TIME keywords — deliberately excludes "ship" to avoid collision with international shipping FAQ
-    keywords: ['delivery', 'how long', 'days', 'weeks', 'arrive', 'arrives', 'arrival', 'when will', 'express', 'fast shipping', 'quick', 'standard shipping', 'business days', 'preorder', 'pre-order'],
-  },
-  {
-    q: 'Do you ship internationally?',
-    a: 'We currently ship within Australia only. International shipping is coming soon — sign up to our newsletter to be notified.',
-    // international / overseas keywords
-    keywords: ['international', 'internationally', 'overseas', 'outside australia', 'ship to', 'nz', 'new zealand', 'uk', 'usa', 'india', 'canada', 'worldwide', 'global', 'abroad', 'other countries', 'outside'],
-  },
-  {
-    q: 'What is your return policy?',
-    a: 'We accept returns within 14 days of delivery for unworn, unwashed items with original tags attached. Sale and pre-order items are final sale. Email us at returns@ethnicstory.com.au to start a return.',
-    keywords: ['return', 'returns', 'refund', 'refunds', 'exchange', 'policy', 'send back', 'wrong item', 'damaged', 'unworn', 'unwashed', '14 days', 'money back'],
-  },
-  {
-    q: 'Are your fabrics authentic?',
-    a: 'Yes — all pieces are handcrafted in India by skilled artisans using traditional techniques and authentic fabrics including pure silk, chanderi, georgette, and hand-block printed cotton.',
-    keywords: ['fabric', 'fabrics', 'authentic', 'silk', 'chanderi', 'georgette', 'cotton', 'handcraft', 'handcrafted', 'artisan', 'artisans', 'traditional', 'real', 'genuine', 'material', 'quality', 'block print', 'handmade', 'made in india'],
-  },
-  {
-    q: 'Can I pay with Afterpay?',
-    a: 'Yes! We support Afterpay, as well as all major credit/debit cards and Apple Pay at checkout.',
-    keywords: ['afterpay', 'pay', 'payment', 'credit card', 'debit card', 'apple pay', 'klarna', 'buy now pay later', 'bnpl', 'visa', 'mastercard', 'checkout', 'how to pay', 'payment options'],
-  },
-  {
-    q: 'How do I care for my garment?',
-    a: 'Most silk and embroidered pieces should be dry-cleaned. Cotton kurtas and casual wear can be hand-washed in cold water. Care instructions are printed on each garment label.',
-    keywords: ['care', 'wash', 'washing', 'clean', 'cleaning', 'dry clean', 'dry-clean', 'hand wash', 'garment', 'label', 'laundry', 'maintain', 'maintenance', 'iron', 'ironing', 'delicate'],
-  },
-  {
-    q: 'Can I track my order?',
-    a: 'Yes — once your order ships you will receive a tracking link via email. You can also log in to your account and view order status anytime.',
-    keywords: ['track', 'tracking', 'where is my order', 'order status', 'my order', 'shipped', 'dispatch', 'dispatched', 'tracking link', 'tracking number', 'parcel', 'package', 'courier'],
-  },
-];
+// ─── Types ────────────────────────────────────────────────────────────────────
+type FaqMsg     = { from: 'bot';  type: 'faq';      text: string };
+type ProductMsg = { from: 'bot';  type: 'products'; products: Product[] };
+type UserMsg    = { from: 'user'; type: 'user';     text: string };
+type Msg        = FaqMsg | ProductMsg | UserMsg;
 
-type Msg = { from: 'bot' | 'user'; text: string };
+interface Product {
+  id: string;
+  name: string;
+  slug: string;
+  price: number;
+  image: string | null;
+  tags: string[] | null;
+  category: string | null;
+}
+
+// ─── FAQ quick chips (for the bottom chip bar) ────────────────────────────────
+const QUICK_FAQS = [
+  'What sizes do you carry?',
+  'How long does delivery take?',
+  'Do you ship internationally?',
+  'What is your return policy?',
+  'Can I pay with Afterpay?',
+];
 
 // ─── Sourcing Panel ───────────────────────────────────────────────────────────
 function SourcingPanel({ onClose }: { onClose: () => void }) {
@@ -102,7 +78,6 @@ function SourcingPanel({ onClose }: { onClose: () => void }) {
       display: 'flex', flexDirection: 'column',
       maxHeight: '85dvh',
     }}>
-      {/* Header */}
       <div style={{ background: 'linear-gradient(135deg,#9d174d,#c2185b)', padding: '1rem 1.1rem .8rem', display: 'flex', alignItems: 'center', gap: '.6rem' }}>
         <span style={{ fontSize: '1.4rem' }}>🔍</span>
         <div style={{ flex: 1 }}>
@@ -124,7 +99,6 @@ function SourcingPanel({ onClose }: { onClose: () => void }) {
             <p style={{ fontSize: '.78rem', color: '#6b7280', lineHeight: 1.5, margin: 0 }}>
               Can&apos;t find the exact style, colour, or size you&apos;re looking for? Describe it and optionally upload a reference photo — we&apos;ll source it directly from India for you.
             </p>
-
             <div>
               <label style={labelStyle}>Your name (optional)</label>
               <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Priya" style={inputStyle} />
@@ -137,56 +111,65 @@ function SourcingPanel({ onClose }: { onClose: () => void }) {
               <label style={labelStyle}>Describe what you&apos;re looking for <span style={{ color: '#dc2626' }}>*</span></label>
               <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="e.g. A royal blue chanderi silk saree with gold zari border, size L" rows={3} style={{ ...inputStyle, resize: 'vertical', minHeight: '72px' }} required />
             </div>
-
-            {/* Image upload */}
             <div>
               <label style={labelStyle}>Reference photo (optional)</label>
-              <div
-                onClick={() => fileRef.current?.click()}
-                style={{
-                  border: '1.5px dashed #fba4c0',
-                  borderRadius: '.6rem',
-                  padding: preview ? '.4rem' : '1rem',
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                  background: '#fff5f7',
-                  transition: 'border-color .2s',
-                }}
-              >
+              <div onClick={() => fileRef.current?.click()} style={{ border: '1.5px dashed #fba4c0', borderRadius: '.6rem', padding: preview ? '.4rem' : '1rem', cursor: 'pointer', textAlign: 'center', background: '#fff5f7' }}>
                 {preview ? (
                   <img src={preview} alt="preview" style={{ maxHeight: '120px', maxWidth: '100%', borderRadius: '.4rem', margin: '0 auto', display: 'block', objectFit: 'cover' }} />
                 ) : (
-                  <>
-                    <div style={{ fontSize: '1.5rem', marginBottom: '.3rem' }}>📷</div>
-                    <div style={{ fontSize: '.72rem', color: '#9d174d', fontWeight: 600 }}>Click to upload a photo</div>
-                    <div style={{ fontSize: '.65rem', color: '#9ca3af', marginTop: '.2rem' }}>PNG, JPG up to 5MB</div>
-                  </>
+                  <><div style={{ fontSize: '1.5rem', marginBottom: '.3rem' }}>📷</div><div style={{ fontSize: '.72rem', color: '#9d174d', fontWeight: 600 }}>Click to upload a photo</div><div style={{ fontSize: '.65rem', color: '#9ca3af', marginTop: '.2rem' }}>PNG, JPG up to 5MB</div></>
                 )}
               </div>
               <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} />
               {preview && (
                 <button type="button" onClick={() => { setFile(null); setPreview(null); if (fileRef.current) fileRef.current.value = ''; }}
-                  style={{ fontSize: '.68rem', color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', marginTop: '.3rem', display: 'block' }}>
-                  Remove photo
-                </button>
+                  style={{ fontSize: '.68rem', color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', marginTop: '.3rem', display: 'block' }}>Remove photo</button>
               )}
             </div>
-
             {error && <p style={{ color: '#dc2626', fontSize: '.73rem', margin: 0 }}>{error}</p>}
-
-            <button type="submit" disabled={sending} style={{
-              background: 'linear-gradient(135deg,#9d174d,#c2185b)',
-              color: 'white', border: 'none', borderRadius: '.6rem',
-              padding: '.65rem 1rem', fontWeight: 700, fontSize: '.85rem',
-              cursor: sending ? 'not-allowed' : 'pointer',
-              opacity: sending ? .7 : 1,
-            }}>
+            <button type="submit" disabled={sending} style={{ background: 'linear-gradient(135deg,#9d174d,#c2185b)', color: 'white', border: 'none', borderRadius: '.6rem', padding: '.65rem 1rem', fontWeight: 700, fontSize: '.85rem', cursor: sending ? 'not-allowed' : 'pointer', opacity: sending ? .7 : 1 }}>
               {sending ? 'Sending…' : '✉️ Send Request'}
             </button>
           </form>
         )}
       </div>
     </div>
+  );
+}
+
+// ─── Product card (shown inline in chat) ──────────────────────────────────────
+function ProductCard({ p }: { p: Product }) {
+  return (
+    <a
+      href={`/product/${p.slug}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: 'flex', gap: '.55rem', alignItems: 'center',
+        background: 'white', border: '1px solid #fce7f3',
+        borderRadius: '.65rem', padding: '.5rem .65rem',
+        textDecoration: 'none', color: 'inherit',
+        boxShadow: '0 1px 4px rgba(0,0,0,.06)',
+        transition: 'box-shadow .15s',
+      }}
+    >
+      {p.image ? (
+        <img
+          src={p.image} alt={p.name}
+          width={48} height={48}
+          loading="lazy"
+          style={{ width: '48px', height: '48px', objectFit: 'cover', borderRadius: '.4rem', flexShrink: 0 }}
+        />
+      ) : (
+        <div style={{ width: '48px', height: '48px', background: '#fdf2f8', borderRadius: '.4rem', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' }}>🪷</div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '.78rem', fontWeight: 700, color: '#1f2937', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+        {p.category && <div style={{ fontSize: '.68rem', color: '#9d174d', fontWeight: 600, marginTop: '1px' }}>{p.category}</div>}
+        <div style={{ fontSize: '.75rem', color: '#374151', marginTop: '2px' }}>${p.price.toFixed(2)}</div>
+      </div>
+      <span style={{ fontSize: '.65rem', color: '#9d174d', fontWeight: 700, flexShrink: 0 }}>View →</span>
+    </a>
   );
 }
 
@@ -204,66 +187,44 @@ const labelStyle: React.CSSProperties = {
 
 // ─── Main ChatWidget ──────────────────────────────────────────────────────────
 export function ChatWidget() {
-  const [chatOpen,    setChatOpen]    = useState(false);
+  const [chatOpen,     setChatOpen]     = useState(false);
   const [sourcingOpen, setSourcingOpen] = useState(false);
-  const [msgs, setMsgs]              = useState<Msg[]>([
-    { from: 'bot', text: 'Hi! 👋 I\'m the Ethnic Story assistant. Ask me anything, or pick a question below.' },
+  const [msgs,         setMsgs]         = useState<Msg[]>([
+    { from: 'bot', type: 'faq', text: 'Hi! 👋 I\'m the Ethnic Story assistant. Ask me anything about our products, sizing, delivery, or returns!' },
   ]);
-  const [input, setInput]            = useState('');
-  const [typing, setTyping]          = useState(false);
-  const bottomRef                    = useRef<HTMLDivElement>(null);
-  const inputRef                     = useRef<HTMLInputElement>(null);
+  const [input,  setInput]  = useState('');
+  const [typing, setTyping] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef  = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [msgs, typing]);
 
-  function sendUserMsg(text: string) {
+  async function sendUserMsg(text: string) {
     if (!text.trim()) return;
-    setMsgs(m => [...m, { from: 'user', text }]);
+    setMsgs(m => [...m, { from: 'user', type: 'user', text }]);
     setInput('');
     setTyping(true);
-    setTimeout(() => {
-      const answer = findAnswer(text);
+
+    try {
+      const res  = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
+      const data = await res.json();
+
+      if (data.type === 'products' && data.products?.length > 0) {
+        setMsgs(m => [...m, { from: 'bot', type: 'products', products: data.products }]);
+      } else {
+        setMsgs(m => [...m, { from: 'bot', type: 'faq', text: data.answer ?? 'Something went wrong — please try again.' }]);
+      }
+    } catch {
+      setMsgs(m => [...m, { from: 'bot', type: 'faq', text: 'Sorry, I couldn\'t connect right now. Please try again in a moment.' }]);
+    } finally {
       setTyping(false);
-      setMsgs(m => [...m, { from: 'bot', text: answer }]);
-    }, 700);
-  }
-
-  function findAnswer(q: string): string {
-    const lower = q.toLowerCase();
-
-    // Greetings — checked before FAQ loop to avoid false matches
-    if (/\b(hello|hi|hey|g'day|howdy)\b/.test(lower)) {
-      return 'Hello! 😊 How can I help you today? You can ask about sizing, delivery, returns, or anything else.';
     }
-    if (/\bthank/.test(lower)) {
-      return 'You\'re welcome! Is there anything else I can help you with? 🌸';
-    }
-
-    // Score each FAQ by how many of its curated keywords appear in the user's message.
-    // Return the FAQ with the highest score (ties go to the first FAQ in the list).
-    let bestFaq: (typeof FAQS)[number] | null = null;
-    let bestScore = 0;
-
-    for (const faq of FAQS) {
-      let score = 0;
-      for (const kw of faq.keywords) {
-        if (lower.includes(kw)) {
-          // Longer keyword matches are weighted more heavily so specific phrases
-          // (e.g. "ship to" or "how long") beat short overlapping words.
-          score += kw.length;
-        }
-      }
-      if (score > bestScore) {
-        bestScore = score;
-        bestFaq = faq;
-      }
-    }
-
-    if (bestFaq && bestScore > 0) return bestFaq.a;
-
-    return 'I\'m not sure about that one! Try one of the quick questions below, or use the 🔍 "Can\'t Find It?" button to send us a direct request.';
   }
 
   function toggleChat() {
@@ -277,47 +238,59 @@ export function ChatWidget() {
 
   return (
     <>
-      {/* Sourcing panel */}
       {sourcingOpen && <SourcingPanel onClose={() => setSourcingOpen(false)} />}
 
-      {/* Chat panel */}
       {chatOpen && (
         <div style={{
           position: 'fixed', bottom: '5.5rem', right: '1.25rem',
           width: 'min(360px, calc(100vw - 2.5rem))',
-          height: 'min(520px, 80dvh)',
+          height: 'min(540px, 80dvh)',
           background: 'white', borderRadius: '1.1rem',
           boxShadow: '0 8px 40px rgba(0,0,0,.18)',
           border: '1.5px solid #fce7f3',
           zIndex: 10001, overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
         }}>
-          {/* Chat header */}
+          {/* Header */}
           <div style={{ background: 'linear-gradient(135deg,#9d174d,#be185d)', padding: '1rem 1.1rem .85rem', display: 'flex', alignItems: 'center', gap: '.65rem', flexShrink: 0 }}>
             <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', flexShrink: 0 }}>🪷</div>
             <div style={{ flex: 1 }}>
               <div style={{ color: 'white', fontWeight: 700, fontSize: '.92rem', lineHeight: 1.2 }}>Ethnic Story Assistant</div>
-              <div style={{ color: 'rgba(255,255,255,.75)', fontSize: '.68rem', marginTop: '.1rem' }}>● Online · Typically replies instantly</div>
+              <div style={{ color: 'rgba(255,255,255,.75)', fontSize: '.68rem', marginTop: '.1rem' }}>● Online · Ask about products, delivery & more</div>
             </div>
             <button onClick={toggleChat} style={{ color: 'rgba(255,255,255,.8)', fontSize: '1.1rem', background: 'none', border: 'none', cursor: 'pointer', padding: '.2rem' }}>✕</button>
           </div>
 
           {/* Messages */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '.9rem 1rem', display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
-            {msgs.map((m, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: m.from === 'user' ? 'flex-end' : 'flex-start' }}>
-                <div style={{
-                  maxWidth: '82%', padding: '.5rem .75rem',
-                  borderRadius: m.from === 'user' ? '1rem 1rem .2rem 1rem' : '1rem 1rem 1rem .2rem',
-                  background: m.from === 'user' ? 'linear-gradient(135deg,#9d174d,#be185d)' : '#f9f0f5',
-                  color: m.from === 'user' ? 'white' : '#1f2937',
-                  fontSize: '.8rem', lineHeight: 1.55,
-                  boxShadow: '0 1px 4px rgba(0,0,0,.07)',
-                }}>
-                  {m.text}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '.9rem 1rem', display: 'flex', flexDirection: 'column', gap: '.65rem' }}>
+            {msgs.map((m, i) => {
+              if (m.from === 'user') {
+                return (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <div style={{ maxWidth: '82%', padding: '.5rem .75rem', borderRadius: '1rem 1rem .2rem 1rem', background: 'linear-gradient(135deg,#9d174d,#be185d)', color: 'white', fontSize: '.8rem', lineHeight: 1.55, boxShadow: '0 1px 4px rgba(0,0,0,.07)' }}>
+                      {m.text}
+                    </div>
+                  </div>
+                );
+              }
+              if (m.type === 'products') {
+                return (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '.4rem' }}>
+                    <div style={{ fontSize: '.75rem', color: '#9d174d', fontWeight: 700, paddingLeft: '.2rem' }}>Here&apos;s what I found for you 🛍️</div>
+                    {m.products.map(p => <ProductCard key={p.id} p={p} />)}
+                    <div style={{ fontSize: '.7rem', color: '#9ca3af', paddingLeft: '.2rem' }}>Tap any item to view it in the shop</div>
+                  </div>
+                );
+              }
+              // faq / text message
+              return (
+                <div key={i} style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <div style={{ maxWidth: '82%', padding: '.5rem .75rem', borderRadius: '1rem 1rem 1rem .2rem', background: '#f9f0f5', color: '#1f2937', fontSize: '.8rem', lineHeight: 1.55, boxShadow: '0 1px 4px rgba(0,0,0,.07)' }}>
+                    {m.text}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {typing && (
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
                 <div style={{ background: '#f9f0f5', borderRadius: '1rem 1rem 1rem .2rem', padding: '.5rem .85rem', display: 'flex', gap: '.3rem', alignItems: 'center' }}>
@@ -332,10 +305,10 @@ export function ChatWidget() {
 
           {/* Quick FAQ chips */}
           <div style={{ padding: '.5rem .85rem', borderTop: '1px solid #fce7f3', display: 'flex', gap: '.4rem', flexWrap: 'nowrap', overflowX: 'auto', flexShrink: 0, scrollbarWidth: 'none' }}>
-            {FAQS.slice(0, 5).map((faq, i) => (
-              <button key={i} onClick={() => sendUserMsg(faq.q)}
+            {QUICK_FAQS.map((q, i) => (
+              <button key={i} onClick={() => sendUserMsg(q)}
                 style={{ flexShrink: 0, background: '#fff0f6', border: '1px solid #fba4c0', borderRadius: '.45rem', padding: '.3rem .6rem', fontSize: '.68rem', color: '#9d174d', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                {faq.q.split(' ').slice(0,4).join(' ')}{faq.q.split(' ').length > 4 ? '…' : ''}
+                {q.split(' ').slice(0,4).join(' ')}{q.split(' ').length > 4 ? '…' : ''}
               </button>
             ))}
           </div>
@@ -347,47 +320,20 @@ export function ChatWidget() {
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
-              placeholder="Ask a question…"
+              placeholder="Ask about products or anything else…"
               style={{ flex: 1, border: '1.5px solid #fce7f3', borderRadius: '.55rem', padding: '.45rem .7rem', fontSize: '.82rem', outline: 'none', fontFamily: 'inherit', color: '#1f2937' }}
             />
-            <button type="submit" disabled={!input.trim()} style={{ background: 'linear-gradient(135deg,#9d174d,#be185d)', color: 'white', border: 'none', borderRadius: '.55rem', padding: '.45rem .8rem', fontWeight: 700, fontSize: '.85rem', cursor: input.trim() ? 'pointer' : 'not-allowed', opacity: input.trim() ? 1 : .5 }}>→</button>
+            <button type="submit" disabled={!input.trim() || typing} style={{ background: 'linear-gradient(135deg,#9d174d,#be185d)', color: 'white', border: 'none', borderRadius: '.55rem', padding: '.45rem .8rem', fontWeight: 700, fontSize: '.85rem', cursor: (input.trim() && !typing) ? 'pointer' : 'not-allowed', opacity: (input.trim() && !typing) ? 1 : .5 }}>→</button>
           </form>
         </div>
       )}
 
       {/* Floating action buttons */}
       <div style={{ position: 'fixed', bottom: '1.25rem', right: '1.25rem', zIndex: 10002, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '.6rem' }}>
-        {/* "Can't Find It?" button */}
-        <button
-          onClick={toggleSourcing}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '.5rem',
-            background: sourcingOpen ? '#7b1041' : 'white',
-            color: sourcingOpen ? 'white' : '#9d174d',
-            border: '1.5px solid #9d174d',
-            borderRadius: '2rem', padding: '.45rem 1rem .45rem .65rem',
-            fontWeight: 700, fontSize: '.78rem', cursor: 'pointer',
-            boxShadow: '0 4px 16px rgba(157,23,77,.25)',
-            transition: 'all .2s',
-          }}
-        >
+        <button onClick={toggleSourcing} style={{ display: 'flex', alignItems: 'center', gap: '.5rem', background: sourcingOpen ? '#7b1041' : 'white', color: sourcingOpen ? 'white' : '#9d174d', border: '1.5px solid #9d174d', borderRadius: '2rem', padding: '.45rem 1rem .45rem .65rem', fontWeight: 700, fontSize: '.78rem', cursor: 'pointer', boxShadow: '0 4px 16px rgba(157,23,77,.25)', transition: 'all .2s' }}>
           <span style={{ fontSize: '1rem' }}>🔍</span> Can&apos;t find it?
         </button>
-
-        {/* Chat bubble button */}
-        <button
-          onClick={toggleChat}
-          aria-label="Open chat assistant"
-          style={{
-            width: '56px', height: '56px', borderRadius: '50%',
-            background: chatOpen ? '#7b1041' : 'linear-gradient(135deg,#9d174d,#be185d)',
-            border: 'none', cursor: 'pointer',
-            boxShadow: '0 4px 20px rgba(157,23,77,.4)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '1.55rem', transition: 'background .2s, transform .2s',
-            transform: chatOpen ? 'rotate(90deg)' : 'none',
-          }}
-        >
+        <button onClick={toggleChat} aria-label="Open chat assistant" style={{ width: '56px', height: '56px', borderRadius: '50%', background: chatOpen ? '#7b1041' : 'linear-gradient(135deg,#9d174d,#be185d)', border: 'none', cursor: 'pointer', boxShadow: '0 4px 20px rgba(157,23,77,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.55rem', transition: 'background .2s, transform .2s', transform: chatOpen ? 'rotate(90deg)' : 'none' }}>
           {chatOpen ? '✕' : '💬'}
         </button>
       </div>
