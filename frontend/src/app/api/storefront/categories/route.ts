@@ -13,55 +13,38 @@ type Gender = typeof GENDER_ORDER[number];
 /**
  * Public storefront endpoint — no auth required.
  *
+ * Queries products.gender + products.category directly (no separate
+ * categories table, no status/category_id columns needed).
+ *
  * Returns a grouped nav structure:
  * [
- *   { gender: 'women',       categories: [{ id, slug, label, sort_order }, ...] },
- *   { gender: 'accessories', categories: [...] },
- *   ...                           // only groups with ≥1 published product appear
+ *   { gender: 'women',       categories: [{ slug, label }, ...] },
+ *   { gender: 'men',         categories: [...] },
+ *   ...   // only groups with ≥1 product appear
  * ]
  *
- * A group only appears when at least one category under that gender
- * has a published product. New products automatically surface their
- * category in the correct group on next request (CDN revalidation ~60 s).
+ * Adding a new product with a new category automatically surfaces it
+ * in the nav on the next request (CDN revalidation ~60 s).
  */
 export async function GET() {
-  // 1. Fetch every category (id, slug, label, genders[], sort_order)
-  const { data: categories, error: catErr } = await supabase
-    .from('categories')
-    .select('id, slug, label, genders, sort_order')
-    .order('sort_order', { ascending: true });
-
-  if (catErr) return NextResponse.json({ error: catErr.message }, { status: 500 });
-  if (!categories || categories.length === 0) return NextResponse.json([]);
-
-  // 2. Get distinct category_ids that have ≥1 published product
-  const { data: productRows, error: prodErr } = await supabase
+  // Fetch distinct gender + category combos directly from products
+  const { data: rows, error } = await supabase
     .from('products')
-    .select('category_id')
-    .eq('status', 'published');
+    .select('gender, category')
+    .not('gender', 'is', null)
+    .not('category', 'is', null);
 
-  if (prodErr) return NextResponse.json({ error: prodErr.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!rows || rows.length === 0) return NextResponse.json([]);
 
-  const activeCatIds = new Set(
-    (productRows ?? []).map((p: { category_id: string }) => p.category_id)
-  );
-
-  // 3. Keep only categories that have ≥1 published product
-  const activeCategories = categories.filter(
-    (c: { id: string }) => activeCatIds.has(c.id)
-  );
-
-  // 4. Group active categories by gender, respecting GENDER_ORDER
-  //    A category can appear under multiple groups if its genders[] has multiple values.
-  type CatItem = { id: string; slug: string; label: string; sort_order: number };
+  // Normalise gender values to lowercase for matching
+  type CatItem = { slug: string; label: string };
   const grouped: Record<Gender, CatItem[]> = {
     women: [],
     men: [],
     kids: [],
     accessories: [],
   };
-
-  // Track which category slugs we've already added per gender to avoid duplicates
   const seen: Record<Gender, Set<string>> = {
     women: new Set(),
     men: new Set(),
@@ -69,21 +52,37 @@ export async function GET() {
     accessories: new Set(),
   };
 
-  for (const cat of activeCategories as Array<{ id: string; slug: string; label: string; genders: string[]; sort_order: number }>) {
-    for (const g of (cat.genders ?? []) as Gender[]) {
-      if (!GENDER_ORDER.includes(g)) continue;
-      if (seen[g].has(cat.slug)) continue;
-      seen[g].add(cat.slug);
-      grouped[g].push({ id: cat.id, slug: cat.slug, label: cat.label, sort_order: cat.sort_order ?? 99 });
-    }
+  for (const row of rows as Array<{ gender: string; category: string }>) {
+    const g = row.gender?.toLowerCase().trim() as Gender;
+    const cat = row.category?.trim();
+
+    if (!g || !cat) continue;
+    if (!GENDER_ORDER.includes(g)) continue;
+    if (seen[g].has(cat)) continue;
+
+    seen[g].add(cat);
+    grouped[g].push({
+      slug: cat.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
+      label: cat,
+    });
   }
 
-  // 5. Build final array — only include groups that have ≥1 category
+  // Sort categories alphabetically within each group
+  for (const g of GENDER_ORDER) {
+    grouped[g].sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  // Only include groups that have ≥1 category
   const result = GENDER_ORDER
     .filter(g => grouped[g].length > 0)
     .map(g => ({
       gender: g,
-      categories: grouped[g], // already sorted by sort_order from step 1
+      categories: grouped[g].map((c, i) => ({
+        id: c.slug,
+        slug: c.slug,
+        label: c.label,
+        sort_order: i,
+      })),
     }));
 
   return NextResponse.json(result, {
