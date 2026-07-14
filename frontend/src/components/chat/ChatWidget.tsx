@@ -141,7 +141,7 @@ function SourcingPanel({ onClose }: { onClose: () => void }) {
 function ProductCard({ p }: { p: Product }) {
   return (
     <a
-      href={`/product/${p.slug}`}
+      href={`/products/${p.slug}`}
       target="_blank"
       rel="noopener noreferrer"
       style={{
@@ -330,20 +330,25 @@ export function ChatWidget() {
 
       {/* Floating action buttons */}
       <div style={{ position: 'fixed', bottom: '1.25rem', right: '1.25rem', zIndex: 10002, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '.6rem' }}>
-        <button onClick={toggleSourcing} style={{ display: 'flex', alignItems: 'center', gap: '.5rem', background: sourcingOpen ? '#7b1041' : 'white', color: sourcingOpen ? 'white' : '#9d174d', border: '1.5px solid #9d174d', borderRadius: '2rem', padding: '.45rem 1rem .45rem .65rem', fontWeight: 700, fontSize: '.78rem', cursor: 'pointer', boxShadow: '0 4px 16px rgba(157,23,77,.25)', transition: 'all .2s' }}>
-          <span style={{ fontSize: '1rem' }}>🔍</span> Can&apos;t find it?
+        <button onClick={toggleSourcing} style={{ display: 'flex', alignItems: 'center', gap: '.5rem', background: sourcingOpen ? '#7b1041' : 'white', color: sourcingOpen ? 'white' : '#9d174d', border: '1.5px solid #fce7f3', borderRadius: '.75rem', padding: '.55rem .9rem', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 12px rgba(0,0,0,.12)', transition: 'all .15s' }}>
+          🔍 Can&apos;t Find It?
         </button>
-        <button onClick={toggleChat} aria-label="Open chat assistant" style={{ width: '56px', height: '56px', borderRadius: '50%', background: chatOpen ? '#7b1041' : 'linear-gradient(135deg,#9d174d,#be185d)', border: 'none', cursor: 'pointer', boxShadow: '0 4px 20px rgba(157,23,77,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.55rem', transition: 'background .2s, transform .2s', transform: chatOpen ? 'rotate(90deg)' : 'none' }}>
-          {chatOpen ? '✕' : '💬'}
+        <button
+          onClick={toggleChat}
+          aria-label="Open chat"
+          style={{
+            width: '52px', height: '52px', borderRadius: '50%',
+            background: chatOpen ? '#7b1041' : 'linear-gradient(135deg,#9d174d,#be185d)',
+            color: 'white', border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '1.4rem',
+            boxShadow: '0 4px 16px rgba(157,23,77,.4)',
+            transition: 'all .15s',
+          }}
+        >
+          {chatOpen ? '✕' : '🪷'}
         </button>
       </div>
-
-      <style>{`
-        @keyframes bounce {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-4px); }
-        }
-      `}</style>
     </>
   );
 }
