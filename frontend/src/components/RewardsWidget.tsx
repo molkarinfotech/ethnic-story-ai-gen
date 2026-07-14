@@ -88,8 +88,8 @@ export default function RewardsWidget() {
           .then(r => r.json())
           .then(d => typeof d.total === 'number' && setData(d));
       }
-    } catch (e: any) {
-      setRedeemState({ loading: false, error: e.message });
+    } catch (e: unknown) {
+      setRedeemState({ loading: false, error: e instanceof Error ? e.message : 'Unknown error' });
     }
   }
 
@@ -109,7 +109,7 @@ export default function RewardsWidget() {
   if (fetchErr) return (
     <div style={{ ...styles.card, textAlign: 'center', padding: '2rem 1.5rem' }}>
       <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>⚠️</div>
-      <div style={{ fontWeight: 700, color: '#111', marginBottom: '.25rem' }}>Couldn't load rewards</div>
+      <div style={{ fontWeight: 700, color: '#111', marginBottom: '.25rem' }}>Couldn&apos;t load rewards</div>
       <div style={{ fontSize: '.82rem', color: '#6b7280', marginBottom: '1rem' }}>{fetchErr}</div>
       <button
         onClick={loadPoints}

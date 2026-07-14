@@ -83,7 +83,7 @@ export function SuccessContent() {
     <div style={{ minHeight: '60vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem', textAlign: 'center' }}>
       <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
       <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.75rem' }}>Order placed!</h2>
-      <p style={{ color: 'var(--color-text-muted)', marginTop: '.5rem', maxWidth: '38ch' }}>Your payment was successful. You'll receive a confirmation email shortly.</p>
+      <p style={{ color: 'var(--color-text-muted)', marginTop: '.5rem', maxWidth: '38ch' }}>Your payment was successful. You&apos;ll receive a confirmation email shortly.</p>
       <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
         <a href="/account" className="btn btn-primary">View my orders</a>
         <a href="/collections" className="btn btn--outline">Continue shopping</a>
