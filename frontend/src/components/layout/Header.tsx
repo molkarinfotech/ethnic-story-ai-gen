@@ -46,7 +46,7 @@ export function Header() {
       `}</style>
 
       <div className="site-announcement">
-        ✨ Free shipping on orders above $150 AUD  |  New festive arrivals now live
+        \u2728 Free shipping on orders above $150 AUD\u00a0 |\u00a0 New festive arrivals now live
       </div>
 
       <header
@@ -61,7 +61,7 @@ export function Header() {
           zIndex: 100,
           padding: '0 1rem',
           transition: 'background 0.3s ease, box-shadow 0.3s ease',
-          /* overflow: hidden intentionally removed — it clips position:fixed drawer */
+          /* overflow:hidden removed \u2014 it was clipping the portal-rendered drawer */
         }}
       >
         <div style={{
@@ -81,7 +81,7 @@ export function Header() {
             style={{ display: 'flex', alignItems: 'center', flexShrink: 0, transition: 'opacity 0.2s' }}
             onMouseEnter={e => (e.currentTarget.style.opacity = '0.8')}
             onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-            aria-label="Ethnic Story — Home"
+            aria-label="Ethnic Story \u2014 Home"
           >
             <Image
               src="/logo.png"
@@ -93,7 +93,7 @@ export function Header() {
             />
           </a>
 
-          {/* Desktop nav — hidden on mobile */}
+          {/* Desktop nav \u2014 hidden on mobile */}
           <nav className="header-desktop-nav" style={{ display: 'flex', gap: '1.4rem', alignItems: 'center', flex: 1, justifyContent: 'center' }}>
             {([
               ['Collections', '/collections'],
@@ -118,7 +118,7 @@ export function Header() {
           {/* Right side actions */}
           <div style={{ display: 'flex', gap: '.65rem', alignItems: 'center', flexShrink: 0 }}>
 
-            {/* Account — desktop only */}
+            {/* Account \u2014 desktop only */}
             <a
               href="/account"
               className="header-desktop-account"
@@ -129,7 +129,7 @@ export function Header() {
               Account
             </a>
 
-            {/* Bag — always visible */}
+            {/* Bag \u2014 always visible */}
             <button
               onClick={openCart}
               aria-label="Open bag"
@@ -153,7 +153,7 @@ export function Header() {
                 (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
               }}
             >
-              🛒 Bag
+              \uD83D\uDED2 Bag
               {totalItems > 0 && (
                 <span style={{
                   background: 'rgba(255,255,255,0.25)',
@@ -166,20 +166,17 @@ export function Header() {
               )}
             </button>
 
-            {/* Hamburger toggle — mobile only */}
+            {/*
+              MobileNav renders the toggle button here (inside header)
+              but portals the drawer + overlay to document.body,
+              completely escaping the header stacking context.
+            */}
             <div className="header-mobile-toggle" style={{ display: 'none', alignItems: 'center' }}>
-              <MobileNav.Toggle />
+              <MobileNav />
             </div>
           </div>
         </div>
       </header>
-
-      {/*
-        MobileNav drawer + overlay rendered OUTSIDE the <header> so they are
-        not clipped by the header's stacking context. The toggle button above
-        communicates with MobileNav via shared state inside the component.
-      */}
-      <MobileNav.Drawer />
     </>
   );
 }

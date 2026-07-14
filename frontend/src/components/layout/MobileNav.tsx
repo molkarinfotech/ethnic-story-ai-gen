@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { useCart } from '../../context/CartContext';
 import { usePathname } from 'next/navigation';
@@ -8,7 +9,7 @@ const SECTIONS = [
   {
     href: '/collections/women',
     label: 'Women',
-    emoji: '🥻',
+    emoji: '\uD83E\uDD7B',
     children: [
       { href: '/collections/women/sarees',   label: 'Sarees' },
       { href: '/collections/women/lehengas', label: 'Lehengas' },
@@ -18,7 +19,7 @@ const SECTIONS = [
   {
     href: '/collections/men',
     label: 'Men',
-    emoji: '🧣',
+    emoji: '\uD83E\uDDE3',
     children: [
       { href: '/collections/men/kurtas',    label: 'Kurtas' },
       { href: '/collections/men/sherwanis', label: 'Sherwanis' },
@@ -27,57 +28,61 @@ const SECTIONS = [
   {
     href: '/collections/kids',
     label: 'Kids',
-    emoji: '🎠',
+    emoji: '\uD83C\uDFA0',
     children: [
       { href: '/collections/kids/lehengas',  label: 'Lehengas' },
       { href: '/collections/kids/kurtas',    label: 'Kurtas' },
       { href: '/collections/kids/sherwanis', label: 'Sherwanis' },
     ],
   },
-  { href: '/collections/accessories', label: 'Accessories', emoji: '💍', children: [] },
-  { href: '/collections', label: 'All Collections', emoji: '✨', children: [] },
+  { href: '/collections/accessories', label: 'Accessories', emoji: '\uD83D\uDC8D', children: [] },
+  { href: '/collections', label: 'All Collections', emoji: '\u2728', children: [] },
 ];
 
-// ─── Hamburger drawer ──────────────────────────────────────────────────────
-export function MobileNav() {
-  const [open, setOpen]         = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
-
-  useEffect(() => {
-    document.body.style.overflow = open ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
-  }, [open]);
-
-  useEffect(() => {
-    const close = () => setOpen(false);
-    window.addEventListener('popstate', close);
-    return () => window.removeEventListener('popstate', close);
-  }, []);
-
-  function close() { setOpen(false); setExpanded(null); }
-
+// \u2500\u2500\u2500 Hamburger toggle button only (rendered inside header) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function Toggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
+    <button
+      className="mobile-nav-toggle"
+      aria-label={open ? 'Close menu' : 'Open menu'}
+      aria-expanded={open}
+      onClick={onToggle}
+    >
+      <span className={`hamburger ${open ? 'open' : ''}`}>
+        <span /><span /><span />
+      </span>
+    </button>
+  );
+}
+
+// \u2500\u2500\u2500 Drawer + overlay (portalled to document.body) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function Drawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  function close() { onClose(); setExpanded(null); }
+
+  if (!mounted) return null;
+
+  return createPortal(
     <>
-      <button
-        className="mobile-nav-toggle"
-        aria-label={open ? 'Close menu' : 'Open menu'}
-        aria-expanded={open}
-        onClick={() => setOpen(o => !o)}
-      >
-        <span className={`hamburger ${open ? 'open' : ''}`}>
-          <span /><span /><span />
-        </span>
-      </button>
-
-      {open && <div className="mobile-nav-overlay" aria-hidden="true" onClick={close} />}
-
+      {open && (
+        <div
+          className="mobile-nav-overlay"
+          aria-hidden="true"
+          onClick={close}
+          style={{ zIndex: 1000 }}
+        />
+      )}
       <nav
         className={`mobile-nav-drawer ${open ? 'open' : ''}`}
         aria-label="Mobile navigation"
-        style={{ background: '#fff9f5' }}
+        style={{ background: '#fff9f5', zIndex: 1001 }}
       >
         <div className="mobile-nav-drawer__header" style={{ background: '#fff9f5', borderBottom: '1px solid #fce7f3' }}>
-          <a className="site-header__logo" href="/" onClick={close} aria-label="Ethnic Story — Home">
+          <a className="site-header__logo" href="/" onClick={close} aria-label="Ethnic Story \u2014 Home">
             <Image
               src="/logo.png"
               alt="Ethnic Story"
@@ -87,7 +92,7 @@ export function MobileNav() {
               style={{ objectFit: 'contain', height: '48px', width: 'auto', maxWidth: '160px' }}
             />
           </a>
-          <button className="mobile-nav-drawer__close" aria-label="Close menu" onClick={close}>✕</button>
+          <button className="mobile-nav-drawer__close" aria-label="Close menu" onClick={close}>\u2715</button>
         </div>
 
         <ul className="mobile-nav-drawer__links" style={{ paddingBottom: '6rem', background: '#fff9f5' }}>
@@ -96,7 +101,8 @@ export function MobileNav() {
               {item.children.length > 0 ? (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <a href={item.href} onClick={close} style={{ flex: 1, display: 'block', padding: '.85rem 1.25rem', color: '#1a1a1a', textDecoration: 'none', fontWeight: 600, fontSize: '.95rem' }}>
+                    <a href={item.href} onClick={close}
+                      style={{ flex: 1, display: 'block', padding: '.85rem 1.25rem', color: '#1a1a1a', textDecoration: 'none', fontWeight: 600, fontSize: '.95rem' }}>
                       {item.emoji} {item.label}
                     </a>
                     <button
@@ -104,7 +110,7 @@ export function MobileNav() {
                       onClick={() => setExpanded(e => e === item.href ? null : item.href)}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '.5rem 1.25rem', fontSize: '.85rem', color: '#9d174d' }}
                     >
-                      {expanded === item.href ? '▲' : '▼'}
+                      {expanded === item.href ? '\u25b2' : '\u25bc'}
                     </button>
                   </div>
                   {expanded === item.href && (
@@ -136,11 +142,35 @@ export function MobileNav() {
           </a>
         </div>
       </nav>
+    </>,
+    document.body
+  );
+}
+
+// \u2500\u2500\u2500 Main export: self-contained with open state \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+export function MobileNav() {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    document.body.style.overflow = open ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
+
+  useEffect(() => {
+    const close = () => setOpen(false);
+    window.addEventListener('popstate', close);
+    return () => window.removeEventListener('popstate', close);
+  }, []);
+
+  return (
+    <>
+      <Toggle open={open} onToggle={() => setOpen(o => !o)} />
+      <Drawer open={open} onClose={() => setOpen(false)} />
     </>
   );
 }
 
-// ─── Floating bottom tab bar (always visible on mobile) ──────────────────────
+// \u2500\u2500\u2500 Floating bottom tab bar (always visible on mobile) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 export function BottomTabBar() {
   const { totalItems, openCart } = useCart();
   const pathname = usePathname();
