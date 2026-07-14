@@ -6,24 +6,28 @@ import { MobileNav } from './MobileNav';
 
 type Category = { id: string; slug: string; label: string; genders: string[]; sort_order?: number };
 
-// Gender groups shown in the top-level nav, in order
-const GENDER_ORDER = ['women', 'men', 'kids', 'unisex'];
-const GENDER_LABELS: Record<string, string> = { women: 'Women', men: 'Men', kids: 'Kids', unisex: 'Unisex' };
+// Top-level nav groups — only these four appear; order matters
+const GENDER_ORDER = ['women', 'men', 'kids', 'accessories'];
+const GENDER_LABELS: Record<string, string> = {
+  women: 'Women',
+  men: 'Men',
+  kids: 'Kids',
+  accessories: 'Accessories',
+};
 
-// Build NAV_ITEMS from flat category list
+/**
+ * Build nav items from flat category list.
+ * A group only appears if at least one category has that gender value.
+ * Categories appear as dropdown children under their group.
+ */
 function buildNav(categories: Category[]) {
   const grouped: Record<string, Category[]> = {};
-  const standalone: Category[] = [];
 
   for (const cat of categories) {
     const genders = cat.genders ?? [];
-    if (genders.length === 0) {
-      standalone.push(cat);
-    } else {
-      for (const g of genders) {
-        if (!grouped[g]) grouped[g] = [];
-        grouped[g].push(cat);
-      }
+    for (const g of genders) {
+      if (!grouped[g]) grouped[g] = [];
+      grouped[g].push(cat);
     }
   }
 
@@ -31,7 +35,7 @@ function buildNav(categories: Category[]) {
 
   for (const gender of GENDER_ORDER) {
     const cats = grouped[gender];
-    if (!cats || cats.length === 0) continue;
+    if (!cats || cats.length === 0) continue; // skip group if no products
     items.push({
       label: GENDER_LABELS[gender] ?? gender,
       href: `/collections/${gender}`,
@@ -40,11 +44,6 @@ function buildNav(categories: Category[]) {
         href: `/collections/${gender}/${c.slug}`,
       })),
     });
-  }
-
-  // Any standalone categories (no genders) go at the end
-  for (const cat of standalone) {
-    items.push({ label: cat.label, href: `/collections/${cat.slug}`, children: [] });
   }
 
   return items;
@@ -163,9 +162,9 @@ export function Header() {
   const { totalItems, openCart } = useCart();
   const [navItems, setNavItems] = useState<NavItemData[]>([]);
 
-  // Fetch categories from public API (no auth needed for storefront)
+  // Fetch categories from the public storefront API (no admin auth needed)
   useEffect(() => {
-    fetch('/api/admin/categories')
+    fetch('/api/storefront/categories')
       .then(r => r.ok ? r.json() : [])
       .then((cats: Category[]) => {
         if (Array.isArray(cats) && cats.length > 0) {
@@ -270,7 +269,7 @@ export function Header() {
             {navItems.map(item => <NavItem key={item.href} item={item} />)}
             {navItems.length === 0 && (
               // skeleton placeholders while loading
-              [1,2,3].map(i => (
+              [1,2,3,4].map(i => (
                 <span key={i} style={{ display: 'inline-block', width: 52, height: 14, borderRadius: 4, background: '#f3e8ee', opacity: 0.7 }} />
               ))
             )}

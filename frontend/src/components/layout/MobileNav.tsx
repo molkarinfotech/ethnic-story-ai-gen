@@ -7,9 +7,20 @@ import { usePathname } from 'next/navigation';
 
 type Category = { id: string; slug: string; label: string; genders: string[]; sort_order?: number };
 
-const GENDER_ORDER = ['women', 'men', 'kids', 'unisex'];
-const GENDER_LABELS: Record<string, string> = { women: 'Women', men: 'Men', kids: 'Kids', unisex: 'Unisex' };
-const GENDER_EMOJI: Record<string, string> = { women: '🥻', men: '🧣', kids: '🎠', unisex: '✨' };
+// Top-level nav groups — only these four, in this order
+const GENDER_ORDER = ['women', 'men', 'kids', 'accessories'];
+const GENDER_LABELS: Record<string, string> = {
+  women: 'Women',
+  men: 'Men',
+  kids: 'Kids',
+  accessories: 'Accessories',
+};
+const GENDER_EMOJI: Record<string, string> = {
+  women: '🥻',
+  men: '🧣',
+  kids: '🎠',
+  accessories: '💎',
+};
 
 type Section = {
   href: string;
@@ -18,19 +29,18 @@ type Section = {
   children: { href: string; label: string }[];
 };
 
+/**
+ * Build mobile nav sections from flat category list.
+ * A section only appears if at least one category has that gender value.
+ */
 function buildSections(categories: Category[]): Section[] {
   const grouped: Record<string, Category[]> = {};
-  const standalone: Category[] = [];
 
   for (const cat of categories) {
     const genders = cat.genders ?? [];
-    if (genders.length === 0) {
-      standalone.push(cat);
-    } else {
-      for (const g of genders) {
-        if (!grouped[g]) grouped[g] = [];
-        grouped[g].push(cat);
-      }
+    for (const g of genders) {
+      if (!grouped[g]) grouped[g] = [];
+      grouped[g].push(cat);
     }
   }
 
@@ -38,7 +48,7 @@ function buildSections(categories: Category[]): Section[] {
 
   for (const gender of GENDER_ORDER) {
     const cats = grouped[gender];
-    if (!cats || cats.length === 0) continue;
+    if (!cats || cats.length === 0) continue; // skip if no products in this group
     sections.push({
       label: GENDER_LABELS[gender] ?? gender,
       href: `/collections/${gender}`,
@@ -48,10 +58,6 @@ function buildSections(categories: Category[]): Section[] {
         href: `/collections/${gender}/${c.slug}`,
       })),
     });
-  }
-
-  for (const cat of standalone) {
-    sections.push({ label: cat.label, href: `/collections/${cat.slug}`, emoji: '🛍️', children: [] });
   }
 
   sections.push({ href: '/collections', label: 'All Collections', emoji: '✨', children: [] });
@@ -169,8 +175,9 @@ export function MobileNav() {
   const [open, setOpen] = useState(false);
   const [sections, setSections] = useState<Section[]>([]);
 
+  // Fetch from the public storefront API — no admin cookie needed
   useEffect(() => {
-    fetch('/api/admin/categories')
+    fetch('/api/storefront/categories')
       .then(r => r.ok ? r.json() : [])
       .then((cats: Category[]) => {
         if (Array.isArray(cats) && cats.length > 0) setSections(buildSections(cats));
