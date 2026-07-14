@@ -9,6 +9,8 @@ export async function GET(_req: NextRequest, { params }: { params: { productId: 
     .from('product_variants')
     .select('id, size, colour, stock_count')
     .eq('product_id', params.productId)
+    // Exclude sentinel/placeholder rows that may have been created by import scripts
+    .neq('size', '__colour__')
     .order('colour')
     .order('size');
 
