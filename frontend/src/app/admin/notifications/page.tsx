@@ -6,21 +6,21 @@ interface NotificationEntry {
   email: string;
   product_id: string;
   product_name: string;
-  variant_label?: string;
+  product_slug?: string | null;
+  notified: boolean;
   created_at: string;
-  notified_at?: string | null;
 }
 
 type FilterStatus = 'all' | 'pending' | 'notified';
 
 export default function AdminNotificationsPage() {
-  const [entries, setEntries]     = useState<NotificationEntry[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [filter, setFilter]       = useState<FilterStatus>('pending');
-  const [search, setSearch]       = useState('');
-  const [sending, setSending]     = useState<string | null>(null);
+  const [entries, setEntries]       = useState<NotificationEntry[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [filter, setFilter]         = useState<FilterStatus>('pending');
+  const [search, setSearch]         = useState('');
+  const [sending, setSending]       = useState<string | null>(null);
   const [sendingAll, setSendingAll] = useState(false);
-  const [toast, setToast]         = useState<{ msg: string; ok: boolean } | null>(null);
+  const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null);
 
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok });
@@ -61,7 +61,7 @@ export default function AdminNotificationsPage() {
   }
 
   async function sendAll() {
-    const pending = filtered.filter(e => !e.notified_at);
+    const pending = entries.filter(e => !e.notified);
     if (!pending.length) return;
     if (!confirm(`Send restock emails to ${pending.length} customer(s)?`)) return;
     setSendingAll(true);
@@ -98,11 +98,15 @@ export default function AdminNotificationsPage() {
 
   const q = search.toLowerCase();
   const filtered = entries
-    .filter(e => filter === 'all' ? true : filter === 'pending' ? !e.notified_at : !!e.notified_at)
-    .filter(e => !q || e.email.toLowerCase().includes(q) || e.product_name.toLowerCase().includes(q));
+    .filter(e =>
+      filter === 'all' ? true : filter === 'pending' ? !e.notified : e.notified
+    )
+    .filter(e =>
+      !q || e.email.toLowerCase().includes(q) || e.product_name.toLowerCase().includes(q)
+    );
 
-  const pendingCount   = entries.filter(e => !e.notified_at).length;
-  const notifiedCount  = entries.filter(e => !!e.notified_at).length;
+  const pendingCount  = entries.filter(e => !e.notified).length;
+  const notifiedCount = entries.filter(e => e.notified).length;
 
   const card: React.CSSProperties = {
     background: 'white',
@@ -123,7 +127,6 @@ export default function AdminNotificationsPage() {
           color: 'white', borderRadius: '.6rem',
           padding: '.65rem 1.1rem', fontSize: '.85rem', fontWeight: 600,
           boxShadow: '0 4px 16px rgba(0,0,0,.18)',
-          animation: 'fadeIn .2s ease',
         }}>
           {toast.msg}
         </div>
@@ -183,8 +186,8 @@ export default function AdminNotificationsPage() {
                 padding: '.35rem .85rem', borderRadius: '2rem',
                 border: '1.5px solid', fontSize: '.8rem', fontWeight: 600, cursor: 'pointer',
                 borderColor: filter === f ? '#9d174d' : '#e5e7eb',
-                background: filter === f ? '#9d174d' : 'white',
-                color: filter === f ? 'white' : '#6b7280',
+                background:  filter === f ? '#9d174d' : 'white',
+                color:       filter === f ? 'white'   : '#6b7280',
                 textTransform: 'capitalize',
               }}
             >
@@ -219,7 +222,7 @@ export default function AdminNotificationsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.83rem' }}>
               <thead>
                 <tr style={{ background: '#fdf2f8', borderBottom: '1.5px solid #fce7f3' }}>
-                  {['Email', 'Product', 'Variant', 'Requested', 'Status', 'Actions'].map(h => (
+                  {['Email', 'Product', 'Requested', 'Status', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '.75rem 1rem', textAlign: 'left', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -229,18 +232,21 @@ export default function AdminNotificationsPage() {
                   <tr key={e.id} style={{ borderBottom: '1px solid #fce7f3', background: i % 2 === 0 ? 'white' : '#fffbfe' }}>
                     <td style={{ padding: '.7rem 1rem', color: '#1f2937', fontWeight: 500 }}>{e.email}</td>
                     <td style={{ padding: '.7rem 1rem', color: '#374151' }}>
-                      <a href={`/admin/products?id=${e.product_id}`} style={{ color: '#9d174d', textDecoration: 'none', fontWeight: 600 }}>
-                        {e.product_name}
-                      </a>
+                      {e.product_slug ? (
+                        <a href={`/product/${e.product_slug}`} target="_blank" rel="noopener noreferrer" style={{ color: '#9d174d', textDecoration: 'none', fontWeight: 600 }}>
+                          {e.product_name}
+                        </a>
+                      ) : (
+                        <span style={{ fontWeight: 600 }}>{e.product_name}</span>
+                      )}
                     </td>
-                    <td style={{ padding: '.7rem 1rem', color: '#6b7280' }}>{e.variant_label ?? '—'}</td>
                     <td style={{ padding: '.7rem 1rem', color: '#6b7280', whiteSpace: 'nowrap' }}>
                       {new Date(e.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: '2-digit' })}
                     </td>
                     <td style={{ padding: '.7rem 1rem' }}>
-                      {e.notified_at ? (
+                      {e.notified ? (
                         <span style={{ background: '#d1fae5', color: '#065f46', borderRadius: '2rem', padding: '.2rem .65rem', fontSize: '.75rem', fontWeight: 700 }}>
-                          Sent {new Date(e.notified_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
+                          ✔ Notified
                         </span>
                       ) : (
                         <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: '2rem', padding: '.2rem .65rem', fontSize: '.75rem', fontWeight: 700 }}>
@@ -250,7 +256,7 @@ export default function AdminNotificationsPage() {
                     </td>
                     <td style={{ padding: '.7rem 1rem' }}>
                       <div style={{ display: 'flex', gap: '.4rem' }}>
-                        {!e.notified_at && (
+                        {!e.notified && (
                           <button
                             onClick={() => sendOne(e.id)}
                             disabled={sending === e.id}
