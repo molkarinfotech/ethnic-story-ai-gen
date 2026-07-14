@@ -20,6 +20,7 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
     logout:       'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
     likes:        'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z',
     reviews:      'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
+    sourcing:     'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9l2 2 4-4',
     add:          'M12 5v14M5 12h14',
     arrow_right:  'M5 12h14M12 5l7 7-7 7',
     warning:      'M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01',
@@ -44,6 +45,7 @@ const primaryNav = [
   { href: '/admin/notifications', label: 'Notifications', icon: 'notifications' },
   { href: '/admin/likes',         label: 'Likes',         icon: 'likes' },
   { href: '/admin/reviews',       label: 'Reviews',       icon: 'reviews' },
+  { href: '/admin/sourcing',      label: 'Sourcing',      icon: 'sourcing' },
 ];
 const toolsNav = [
   { href: '/admin/scan',       label: 'Scan & AI',  icon: 'scan' },
@@ -56,12 +58,23 @@ const settingsNav = [
   { href: '/admin/categories', label: 'Categories', icon: 'categories' },
   { href: '/admin/appearance', label: 'Appearance', icon: 'appearance' },
 ];
+
+// Mobile nav — scrollable row with ALL routes so nothing is hidden
 const mobileNav = [
-  { href: '/admin/dashboard', label: 'Home',     icon: 'dashboard' },
-  { href: '/admin/products',  label: 'Products', icon: 'products' },
-  { href: '/admin/orders',    label: 'Orders',   icon: 'orders' },
-  { href: '/admin/checkout',  label: 'Checkout', icon: 'checkout' },
-  { href: '/admin/scan',      label: 'Scan',     icon: 'scan' },
+  { href: '/admin/dashboard',     label: 'Home',     icon: 'dashboard' },
+  { href: '/admin/products',      label: 'Products', icon: 'products' },
+  { href: '/admin/orders',        label: 'Orders',   icon: 'orders' },
+  { href: '/admin/notifications', label: 'Alerts',   icon: 'notifications' },
+  { href: '/admin/likes',         label: 'Likes',    icon: 'likes' },
+  { href: '/admin/reviews',       label: 'Reviews',  icon: 'reviews' },
+  { href: '/admin/sourcing',      label: 'Sourcing', icon: 'sourcing' },
+  { href: '/admin/scan',          label: 'Scan',     icon: 'scan' },
+  { href: '/admin/import',        label: 'Import',   icon: 'import' },
+  { href: '/admin/checkout',      label: 'In-store', icon: 'checkout' },
+  { href: '/admin/chatbot-kb',    label: 'Chatbot',  icon: 'chatbot' },
+  { href: '/admin/coupons',       label: 'Coupons',  icon: 'coupons' },
+  { href: '/admin/categories',    label: 'Categ.',   icon: 'categories' },
+  { href: '/admin/appearance',    label: 'Theme',    icon: 'appearance' },
 ];
 
 /* ── Layout ──────────────────────────────────────────────────────── */
@@ -252,19 +265,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           -webkit-overflow-scrolling: touch;
           box-shadow: 0 -2px 16px rgba(0,0,0,.07);
           padding-bottom: env(safe-area-inset-bottom);
+          /* Snap active item into view */
+          scroll-snap-type: x proximity;
         }
         .admin-bottom-nav::-webkit-scrollbar { display: none; }
         .admin-bottom-nav-item {
-          flex: 1; min-width: 56px;
+          flex: 0 0 auto;
+          min-width: 60px;
           display: flex; flex-direction: column;
           align-items: center; justify-content: center;
-          padding: .5rem .3rem .4rem;
+          padding: .5rem .4rem .4rem;
           text-decoration: none;
           color: var(--admin-faint);
           font-size: .5rem; font-weight: 500;
           gap: .15rem;
           border-top: 2px solid transparent;
           transition: color var(--admin-transition);
+          scroll-snap-align: start;
         }
         .admin-bottom-nav-item.active {
           color: var(--admin-brand);
@@ -329,7 +346,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         </div>
 
-        {/* ── Mobile bottom nav ── */}
+        {/* ── Mobile bottom nav — scrollable, shows ALL routes ── */}
         <nav className="admin-bottom-nav" aria-label="Mobile navigation">
           {mobileNav.map(item => {
             const active = isActive(item.href);
