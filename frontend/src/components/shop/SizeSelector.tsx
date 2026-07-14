@@ -70,9 +70,11 @@ export function SizeSelector({
   }
 
   function selectSize(v: Variant) {
-    if (v.stock_count === 0) return;
+    // FIX: always notify parent — even for OOS sizes — so the ATC button
+    // correctly shows "Out of Stock" instead of staying enabled.
+    const inStock = v.stock_count > 0;
     setSelected(v.size);
-    onSizeChange?.(v.size, true, v.stock_count, v.colour);
+    onSizeChange?.(v.size, inStock, v.stock_count, v.colour);
   }
 
   if (!loading && variants.length === 0) return null;
@@ -138,14 +140,19 @@ export function SizeSelector({
             <button
               key={`${v.colour}-${v.size}`}
               onClick={() => selectSize(v)}
-              disabled={outOfStock}
               title={outOfStock ? 'Out of stock' : lowStock ? `Only ${v.stock_count} left` : ''}
               style={{
                 minWidth: '52px', padding: '.5rem .9rem',
                 borderRadius: 'var(--radius-md)',
-                border: isSelected ? '2px solid var(--color-primary)' : outOfStock ? '1px dashed var(--color-border)' : '1px solid var(--color-border)',
-                background: isSelected ? 'var(--color-primary-highlight)' : outOfStock ? 'var(--color-surface-offset)' : 'white',
-                color: isSelected ? 'var(--color-primary)' : outOfStock ? 'var(--color-text-faint)' : 'var(--color-text)',
+                border: isSelected
+                  ? outOfStock ? '2px solid #fca5a5' : '2px solid var(--color-primary)'
+                  : outOfStock ? '1px dashed var(--color-border)' : '1px solid var(--color-border)',
+                background: isSelected
+                  ? outOfStock ? '#fef2f2' : 'var(--color-primary-highlight)'
+                  : outOfStock ? 'var(--color-surface-offset)' : 'white',
+                color: isSelected
+                  ? outOfStock ? '#b91c1c' : 'var(--color-primary)'
+                  : outOfStock ? 'var(--color-text-faint)' : 'var(--color-text)',
                 fontWeight: isSelected ? 700 : 500,
                 fontSize: 'var(--text-sm)',
                 cursor: outOfStock ? 'not-allowed' : 'pointer',
@@ -164,7 +171,7 @@ export function SizeSelector({
       </div>
 
       {selectedVariant && (
-        <p style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)', color: selectedVariant.stock_count <= 5 ? '#ca8a04' : 'var(--color-text-muted)' }}>
+        <p style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)', color: selectedVariant.stock_count === 0 ? '#b91c1c' : selectedVariant.stock_count <= 5 ? '#ca8a04' : 'var(--color-text-muted)' }}>
           {selectedVariant.stock_count === 0 ? '❌ Out of stock'
             : selectedVariant.stock_count <= 5 ? `⚠️ Only ${selectedVariant.stock_count} left in this size`
             : '✅ In stock'}
