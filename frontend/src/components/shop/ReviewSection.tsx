@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 
 interface Review {
@@ -58,7 +58,7 @@ export function ReviewSection({ productId }: Props) {
     return token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
   }
 
-  function loadReviews(p: number) {
+  const loadReviews = useCallback((p: number) => {
     setLoading(true);
     fetch(`/api/reviews?product_id=${productId}&page=${p}&limit=5`)
       .then(r => r.json())
@@ -69,9 +69,9 @@ export function ReviewSection({ productId }: Props) {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }
+  }, [productId]);
 
-  useEffect(() => { loadReviews(1); }, [productId]);
+  useEffect(() => { loadReviews(1); }, [loadReviews]);
 
   async function submitReview(e: React.FormEvent) {
     e.preventDefault();

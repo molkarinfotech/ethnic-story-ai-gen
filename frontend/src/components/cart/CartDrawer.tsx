@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 import { useCart } from '../../context/CartContext';
 import { useEffect, useState } from 'react';
 import { formatAUD } from '../../lib/products';
@@ -90,9 +91,15 @@ export function CartDrawer() {
 
               return (
                 <div key={`${item.id}__${size ?? ''}`} className="cart-item">
-                  <div className="cart-item__img" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem' }}>
+                  <div className="cart-item__img" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
                     {item.image
-                      ? <img src={item.image} alt={item.name} className="cart-item__img" />
+                      ? <Image
+                          src={item.image}
+                          alt={item.name}
+                          fill
+                          sizes="80px"
+                          style={{ objectFit: 'cover', borderRadius: '8px' }}
+                        />
                       : '🥻'
                     }
                   </div>

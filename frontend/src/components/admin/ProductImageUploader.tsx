@@ -26,7 +26,7 @@ export function ProductImageUploader({ value, onChange, productId }: Props) {
 
   useEffect(() => () => { if (elapsedRef.current) clearInterval(elapsedRef.current); }, []);
 
-  async function uploadFile(file: File) {
+  const uploadFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
       setUploadError('Please upload an image file (JPEG, PNG, WebP).');
       return;
@@ -49,14 +49,14 @@ export function ProductImageUploader({ value, onChange, productId }: Props) {
     } finally {
       setUploading(false);
     }
-  }
+  }, [productId, onChange]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
     const file = e.dataTransfer.files[0];
     if (file) uploadFile(file);
-  }, [productId]);
+  }, [uploadFile]);
 
   async function handleEnhance() {
     if (!value) return;
@@ -156,31 +156,43 @@ export function ProductImageUploader({ value, onChange, productId }: Props) {
             padding: '.75rem 1rem',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '.75rem',
           }}>
-            <div style={{ color: '#fff', fontSize: '.78rem', lineHeight: 1.3 }}>
-              <strong style={{ display: 'block', fontSize: '.82rem' }}>✨ AI Image Enhance</strong>
-              {enhanceStatus === 'loading' ? `Upscaling… ${elapsed}s` : 'Upscale & sharpen with AI'}
-            </div>
-            <button type="button" onClick={handleEnhance} disabled={enhanceStatus === 'loading'}
+            <button
+              type="button"
+              onClick={handleEnhance}
+              disabled={enhanceStatus === 'loading'}
               style={{
-                background: enhanceStatus === 'done' ? '#16a34a' : enhanceStatus === 'error' ? '#dc2626' : 'var(--color-primary)',
-                color: '#fff', border: 'none', borderRadius: '8px',
-                padding: '.45rem 1rem', fontSize: '.8rem', fontWeight: 700,
+                background: enhanceStatus === 'loading' ? 'rgba(255,255,255,.15)' : 'rgba(255,255,255,.9)',
+                color: enhanceStatus === 'loading' ? '#fff' : '#111',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '.45rem .9rem',
+                fontSize: '.78rem',
+                fontWeight: 700,
                 cursor: enhanceStatus === 'loading' ? 'wait' : 'pointer',
-                whiteSpace: 'nowrap', transition: 'background .3s',
-                display: 'flex', alignItems: 'center', gap: '.35rem', flexShrink: 0,
+                backdropFilter: 'blur(4px)',
+                display: 'flex', alignItems: 'center', gap: '.35rem',
               }}
             >
-              {enhanceStatus === 'loading' && <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>}
-              {enhanceStatus === 'idle'    && '✨ Enhance'}
-              {enhanceStatus === 'loading' && 'Enhancing…'}
-              {enhanceStatus === 'done'    && '✅ Enhanced!'}
-              {enhanceStatus === 'error'   && '✕ Retry'}
+              {enhanceStatus === 'loading'
+                ? `✨ Enhancing… ${elapsed}s`
+                : enhanceStatus === 'done'
+                  ? '✅ Enhanced!'
+                  : '✨ AI Enhance'}
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange('')}
+              style={{
+                background: 'rgba(220,38,38,.85)',
+                color: '#fff', border: 'none', borderRadius: '8px',
+                padding: '.45rem .9rem', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              Remove
             </button>
           </div>
           {enhanceError && (
-            <p style={{ color: '#dc2626', fontSize: '.75rem', padding: '.4rem .75rem', background: '#fef2f2', margin: 0 }}>
-              {enhanceError}
-            </p>
+            <p style={{ color: '#dc2626', fontSize: '.75rem', margin: '.5rem 0 0', padding: '0 .5rem' }}>⚠ {enhanceError}</p>
           )}
         </div>
       )}

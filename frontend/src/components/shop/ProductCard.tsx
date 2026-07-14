@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { Product, formatAUD } from '../../lib/products';
 import { useCart } from '../../context/CartContext';
@@ -34,18 +35,19 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
   const [expanded, setExpanded]         = useState(false);
   const [added, setAdded]               = useState(false);
   const [loading, setLoading]           = useState(false);
-  // Start as null = not yet checked; true/false = result known
   const [stockLoaded, setStockLoaded]   = useState(false);
-  const [isOOS, setIsOOS]               = useState<boolean | null>(null); // null while loading
+  const [isOOS, setIsOOS]               = useState<boolean | null>(null);
   const [images, setImages]             = useState<string[]>(image ? [image] : []);
   const [imgIdx, setImgIdx]             = useState(0);
   const timerRef                        = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // suppress unused warning — allVariants used for future colour logic
+  void allVariants;
 
   const isComingSoon = badge === 'Coming Soon';
   const isPreOrder   = badge === 'Pre-Order';
 
   useEffect(() => {
-    // Coming Soon products are never purchasable — skip stock check
     if (isComingSoon) { setStockLoaded(true); setIsOOS(false); return; }
 
     fetch(`/api/variants/${id}`)
@@ -54,17 +56,14 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
         if (Array.isArray(data)) {
           const norm = data.map(v => ({ ...v, stock_count: Number(v.stock_count) }));
           setAllVariants(norm);
-          // OOS if: no variant rows at all, OR every variant has stock_count <= 0
           const oos = norm.length === 0 || norm.every(v => v.stock_count <= 0);
           setIsOOS(oos);
         } else {
-          // Unexpected response — treat as OOS to be safe
           setIsOOS(true);
         }
         setStockLoaded(true);
       })
       .catch(() => {
-        // Network error — default to NOT blocking (fail open), but mark loaded
         setIsOOS(false);
         setStockLoaded(true);
       });
@@ -85,12 +84,10 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
       fetch(`/api/variants/${id}`).then(r => r.json()),
       fetch(`/api/products/${id}`).then(r => r.json()).catch(() => null),
     ]).then(([varData, prodData]) => {
-      // Re-check OOS with fresh data
       if (Array.isArray(varData)) {
         const norm = varData.map((v: Variant) => ({ ...v, stock_count: Number(v.stock_count) }));
         const oos = norm.length === 0 || norm.every(v => v.stock_count <= 0);
         setIsOOS(oos);
-        // Only show in-stock sizes in the expanded selector
         const inStock = norm.filter(v => v.stock_count > 0);
         setVariants(inStock);
         const firstColour = inStock.find(v => v.colour)?.colour ?? '';
@@ -115,9 +112,7 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
 
   function handleAddClick(e: React.MouseEvent) {
     e.preventDefault();
-    // Block if OOS or Coming Soon — guard even before stock loads (isOOS === null)
     if (isComingSoon || isOOS === true) return;
-    // While stock is still loading, don't expand — wait for result
     if (!stockLoaded) return;
     if (!expanded) { setExpanded(true); return; }
     if (!selectedSize) return;
@@ -140,7 +135,6 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
   const maxQty = selectedVariant?.stock_count ?? 10;
   const currentImage = images[imgIdx] ?? image;
 
-  // Derive button label
   const btnLabel = () => {
     if (added) return '✓ Added to Bag';
     if (isComingSoon) return '⏳ Coming Soon';
@@ -161,10 +155,16 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
       <a href={`/products/${slug}`} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
         <div className="product-card__image" style={{ position: 'relative', overflow: 'hidden' }}>
           {currentImage
-            ? <img src={currentImage} alt={name} loading="lazy" style={{ transition: 'opacity .3s', width: '100%', height: '100%', objectFit: 'cover' }} />
+            ? <Image
+                src={currentImage}
+                alt={name}
+                fill
+                sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                style={{ objectFit: 'cover', transition: 'opacity .3s' }}
+                loading="lazy"
+              />
             : <span style={{ fontSize: '4rem' }}>🥻</span>}
           {badge && !isOOS && <span className="product-card__badge">{badge}</span>}
-          {/* OOS overlay — shown as soon as stock check confirms OOS */}
           {isOOS === true && (
             <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.38)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ background: 'rgba(255,255,255,0.93)', color: '#dc2626', fontWeight: 700, fontSize: '.75rem', letterSpacing: '.06em', textTransform: 'uppercase', padding: '.35rem .8rem', borderRadius: '.4rem', border: '1px solid #fca5a5' }}>Out of Stock</span>
