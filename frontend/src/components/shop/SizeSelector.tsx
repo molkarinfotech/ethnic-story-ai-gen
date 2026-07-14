@@ -18,7 +18,11 @@ function uniqueColours(variants: Variant[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const v of variants) {
-    if (v.colour && !seen.has(v.colour)) { seen.add(v.colour); out.push(v.colour); }
+    // Only add colours that are real non-empty strings
+    if (v.colour && v.colour.trim() && !seen.has(v.colour)) {
+      seen.add(v.colour);
+      out.push(v.colour);
+    }
   }
   return out;
 }
@@ -30,7 +34,7 @@ export function SizeSelector({
 }: {
   productId: string;
   onSizeChange?: (size: string | null, inStock: boolean, stockCount: number, colour: string) => void;
-  onColourChange?: (colour: string) => void;   // fires immediately on colour click before size selected
+  onColourChange?: (colour: string) => void;
 }) {
   const [variants, setVariants]     = useState<Variant[]>([]);
   const [selectedColour, setColour] = useState<string>('');
@@ -42,12 +46,17 @@ export function SizeSelector({
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
-          const norm: Variant[] = data.map((v: Variant) => ({ ...v, colour: v.colour ?? '', stock_count: Number(v.stock_count) }));
+          const norm: Variant[] = data.map((v: Variant) => ({
+            ...v,
+            // Normalise: treat null/undefined/whitespace-only colour as empty string
+            colour: (v.colour ?? '').trim(),
+            stock_count: Number(v.stock_count),
+          }));
           const sorted = sortSizes(norm);
           setVariants(sorted);
-          const firstColour = sorted.find(v => v.colour)?.colour ?? '';
+          // Only set a default colour if there are real colour values
+          const firstColour = sorted.find(v => v.colour !== '')?.colour ?? '';
           setColour(firstColour);
-          // notify parent of initial colour so carousel shows right images from the start
           if (firstColour) onColourChange?.(firstColour);
         } else {
           setVariants([]);
@@ -60,18 +69,20 @@ export function SizeSelector({
 
   const colours = uniqueColours(variants);
   const hasColours = colours.length > 0;
-  const filteredVariants = hasColours ? variants.filter(v => v.colour === selectedColour) : variants;
+  // When there are colours, only show sizes for the selected colour.
+  // When there are no colours (single-colour or colour-agnostic product), show all variants.
+  const filteredVariants = hasColours
+    ? variants.filter(v => v.colour === selectedColour)
+    : variants;
 
   function selectColour(c: string) {
     setColour(c);
     setSelected(null);
-    onColourChange?.(c);                          // ← update carousel immediately
+    onColourChange?.(c);
     onSizeChange?.(null, false, 0, c);
   }
 
   function selectSize(v: Variant) {
-    // FIX: always notify parent — even for OOS sizes — so the ATC button
-    // correctly shows "Out of Stock" instead of staying enabled.
     const inStock = v.stock_count > 0;
     setSelected(v.size);
     onSizeChange?.(v.size, inStock, v.stock_count, v.colour);
@@ -87,11 +98,12 @@ export function SizeSelector({
 
   return (
     <div>
-      {/* Colour swatches */}
+      {/* Colour swatches — only rendered when the product genuinely has colour variants */}
       {hasColours && (
         <div style={{ marginBottom: 'var(--space-5)' }}>
           <label style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 'var(--space-2)' }}>
-            Colour {selectedColour && <span style={{ color: 'var(--color-text)', fontWeight: 700 }}>— {selectedColour}</span>}
+            {/* Only show the selected colour name when one is actually selected */}
+            Colour{selectedColour ? <span style={{ color: 'var(--color-text)', fontWeight: 700 }}> — {selectedColour}</span> : null}
           </label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
             {colours.map(c => {
@@ -126,7 +138,8 @@ export function SizeSelector({
       {/* Size pills */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
         <label style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-          Size {selected && <span style={{ color: 'var(--color-text)', fontWeight: 700 }}>— {selected}</span>}
+          {/* Only show the selected size name when one is actually selected */}
+          Size{selected ? <span style={{ color: 'var(--color-text)', fontWeight: 700 }}> — {selected}</span> : null}
         </label>
         <a href="#" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-primary)' }}>Size guide</a>
       </div>

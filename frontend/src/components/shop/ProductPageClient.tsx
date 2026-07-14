@@ -54,7 +54,8 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     return () => obs.disconnect();
   }, []);
 
-  // null = not yet fetched; true = confirmed OOS; false = has stock
+  // null = not yet fetched; true = product has NO variants at all (globally OOS); false = has at least one variant
+  // Per-colour+size OOS is handled entirely by sizeInStock from handleSizeChange.
   const [globalOOS,    setGlobalOOS]    = useState<boolean | null>(null);
   const [stockChecked, setStockChecked] = useState(false);
 
@@ -63,15 +64,12 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     fetch(`/api/variants/${product.id}?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
       .then((data: { stock_count: number }[]) => {
-        if (!Array.isArray(data)) {
-          // Unexpected response — treat as OOS
-          setGlobalOOS(true);
-        } else if (data.length === 0) {
-          // No variant rows → treat as OOS
+        if (!Array.isArray(data) || data.length === 0) {
+          // No variant rows at all — product is globally OOS
           setGlobalOOS(true);
         } else {
-          // OOS only if EVERY variant has stock_count <= 0
-          setGlobalOOS(data.every(v => Number(v.stock_count) <= 0));
+          // Product has variants; per-variant OOS is handled by the size selector
+          setGlobalOOS(false);
         }
       })
       .catch(() => {
@@ -103,9 +101,9 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
 
   function doAdd(sticky = false) {
     if (isComingSoon || globalOOS === true) return;
-    // Don't allow add while stock check hasn't finished
     if (!stockChecked) return;
     if (!size) { setError(true); return; }
+    // Block add if the selected colour+size combo is out of stock
     if (!sizeInStock) return;
     const safeQty = Math.min(qty, maxQty);
     if (safeQty <= 0) return;
@@ -117,11 +115,16 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     openCart();
   }
 
-  // true = confirmed OOS or selected size is OOS
-  const outOfStock = !isComingSoon && (globalOOS === true || (size !== null && !sizeInStock));
-  const atMax      = size !== null && qty >= maxQty && maxQty > 0;
+  // outOfStock is true when:
+  //   - product has no variants at all (globalOOS)
+  //   - OR a colour+size has been selected and that specific combo is OOS (sizeInStock = false)
+  const outOfStock = !isComingSoon && (
+    globalOOS === true ||
+    (size !== null && !sizeInStock)
+  );
+  const atMax = size !== null && qty >= maxQty && maxQty > 0;
 
-  // Button is disabled while stock hasn't loaded yet, or when OOS/Coming Soon
+  // Button disabled while stock hasn't loaded, or when OOS/Coming Soon
   const atcDisabled = !stockChecked || isComingSoon || outOfStock;
 
   const atcLabel = () => {
@@ -129,7 +132,8 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     if (!stockChecked)              return 'Checking stock…';
     if (added)                      return '✓ Added to Bag';
     if (globalOOS === true)         return '🚫 Out of Stock';
-    if (outOfStock)                 return 'Out of Stock';
+    // If a size is selected and that specific combo is OOS, show OOS
+    if (size !== null && !sizeInStock) return 'Out of Stock — Select another size';
     if (isPreOrder)                 return '🛒 Pre-Order Now';
     return 'Add to Bag';
   };
@@ -215,7 +219,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
             </div>
           )}
 
-          {/* OOS banner */}
+          {/* Global OOS banner — only shown when product has NO variants at all */}
           {stockChecked && globalOOS === true && !isComingSoon && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4) var(--space-5)', marginBottom: 'var(--space-5)' }}>
               <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>🚫</span>
@@ -242,8 +246,8 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
                     <button
                       className="qty-btn"
                       onClick={() => { if (!atMax) setQty(q => Math.min(maxQty, q + 1)); }}
-                      disabled={atMax || !size}
-                      style={{ opacity: (atMax || !size) ? 0.35 : 1, cursor: (atMax || !size) ? 'not-allowed' : 'pointer' }}
+                      disabled={atMax || !size || !sizeInStock}
+                      style={{ opacity: (atMax || !size || !sizeInStock) ? 0.35 : 1, cursor: (atMax || !size || !sizeInStock) ? 'not-allowed' : 'pointer' }}
                     >+</button>
                   </div>
                   {atMax && <span style={{ fontSize: 'var(--text-xs)', color: '#dc2626', fontWeight: 600 }}>Max {maxQty} available</span>}
@@ -261,13 +265,13 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
                 marginTop: 'var(--space-4)',
                 opacity: atcDisabled ? 0.55 : 1,
                 cursor: atcDisabled ? 'not-allowed' : 'pointer',
-                ...((isComingSoon || globalOOS === true) ? { background: '#9ca3af', boxShadow: 'none' } : {}),
+                ...((isComingSoon || globalOOS === true || (size !== null && !sizeInStock)) ? { background: '#9ca3af', boxShadow: 'none' } : {}),
               }}
             >
               {atcLabel()}
             </button>
 
-            {!isComingSoon && globalOOS !== true && stockChecked && (
+            {!isComingSoon && globalOOS !== true && stockChecked && !(size !== null && !sizeInStock) && (
               <a
                 href="#"
                 className="btn btn-secondary pdp-buynow-btn"
