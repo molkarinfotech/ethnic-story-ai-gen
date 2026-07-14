@@ -22,8 +22,6 @@ const GENDER_LABELS: Record<string, string> = {
 type NavItemData = { label: string; href: string; children: { label: string; href: string }[] };
 
 function buildNav(groups: NavGroup[]): NavItemData[] {
-  // Sort incoming groups by the canonical GROUP_ORDER.
-  // Groups not in GROUP_ORDER are appended at the end.
   const sorted = [...groups].sort((a, b) => {
     const ai = GROUP_ORDER.indexOf(a.gender as typeof GROUP_ORDER[number]);
     const bi = GROUP_ORDER.indexOf(b.gender as typeof GROUP_ORDER[number]);
@@ -33,8 +31,6 @@ function buildNav(groups: NavGroup[]): NavItemData[] {
     return ai - bi;
   });
 
-  // Map every group — all categories from the API are shown.
-  // No client-side filtering: the API is the source of truth.
   return sorted.map(g => ({
     label: GENDER_LABELS[g.gender] ?? g.gender.charAt(0).toUpperCase() + g.gender.slice(1),
     href: `/collections/${g.gender}`,
@@ -45,8 +41,6 @@ function buildNav(groups: NavGroup[]): NavItemData[] {
   }));
 }
 
-// ── Dropdown nav item with a generous hover-bridge so the cursor
-//    can travel into the panel without it vanishing ──────────────
 function NavItem({ item }: { item: NavItemData }) {
   const [open, setOpen] = useState(false);
   const ref      = useRef<HTMLDivElement>(null);
@@ -153,7 +147,7 @@ function NavItem({ item }: { item: NavItemData }) {
               opacity: open ? 1 : 0,
               visibility: open ? 'visible' : 'hidden',
               pointerEvents: open ? 'all' : 'none',
-              transition: 'opacity 0.18s cubic-bezier(0.16,1,0.3,1), transform 0.18s cubic-bezier(0.16,1,0.3,1), visibility 0.18s',
+              transition: 'opacity 0.15s cubic-bezier(0.16,1,0.3,1), transform 0.15s cubic-bezier(0.16,1,0.3,1), visibility 0.15s',
             }}
           >
             <a
