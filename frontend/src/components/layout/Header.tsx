@@ -1,8 +1,148 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useCart } from '../../context/CartContext';
 import { MobileNav } from './MobileNav';
+
+const NAV_ITEMS = [
+  {
+    label: 'Women',
+    href: '/collections/women',
+    children: [
+      { label: 'Sarees',    href: '/collections/women/sarees' },
+      { label: 'Lehengas', href: '/collections/women/lehengas' },
+      { label: 'Kurtas',   href: '/collections/women/kurtas' },
+    ],
+  },
+  {
+    label: 'Men',
+    href: '/collections/men',
+    children: [
+      { label: 'Kurtas',    href: '/collections/men/kurtas' },
+      { label: 'Sherwanis', href: '/collections/men/sherwanis' },
+    ],
+  },
+  {
+    label: 'Kids',
+    href: '/collections/kids',
+    children: [
+      { label: 'Lehengas',  href: '/collections/kids/lehengas' },
+      { label: 'Kurtas',    href: '/collections/kids/kurtas' },
+      { label: 'Sherwanis', href: '/collections/kids/sherwanis' },
+    ],
+  },
+  {
+    label: 'Accessories',
+    href: '/collections/accessories',
+    children: [],
+  },
+];
+
+function NavItem({ item }: { item: typeof NAV_ITEMS[number] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const hasChildren = item.children.length > 0;
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div
+      ref={ref}
+      style={{ position: 'relative' }}
+      onMouseEnter={() => hasChildren && setOpen(true)}
+      onMouseLeave={() => hasChildren && setOpen(false)}
+    >
+      <a
+        href={item.href}
+        style={{
+          fontFamily: 'system-ui, sans-serif',
+          fontSize: '0.875rem',
+          fontWeight: 500,
+          color: 'var(--color-text)',
+          transition: 'color 0.15s',
+          whiteSpace: 'nowrap',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.25rem',
+          padding: '0.25rem 0',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-primary)')}
+        onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text)')}
+        aria-haspopup={hasChildren ? 'true' : undefined}
+        aria-expanded={hasChildren ? String(open) : undefined}
+      >
+        {item.label}
+        {hasChildren && (
+          <svg
+            width="12" height="12" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            style={{ opacity: 0.55, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        )}
+      </a>
+
+      {hasChildren && open && (
+        <div
+          role="menu"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(255,252,249,0.98)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid var(--color-border)',
+            borderRadius: '8px',
+            boxShadow: '0 8px 32px -4px rgba(0,0,0,0.14)',
+            minWidth: '160px',
+            padding: '0.5rem 0',
+            zIndex: 200,
+            animation: 'dropdownIn 0.15s cubic-bezier(0.16,1,0.3,1)',
+          }}
+        >
+          {item.children.map(child => (
+            <a
+              key={child.href}
+              href={child.href}
+              role="menuitem"
+              style={{
+                display: 'block',
+                padding: '0.5rem 1.1rem',
+                fontSize: '0.85rem',
+                fontWeight: 500,
+                color: 'var(--color-text)',
+                textDecoration: 'none',
+                transition: 'background 0.12s, color 0.12s',
+                whiteSpace: 'nowrap',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'var(--color-surface-offset)';
+                e.currentTarget.style.color = 'var(--color-primary)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--color-text)';
+              }}
+            >
+              {child.label}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Header() {
   const headerRef = useRef<HTMLElement>(null);
@@ -24,6 +164,10 @@ export function Header() {
   return (
     <>
       <style>{`
+        @keyframes dropdownIn {
+          from { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+          to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
         .site-announcement {
           background: var(--color-primary);
           color: white;
@@ -33,20 +177,18 @@ export function Header() {
           padding: .45rem 1rem;
           letter-spacing: .01em;
         }
-        /* Hide desktop nav links + account on mobile */
         @media (max-width: 767px) {
           .header-desktop-nav { display: none !important; }
           .header-desktop-account { display: none !important; }
           .header-mobile-toggle { display: flex !important; }
         }
-        /* Hide mobile hamburger on desktop */
         @media (min-width: 768px) {
           .header-mobile-toggle { display: none !important; }
         }
       `}</style>
 
       <div className="site-announcement">
-        \u2728 Free shipping on orders above $150 AUD\u00a0 |\u00a0 New festive arrivals now live
+        ✨ Free shipping on orders above $150 AUD  |  New festive arrivals now live
       </div>
 
       <header
@@ -61,7 +203,6 @@ export function Header() {
           zIndex: 100,
           padding: '0 1rem',
           transition: 'background 0.3s ease, box-shadow 0.3s ease',
-          /* overflow:hidden removed \u2014 it was clipping the portal-rendered drawer */
         }}
       >
         <div style={{
@@ -81,7 +222,7 @@ export function Header() {
             style={{ display: 'flex', alignItems: 'center', flexShrink: 0, transition: 'opacity 0.2s' }}
             onMouseEnter={e => (e.currentTarget.style.opacity = '0.8')}
             onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-            aria-label="Ethnic Story \u2014 Home"
+            aria-label="Ethnic Story — Home"
           >
             <Image
               src="/logo.png"
@@ -93,32 +234,19 @@ export function Header() {
             />
           </a>
 
-          {/* Desktop nav \u2014 hidden on mobile */}
-          <nav className="header-desktop-nav" style={{ display: 'flex', gap: '1.4rem', alignItems: 'center', flex: 1, justifyContent: 'center' }}>
-            {([
-              ['Collections', '/collections'],
-              ['Sarees', '/collections/sarees'],
-              ['Lehengas', '/collections/lehengas'],
-              ['Kurtas', '/collections/kurtas'],
-              ['Kids', '/collections/kids'],
-              ['Accessories', '/collections/accessories'],
-            ] as [string, string][]).map(([label, href]) => (
-              <a
-                key={href}
-                href={href}
-                style={{ fontFamily: 'system-ui, sans-serif', fontSize: '0.875rem', fontWeight: 500, color: 'var(--color-text)', transition: 'color 0.15s', whiteSpace: 'nowrap' }}
-                onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-primary)')}
-                onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text)')}
-              >
-                {label}
-              </a>
-            ))}
+          {/* Desktop nav — hidden on mobile */}
+          <nav
+            className="header-desktop-nav"
+            style={{ display: 'flex', gap: '1.6rem', alignItems: 'center', flex: 1, justifyContent: 'center' }}
+            aria-label="Main navigation"
+          >
+            {NAV_ITEMS.map(item => <NavItem key={item.href} item={item} />)}
           </nav>
 
           {/* Right side actions */}
           <div style={{ display: 'flex', gap: '.65rem', alignItems: 'center', flexShrink: 0 }}>
 
-            {/* Account \u2014 desktop only */}
+            {/* Account — desktop only */}
             <a
               href="/account"
               className="header-desktop-account"
@@ -129,7 +257,7 @@ export function Header() {
               Account
             </a>
 
-            {/* Bag \u2014 always visible */}
+            {/* Bag — always visible */}
             <button
               onClick={openCart}
               aria-label="Open bag"
@@ -153,7 +281,7 @@ export function Header() {
                 (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
               }}
             >
-              \uD83D\uDED2 Bag
+              🛒 Bag
               {totalItems > 0 && (
                 <span style={{
                   background: 'rgba(255,255,255,0.25)',
@@ -166,11 +294,6 @@ export function Header() {
               )}
             </button>
 
-            {/*
-              MobileNav renders the toggle button here (inside header)
-              but portals the drawer + overlay to document.body,
-              completely escaping the header stacking context.
-            */}
             <div className="header-mobile-toggle" style={{ display: 'none', alignItems: 'center' }}>
               <MobileNav />
             </div>
