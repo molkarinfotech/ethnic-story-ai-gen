@@ -20,10 +20,6 @@ const GENDER_LABELS: Record<string, string> = {
 
 type NavItemData = { label: string; href: string; children: { label: string; href: string }[] };
 
-/**
- * Convert API response to the flat NavItemData[] that NavItem expects.
- * Only groups with ≥1 category are included (the API already guarantees this).
- */
 function buildNav(groups: NavGroup[]): NavItemData[] {
   return groups.map(g => ({
     label: GENDER_LABELS[g.gender] ?? g.gender,
@@ -146,7 +142,6 @@ export function Header() {
   const { totalItems, openCart } = useCart();
   const [navItems, setNavItems] = useState<NavItemData[]>([]);
 
-  // Fetch grouped nav structure from the public storefront API (no admin auth needed)
   useEffect(() => {
     fetch('/api/storefront/categories')
       .then(r => r.ok ? r.json() : [])
@@ -226,10 +221,17 @@ export function Header() {
           minWidth: 0,
         }}>
 
-          {/* Logo */}
+          {/* Logo — transparent background, mix-blend-mode removes any white fill baked into the PNG */}
           <a
             href="/"
-            style={{ display: 'flex', alignItems: 'center', flexShrink: 0, transition: 'opacity 0.2s' }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              flexShrink: 0,
+              transition: 'opacity 0.2s',
+              background: 'transparent',
+              lineHeight: 0,
+            }}
             onMouseEnter={e => (e.currentTarget.style.opacity = '0.8')}
             onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
             aria-label="Ethnic Story — Home"
@@ -240,7 +242,15 @@ export function Header() {
               width={160}
               height={52}
               priority
-              style={{ objectFit: 'contain', height: '52px', width: 'auto', maxWidth: '160px' }}
+              style={{
+                objectFit: 'contain',
+                height: '52px',
+                width: 'auto',
+                maxWidth: '160px',
+                background: 'transparent',
+                mixBlendMode: 'multiply',
+                display: 'block',
+              }}
             />
           </a>
 
@@ -252,7 +262,6 @@ export function Header() {
           >
             {navItems.map(item => <NavItem key={item.href} item={item} />)}
             {navItems.length === 0 && (
-              // skeleton placeholders while loading
               [1,2,3,4].map(i => (
                 <span key={i} style={{ display: 'inline-block', width: 52, height: 14, borderRadius: 4, background: '#f3e8ee', opacity: 0.7 }} />
               ))

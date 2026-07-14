@@ -5,7 +5,6 @@ import Image from 'next/image';
 import { useCart } from '../../context/CartContext';
 import { usePathname } from 'next/navigation';
 
-// Shape returned by /api/storefront/categories
 type NavGroup = {
   gender: string;
   categories: { id: string; slug: string; label: string; sort_order: number }[];
@@ -31,10 +30,6 @@ type Section = {
   children: { href: string; label: string }[];
 };
 
-/**
- * Convert API grouped response to mobile nav sections.
- * Only groups with ≥1 category appear (API already guarantees this).
- */
 function buildSections(groups: NavGroup[]): Section[] {
   const sections: Section[] = groups.map(g => ({
     label: GENDER_LABELS[g.gender] ?? g.gender,
@@ -92,14 +87,29 @@ function Drawer({ open, onClose, sections }: { open: boolean; onClose: () => voi
         style={{ background: '#fff9f5', zIndex: 1001 }}
       >
         <div className="mobile-nav-drawer__header" style={{ background: '#fff9f5', borderBottom: '1px solid #fce7f3' }}>
-          <a className="site-header__logo" href="/" onClick={close} aria-label="Ethnic Story — Home">
+          {/* Logo — transparent bg + multiply blend removes any white fill baked into the PNG */}
+          <a
+            className="site-header__logo"
+            href="/"
+            onClick={close}
+            aria-label="Ethnic Story — Home"
+            style={{ background: 'transparent', lineHeight: 0, display: 'flex', alignItems: 'center' }}
+          >
             <Image
               src="/logo.png"
               alt="Ethnic Story"
               width={160}
               height={48}
               priority
-              style={{ objectFit: 'contain', height: '48px', width: 'auto', maxWidth: '160px' }}
+              style={{
+                objectFit: 'contain',
+                height: '48px',
+                width: 'auto',
+                maxWidth: '160px',
+                background: 'transparent',
+                mixBlendMode: 'multiply',
+                display: 'block',
+              }}
             />
           </a>
           <button className="mobile-nav-drawer__close" aria-label="Close menu" onClick={close}>✕</button>
@@ -161,7 +171,6 @@ export function MobileNav() {
   const [open, setOpen] = useState(false);
   const [sections, setSections] = useState<Section[]>([]);
 
-  // Fetch grouped nav structure from the public storefront API — no admin cookie needed
   useEffect(() => {
     fetch('/api/storefront/categories')
       .then(r => r.ok ? r.json() : [])
