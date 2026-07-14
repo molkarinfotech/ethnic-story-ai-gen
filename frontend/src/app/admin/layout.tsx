@@ -18,16 +18,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/orders',    label: 'Orders',     icon: '📦' },
   ];
   const toolsNav = [
-    { href: '/admin/scan',      label: 'Scan & AI',  icon: '📷' },
-    { href: '/admin/import',    label: 'Import',     icon: '📥' },
-    { href: '/admin/checkout',  label: 'In-store',   icon: '🛒' },
+    { href: '/admin/scan',        label: 'Scan & AI',  icon: '📷' },
+    { href: '/admin/import',      label: 'Import',     icon: '📥' },
+    { href: '/admin/checkout',    label: 'In-store',   icon: '🛒' },
+    { href: '/admin/chatbot-kb',  label: 'Chatbot KB', icon: '🤖' },
   ];
   const settingsNav = [
     { href: '/admin/categories', label: 'Categories', icon: '🏷️' },
     { href: '/admin/appearance', label: 'Appearance', icon: '🎨' },
   ];
 
-  // All nav items available on mobile via horizontally-scrollable bottom bar
   const mobileNav = [
     { href: '/admin/dashboard',  label: 'Home',       icon: '📊' },
     { href: '/admin/products',   label: 'Products',   icon: '👗' },
@@ -35,6 +35,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/checkout',   label: 'Checkout',   icon: '🛒' },
     { href: '/admin/scan',       label: 'Scan',       icon: '📷' },
     { href: '/admin/import',     label: 'Import',     icon: '📥' },
+    { href: '/admin/chatbot-kb', label: 'KB',         icon: '🤖' },
     { href: '/admin/categories', label: 'Categories', icon: '🏷️' },
     { href: '/admin/appearance', label: 'Appearance', icon: '🎨' },
   ];
@@ -150,7 +151,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </main>
       </div>
 
-      {/* Mobile bottom nav — horizontally scrollable so all sections are reachable */}
+      {/* Mobile bottom nav */}
       <nav
         className="admin-bottom-nav"
         style={{
