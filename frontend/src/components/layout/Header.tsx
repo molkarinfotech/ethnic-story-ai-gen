@@ -46,7 +46,7 @@ export function Header() {
       `}</style>
 
       <div className="site-announcement">
-        ✨ Free shipping on orders above $150 AUD  |  New festive arrivals now live
+        ✨ Free shipping on orders above $150 AUD  |  New festive arrivals now live
       </div>
 
       <header
@@ -61,7 +61,7 @@ export function Header() {
           zIndex: 100,
           padding: '0 1rem',
           transition: 'background 0.3s ease, box-shadow 0.3s ease',
-          overflow: 'hidden',
+          /* overflow: hidden intentionally removed — it clips position:fixed drawer */
         }}
       >
         <div style={{
@@ -166,13 +166,20 @@ export function Header() {
               )}
             </button>
 
-            {/* Hamburger — mobile only, rendered by MobileNav */}
+            {/* Hamburger toggle — mobile only */}
             <div className="header-mobile-toggle" style={{ display: 'none', alignItems: 'center' }}>
-              <MobileNav />
+              <MobileNav.Toggle />
             </div>
           </div>
         </div>
       </header>
+
+      {/*
+        MobileNav drawer + overlay rendered OUTSIDE the <header> so they are
+        not clipped by the header's stacking context. The toggle button above
+        communicates with MobileNav via shared state inside the component.
+      */}
+      <MobileNav.Drawer />
     </>
   );
 }
