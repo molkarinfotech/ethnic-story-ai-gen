@@ -3,7 +3,7 @@ import { getServiceSupabase } from '../../../lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-// ── FAQ bank (mirrors ChatWidget.tsx so the API can answer them too) ──────────
+// ── FAQ bank ──────────────────────────────────────────────────────────────────
 const FAQS = [
   {
     keywords: ['size', 'sizing', 'xs', 'small', 'medium', 'large', 'xl', '2xl', '3xl', 'fit', 'measurements', 'measure'],
@@ -39,37 +39,64 @@ const FAQS = [
   },
 ];
 
-// ── Product-search intent keywords ────────────────────────────────────────────
-// If the message contains ANY of these, we attempt a product search.
+// ── Category / gender keyword maps ────────────────────────────────────────────
+// Maps words a shopper might say → the value stored in the DB column
+const CATEGORY_MAP: Record<string, string> = {
+  saree: 'sarees',
+  sarees: 'sarees',
+  sari: 'sarees',
+  saris: 'sarees',
+  lehenga: 'lehengas',
+  lehengas: 'lehengas',
+  lehnga: 'lehengas',
+  kurta: 'kurtas',
+  kurtas: 'kurtas',
+  kurti: 'kurtas',
+  kurtis: 'kurtas',
+  salwar: 'kurtas',
+  anarkali: 'kurtas',
+  sherwani: 'sherwanis',
+  sherwanis: 'sherwanis',
+  dupatta: 'accessories',
+  jewellery: 'accessories',
+  jewelry: 'accessories',
+  accessories: 'accessories',
+};
+
+const GENDER_MAP: Record<string, string> = {
+  women: 'women',
+  woman: 'women',
+  ladies: 'women',
+  female: 'women',
+  girl: 'women',
+  girls: 'women',
+  men: 'men',
+  man: 'men',
+  male: 'men',
+  gents: 'men',
+  boys: 'men',
+  kids: 'kids',
+  kid: 'kids',
+  children: 'kids',
+  child: 'kids',
+  baby: 'kids',
+};
+
+// ── Product-search intent triggers ────────────────────────────────────────────
 const PRODUCT_SEARCH_TRIGGERS = [
   'show', 'find', 'looking for', 'want', 'need', 'search', 'browse',
-  'do you have', 'do you sell', 'any', 'got any', 'kurta', 'saree', 'sari',
-  'lehenga', 'dupatta', 'salwar', 'anarkali', 'kurti', 'ethnic', 'dress',
-  'suit', 'top', 'bottom', 'red', 'blue', 'green', 'pink', 'yellow', 'white',
-  'black', 'purple', 'orange', 'gold', 'silver', 'wedding', 'party', 'casual',
-  'festive', 'formal', 'embroidered', 'printed', 'plain', 'solid', 'floral',
-  'collection', 'new', 'sale', 'discount', 'recommend', 'suggest', 'popular',
-  'new arrival', 'trending', 'best seller', 'gift',
+  'do you have', 'do you sell', 'any', 'got any', 'have you got',
+  ...Object.keys(CATEGORY_MAP),
+  ...Object.keys(GENDER_MAP),
+  'ethnic', 'dress', 'outfit', 'collection', 'new', 'sale', 'discount',
+  'recommend', 'suggest', 'popular', 'new arrival', 'trending', 'best seller',
+  'wedding', 'party', 'festive', 'casual', 'formal', 'gift',
+  'red', 'blue', 'green', 'pink', 'yellow', 'white', 'black', 'purple',
+  'orange', 'gold', 'silver', 'embroidered', 'printed', 'plain', 'floral',
 ];
 
 function isProductQuery(lower: string): boolean {
   return PRODUCT_SEARCH_TRIGGERS.some(t => lower.includes(t));
-}
-
-// ── Extract meaningful search terms from the message ─────────────────────────
-function extractSearchTerms(lower: string): string[] {
-  // Strip common filler words, keeping nouns and adjectives useful for tag matching
-  const stop = new Set([
-    'i', 'me', 'my', 'we', 'you', 'a', 'an', 'the', 'is', 'are', 'was', 'do',
-    'does', 'can', 'could', 'would', 'will', 'have', 'has', 'for', 'to', 'of',
-    'in', 'on', 'at', 'by', 'or', 'and', 'but', 'with', 'some', 'any', 'it',
-    'its', 'this', 'that', 'be', 'been', 'being', 'show', 'find', 'get', 'give',
-    'want', 'need', 'like', 'looking', 'something', 'anything', 'please',
-  ]);
-  return lower
-    .replace(/[^a-z0-9 ]/g, ' ')
-    .split(/\s+/)
-    .filter(w => w.length > 2 && !stop.has(w));
 }
 
 interface Product {
@@ -78,49 +105,92 @@ interface Product {
   slug: string;
   price: number;
   image: string | null;
-  tags: string[] | null;
   category: string | null;
+  gender: string | null;
+  badge: string | null;
 }
 
-async function searchProducts(terms: string[]): Promise<Product[]> {
-  if (!terms.length) return [];
+async function searchProducts(lower: string): Promise<Product[]> {
   const sb = getServiceSupabase();
 
-  // 1. Tag-based search: find products whose tags overlap with the search terms.
-  //    Uses Postgres @> (contains) via .contains() — but we want ANY match,
-  //    so we use .overlaps() for array columns.
-  const { data: tagMatches } = await sb
-    .from('products')
-    .select('id, name, slug, price, image, tags, category')
-    .eq('active', true)
-    .overlaps('tags', terms)
-    .order('created_at', { ascending: false })
-    .limit(6);
+  // Detect category and gender from the message
+  const detectedCategory = Object.keys(CATEGORY_MAP).find(k => lower.includes(k))
+    ? CATEGORY_MAP[Object.keys(CATEGORY_MAP).find(k => lower.includes(k))!]
+    : null;
 
-  // 2. Name/category text search for terms the tags might not cover.
-  const nameMatches: Product[] = [];
-  for (const term of terms.slice(0, 3)) {
+  const detectedGender = Object.keys(GENDER_MAP).find(k => lower.includes(k))
+    ? GENDER_MAP[Object.keys(GENDER_MAP).find(k => lower.includes(k))!]
+    : null;
+
+  // Build query using real columns: name, category, gender, subtitle
+  let query = sb
+    .from('products')
+    .select('id, name, slug, price, image, category, gender, badge')
+    .order('created_at', { ascending: false })
+    .limit(8);
+
+  if (detectedCategory) {
+    query = query.eq('category', detectedCategory);
+  }
+  if (detectedGender) {
+    query = query.eq('gender', detectedGender);
+  }
+
+  const { data: filtered, error: filteredErr } = await query;
+
+  // If we got results from category/gender filters, return them
+  if (!filteredErr && filtered && filtered.length > 0) {
+    return (filtered as Product[]).slice(0, 5);
+  }
+
+  // Fallback: text search across name and subtitle for any meaningful word
+  const stopWords = new Set([
+    'i', 'me', 'my', 'we', 'you', 'a', 'an', 'the', 'is', 'are', 'was', 'do',
+    'does', 'can', 'could', 'would', 'will', 'have', 'has', 'for', 'to', 'of',
+    'in', 'on', 'at', 'by', 'or', 'and', 'but', 'with', 'some', 'any', 'it',
+    'its', 'this', 'that', 'be', 'been', 'show', 'find', 'get', 'give', 'want',
+    'need', 'like', 'looking', 'something', 'anything', 'please', 'do', 'you',
+    'have', 'got', 'sell',
+  ]);
+  const terms = lower
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !stopWords.has(w))
+    .slice(0, 3);
+
+  if (!terms.length) return [];
+
+  const seen = new Set<string>();
+  const results: Product[] = [];
+
+  for (const term of terms) {
     const { data } = await sb
       .from('products')
-      .select('id, name, slug, price, image, tags, category')
-      .eq('active', true)
-      .or(`name.ilike.%${term}%,category.ilike.%${term}%`)
+      .select('id, name, slug, price, image, category, gender, badge')
+      .or(`name.ilike.%${term}%,subtitle.ilike.%${term}%`)
       .order('created_at', { ascending: false })
       .limit(4);
-    if (data) nameMatches.push(...(data as Product[]));
+    for (const p of (data ?? [])) {
+      if (!seen.has(p.id)) {
+        seen.add(p.id);
+        results.push(p as Product);
+      }
+      if (results.length >= 5) break;
+    }
+    if (results.length >= 5) break;
   }
 
-  // Merge, deduplicate, cap at 5 results
-  const seen = new Set<string>();
-  const merged: Product[] = [];
-  for (const p of [...(tagMatches ?? []), ...nameMatches]) {
-    if (!seen.has(p.id)) {
-      seen.add(p.id);
-      merged.push(p as Product);
-    }
-    if (merged.length >= 5) break;
+  // Last resort: return newest products
+  if (!results.length) {
+    const { data: newest } = await sb
+      .from('products')
+      .select('id, name, slug, price, image, category, gender, badge')
+      .order('created_at', { ascending: false })
+      .limit(5);
+    return (newest ?? []) as Product[];
   }
-  return merged;
+
+  return results;
 }
 
 export async function POST(req: NextRequest) {
@@ -132,7 +202,7 @@ export async function POST(req: NextRequest) {
 
   if (!raw) return NextResponse.json({ type: 'faq', answer: 'Please type a message!' });
 
-  // ── Greetings ───────────────────────────────────────────────────────────────
+  // ── Greetings ────────────────────────────────────────────────────────────────
   if (/\b(hello|hi|hey|g'day|howdy)\b/.test(lower)) {
     return NextResponse.json({
       type: 'faq',
@@ -143,8 +213,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ type: 'faq', answer: 'You\'re welcome! Is there anything else I can help you with? 🌸' });
   }
 
-  // ── FAQ matching ─────────────────────────────────────────────────────────────
-  // Only run FAQ matching when the message doesn\'t look like a product search
+  // ── FAQ matching (only when not a product query) ──────────────────────────────
   if (!isProductQuery(lower)) {
     let bestFaq: (typeof FAQS)[number] | null = null;
     let bestScore = 0;
@@ -160,23 +229,23 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Product search ───────────────────────────────────────────────────────────
+  // ── Product search ────────────────────────────────────────────────────────────
   if (isProductQuery(lower)) {
-    const terms    = extractSearchTerms(lower);
-    const products = await searchProducts(terms);
-
-    if (products.length > 0) {
-      return NextResponse.json({ type: 'products', products });
+    try {
+      const products = await searchProducts(lower);
+      if (products.length > 0) {
+        return NextResponse.json({ type: 'products', products });
+      }
+    } catch (err) {
+      console.error('[chat] product search error:', err);
     }
-
-    // Product query but nothing found
     return NextResponse.json({
       type: 'faq',
       answer: 'I couldn\'t find any matching products right now. Try browsing our full collection, or use the 🔍 "Can\'t Find It?" button to send us a custom sourcing request!',
     });
   }
 
-  // ── Fallback ─────────────────────────────────────────────────────────────────
+  // ── Fallback ──────────────────────────────────────────────────────────────────
   return NextResponse.json({
     type: 'faq',
     answer: 'I\'m not sure about that one! Try one of the quick questions below, or use the 🔍 "Can\'t Find It?" button to send us a direct request.',
