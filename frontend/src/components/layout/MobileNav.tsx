@@ -5,41 +5,60 @@ import Image from 'next/image';
 import { useCart } from '../../context/CartContext';
 import { usePathname } from 'next/navigation';
 
-const SECTIONS = [
-  {
-    href: '/collections/women',
-    label: 'Women',
-    emoji: '\uD83E\uDD7B',
-    children: [
-      { href: '/collections/women/sarees',   label: 'Sarees' },
-      { href: '/collections/women/lehengas', label: 'Lehengas' },
-      { href: '/collections/women/kurtas',   label: 'Kurtas' },
-    ],
-  },
-  {
-    href: '/collections/men',
-    label: 'Men',
-    emoji: '\uD83E\uDDE3',
-    children: [
-      { href: '/collections/men/kurtas',    label: 'Kurtas' },
-      { href: '/collections/men/sherwanis', label: 'Sherwanis' },
-    ],
-  },
-  {
-    href: '/collections/kids',
-    label: 'Kids',
-    emoji: '\uD83C\uDFA0',
-    children: [
-      { href: '/collections/kids/lehengas',  label: 'Lehengas' },
-      { href: '/collections/kids/kurtas',    label: 'Kurtas' },
-      { href: '/collections/kids/sherwanis', label: 'Sherwanis' },
-    ],
-  },
-  { href: '/collections/accessories', label: 'Accessories', emoji: '\uD83D\uDC8D', children: [] },
-  { href: '/collections', label: 'All Collections', emoji: '\u2728', children: [] },
-];
+type Category = { id: string; slug: string; label: string; genders: string[]; sort_order?: number };
 
-// \u2500\u2500\u2500 Hamburger toggle button only (rendered inside header) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+const GENDER_ORDER = ['women', 'men', 'kids', 'unisex'];
+const GENDER_LABELS: Record<string, string> = { women: 'Women', men: 'Men', kids: 'Kids', unisex: 'Unisex' };
+const GENDER_EMOJI: Record<string, string> = { women: '🥻', men: '🧣', kids: '🎠', unisex: '✨' };
+
+type Section = {
+  href: string;
+  label: string;
+  emoji: string;
+  children: { href: string; label: string }[];
+};
+
+function buildSections(categories: Category[]): Section[] {
+  const grouped: Record<string, Category[]> = {};
+  const standalone: Category[] = [];
+
+  for (const cat of categories) {
+    const genders = cat.genders ?? [];
+    if (genders.length === 0) {
+      standalone.push(cat);
+    } else {
+      for (const g of genders) {
+        if (!grouped[g]) grouped[g] = [];
+        grouped[g].push(cat);
+      }
+    }
+  }
+
+  const sections: Section[] = [];
+
+  for (const gender of GENDER_ORDER) {
+    const cats = grouped[gender];
+    if (!cats || cats.length === 0) continue;
+    sections.push({
+      label: GENDER_LABELS[gender] ?? gender,
+      href: `/collections/${gender}`,
+      emoji: GENDER_EMOJI[gender] ?? '🛍️',
+      children: cats.map(c => ({
+        label: c.label,
+        href: `/collections/${gender}/${c.slug}`,
+      })),
+    });
+  }
+
+  for (const cat of standalone) {
+    sections.push({ label: cat.label, href: `/collections/${cat.slug}`, emoji: '🛍️', children: [] });
+  }
+
+  sections.push({ href: '/collections', label: 'All Collections', emoji: '✨', children: [] });
+
+  return sections;
+}
+
 function Toggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
     <button
@@ -55,8 +74,7 @@ function Toggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   );
 }
 
-// \u2500\u2500\u2500 Drawer + overlay (portalled to document.body) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-function Drawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+function Drawer({ open, onClose, sections }: { open: boolean; onClose: () => void; sections: Section[] }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -82,7 +100,7 @@ function Drawer({ open, onClose }: { open: boolean; onClose: () => void }) {
         style={{ background: '#fff9f5', zIndex: 1001 }}
       >
         <div className="mobile-nav-drawer__header" style={{ background: '#fff9f5', borderBottom: '1px solid #fce7f3' }}>
-          <a className="site-header__logo" href="/" onClick={close} aria-label="Ethnic Story \u2014 Home">
+          <a className="site-header__logo" href="/" onClick={close} aria-label="Ethnic Story — Home">
             <Image
               src="/logo.png"
               alt="Ethnic Story"
@@ -92,11 +110,11 @@ function Drawer({ open, onClose }: { open: boolean; onClose: () => void }) {
               style={{ objectFit: 'contain', height: '48px', width: 'auto', maxWidth: '160px' }}
             />
           </a>
-          <button className="mobile-nav-drawer__close" aria-label="Close menu" onClick={close}>\u2715</button>
+          <button className="mobile-nav-drawer__close" aria-label="Close menu" onClick={close}>✕</button>
         </div>
 
         <ul className="mobile-nav-drawer__links" style={{ paddingBottom: '6rem', background: '#fff9f5' }}>
-          {SECTIONS.map(item => (
+          {sections.map(item => (
             <li key={item.href} style={{ borderBottom: '1px solid #fce7f3' }}>
               {item.children.length > 0 ? (
                 <>
@@ -110,7 +128,7 @@ function Drawer({ open, onClose }: { open: boolean; onClose: () => void }) {
                       onClick={() => setExpanded(e => e === item.href ? null : item.href)}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '.5rem 1.25rem', fontSize: '.85rem', color: '#9d174d' }}
                     >
-                      {expanded === item.href ? '\u25b2' : '\u25bc'}
+                      {expanded === item.href ? '▲' : '▼'}
                     </button>
                   </div>
                   {expanded === item.href && (
@@ -147,9 +165,18 @@ function Drawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
 }
 
-// \u2500\u2500\u2500 Main export: self-contained with open state \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 export function MobileNav() {
   const [open, setOpen] = useState(false);
+  const [sections, setSections] = useState<Section[]>([]);
+
+  useEffect(() => {
+    fetch('/api/admin/categories')
+      .then(r => r.ok ? r.json() : [])
+      .then((cats: Category[]) => {
+        if (Array.isArray(cats) && cats.length > 0) setSections(buildSections(cats));
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : '';
@@ -165,12 +192,11 @@ export function MobileNav() {
   return (
     <>
       <Toggle open={open} onToggle={() => setOpen(o => !o)} />
-      <Drawer open={open} onClose={() => setOpen(false)} />
+      <Drawer open={open} onClose={() => setOpen(false)} sections={sections} />
     </>
   );
 }
 
-// \u2500\u2500\u2500 Floating bottom tab bar (always visible on mobile) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 export function BottomTabBar() {
   const { totalItems, openCart } = useCart();
   const pathname = usePathname();

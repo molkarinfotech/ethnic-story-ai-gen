@@ -4,41 +4,55 @@ import Image from 'next/image';
 import { useCart } from '../../context/CartContext';
 import { MobileNav } from './MobileNav';
 
-const NAV_ITEMS = [
-  {
-    label: 'Women',
-    href: '/collections/women',
-    children: [
-      { label: 'Sarees',    href: '/collections/women/sarees' },
-      { label: 'Lehengas', href: '/collections/women/lehengas' },
-      { label: 'Kurtas',   href: '/collections/women/kurtas' },
-    ],
-  },
-  {
-    label: 'Men',
-    href: '/collections/men',
-    children: [
-      { label: 'Kurtas',    href: '/collections/men/kurtas' },
-      { label: 'Sherwanis', href: '/collections/men/sherwanis' },
-    ],
-  },
-  {
-    label: 'Kids',
-    href: '/collections/kids',
-    children: [
-      { label: 'Lehengas',  href: '/collections/kids/lehengas' },
-      { label: 'Kurtas',    href: '/collections/kids/kurtas' },
-      { label: 'Sherwanis', href: '/collections/kids/sherwanis' },
-    ],
-  },
-  {
-    label: 'Accessories',
-    href: '/collections/accessories',
-    children: [],
-  },
-];
+type Category = { id: string; slug: string; label: string; genders: string[]; sort_order?: number };
 
-function NavItem({ item }: { item: typeof NAV_ITEMS[number] }) {
+// Gender groups shown in the top-level nav, in order
+const GENDER_ORDER = ['women', 'men', 'kids', 'unisex'];
+const GENDER_LABELS: Record<string, string> = { women: 'Women', men: 'Men', kids: 'Kids', unisex: 'Unisex' };
+
+// Build NAV_ITEMS from flat category list
+function buildNav(categories: Category[]) {
+  const grouped: Record<string, Category[]> = {};
+  const standalone: Category[] = [];
+
+  for (const cat of categories) {
+    const genders = cat.genders ?? [];
+    if (genders.length === 0) {
+      standalone.push(cat);
+    } else {
+      for (const g of genders) {
+        if (!grouped[g]) grouped[g] = [];
+        grouped[g].push(cat);
+      }
+    }
+  }
+
+  const items: { label: string; href: string; children: { label: string; href: string }[] }[] = [];
+
+  for (const gender of GENDER_ORDER) {
+    const cats = grouped[gender];
+    if (!cats || cats.length === 0) continue;
+    items.push({
+      label: GENDER_LABELS[gender] ?? gender,
+      href: `/collections/${gender}`,
+      children: cats.map(c => ({
+        label: c.label,
+        href: `/collections/${gender}/${c.slug}`,
+      })),
+    });
+  }
+
+  // Any standalone categories (no genders) go at the end
+  for (const cat of standalone) {
+    items.push({ label: cat.label, href: `/collections/${cat.slug}`, children: [] });
+  }
+
+  return items;
+}
+
+type NavItemData = { label: string; href: string; children: { label: string; href: string }[] };
+
+function NavItem({ item }: { item: NavItemData }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const hasChildren = item.children.length > 0;
@@ -147,6 +161,19 @@ function NavItem({ item }: { item: typeof NAV_ITEMS[number] }) {
 export function Header() {
   const headerRef = useRef<HTMLElement>(null);
   const { totalItems, openCart } = useCart();
+  const [navItems, setNavItems] = useState<NavItemData[]>([]);
+
+  // Fetch categories from public API (no auth needed for storefront)
+  useEffect(() => {
+    fetch('/api/admin/categories')
+      .then(r => r.ok ? r.json() : [])
+      .then((cats: Category[]) => {
+        if (Array.isArray(cats) && cats.length > 0) {
+          setNavItems(buildNav(cats));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const header = headerRef.current;
@@ -188,7 +215,7 @@ export function Header() {
       `}</style>
 
       <div className="site-announcement">
-        ✨ Free shipping on orders above $150 AUD  |  New festive arrivals now live
+        ✨ Free shipping on orders above $150 AUD  |  New festive arrivals now live
       </div>
 
       <header
@@ -234,18 +261,23 @@ export function Header() {
             />
           </a>
 
-          {/* Desktop nav — hidden on mobile */}
+          {/* Desktop nav */}
           <nav
             className="header-desktop-nav"
             style={{ display: 'flex', gap: '1.6rem', alignItems: 'center', flex: 1, justifyContent: 'center' }}
             aria-label="Main navigation"
           >
-            {NAV_ITEMS.map(item => <NavItem key={item.href} item={item} />)}
+            {navItems.map(item => <NavItem key={item.href} item={item} />)}
+            {navItems.length === 0 && (
+              // skeleton placeholders while loading
+              [1,2,3].map(i => (
+                <span key={i} style={{ display: 'inline-block', width: 52, height: 14, borderRadius: 4, background: '#f3e8ee', opacity: 0.7 }} />
+              ))
+            )}
           </nav>
 
           {/* Right side actions */}
           <div style={{ display: 'flex', gap: '.65rem', alignItems: 'center', flexShrink: 0 }}>
-
             <a
               href="/account"
               className="header-desktop-account"

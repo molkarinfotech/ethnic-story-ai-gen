@@ -2,7 +2,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 type ProductImage = { id: string; colour: string; url: string; sort_order: number };
-// All DB rows come back, including __colour__ anchors (size === '__colour__')
 type Variant = { id: string; size: string; colour: string; stock_count: number; image_url?: string | null };
 type Product = {
   id: string; name: string; slug: string; price: number;
@@ -10,10 +9,9 @@ type Product = {
   in_stock?: boolean; image?: string;
   variants: Variant[];
 };
+type Category = { id: string; slug: string; label: string; genders: string[] };
 
-// Sizes that are internal bookkeeping — never shown as stock chips
 const INTERNAL_SIZES = new Set(['__colour__', 'TBA']);
-
 const SIZE_ORDER = ['XS','S','M','L','XL','XXL','Free Size'];
 
 function sortVariants(vs: Variant[]) {
@@ -30,7 +28,6 @@ function totalStock(variants: Variant[]) {
     .reduce((s,v) => s + (v.stock_count ?? 0), 0);
 }
 
-// Derive unique colour names from ALL variant rows (including __colour__ anchors)
 function uniqueColours(variants: Variant[], images: ProductImage[]): string[] {
   const seen: Record<string,true> = {};
   const out: string[] = [];
@@ -47,16 +44,18 @@ function uniqueColours(variants: Variant[], images: ProductImage[]): string[] {
 
 export default function AdminProductsPage() {
   const [products,      setProducts]     = useState<Product[]>([]);
+  const [categories,    setCategories]   = useState<Category[]>([]);
   const [loading,       setLoading]      = useState(true);
   const [search,        setSearch]       = useState('');
+  const [filterCat,     setFilterCat]    = useState('');
+  const [filterGender,  setFilterGender] = useState('');
+  const [filterStock,   setFilterStock]  = useState('');
   const [expandedId,    setExpandedId]   = useState<string | null>(null);
   const [saving,        setSaving]       = useState<Record<string,boolean>>({});
   const [variantDrafts, setVariantDrafts]= useState<Record<string,number>>({});
   const [fetchError,    setFetchError]   = useState<string | null>(null);
   const [imageMap,      setImageMap]     = useState<Record<string, ProductImage[]>>({});
   const [imagesLoaded,  setImagesLoaded] = useState<Record<string,boolean>>({});
-
-  // ── Bulk selection state ──
   const [selectedIds,   setSelectedIds]  = useState<Set<string>>(new Set());
   const [bulkDeleting,  setBulkDeleting] = useState(false);
 
@@ -74,6 +73,14 @@ export default function AdminProductsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Load categories for filter dropdowns
+  useEffect(() => {
+    fetch('/api/admin/categories', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then((data: Category[]) => setCategories(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
 
   const loadImages = useCallback(async (productId: string) => {
     if (imagesLoaded[productId]) return;
@@ -96,11 +103,24 @@ export default function AdminProductsPage() {
     }
   }
 
+  // Derive all unique genders from loaded products
+  const allGenders = Array.from(new Set(products.map(p => p.gender).filter(Boolean) as string[])).sort();
+
   const filtered = products
-    .filter(p =>
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      (p.category ?? '').toLowerCase().includes(search.toLowerCase())
-    )
+    .filter(p => {
+      const q = search.toLowerCase();
+      const matchSearch = !search ||
+        p.name.toLowerCase().includes(q) ||
+        (p.category ?? '').toLowerCase().includes(q);
+      const matchCat = !filterCat || p.category === filterCat;
+      const matchGender = !filterGender || p.gender === filterGender;
+      const stock = totalStock(p.variants);
+      const matchStock = !filterStock ||
+        (filterStock === 'out' && stock === 0) ||
+        (filterStock === 'low' && stock > 0 && stock <= 5) ||
+        (filterStock === 'in'  && stock > 5);
+      return matchSearch && matchCat && matchGender && matchStock;
+    })
     .sort((a, b) => {
       const aS = totalStock(a.variants);
       const bS = totalStock(b.variants);
@@ -109,7 +129,11 @@ export default function AdminProductsPage() {
       return 0;
     });
 
-  // ── Bulk selection helpers ──
+  function resetFilters() {
+    setSearch(''); setFilterCat(''); setFilterGender(''); setFilterStock('');
+    setSelectedIds(new Set());
+  }
+
   function toggleSelect(id: string) {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -214,23 +238,14 @@ export default function AdminProductsPage() {
       if (already) return p;
       return {
         ...p,
-        variants: [...p.variants, {
-          id: `tmp-${Date.now()}`,
-          size: '__colour__',
-          colour: name,
-          stock_count: 0,
-          image_url: null,
-        }],
+        variants: [...p.variants, { id: `tmp-${Date.now()}`, size: '__colour__', colour: name, stock_count: 0, image_url: null }],
       };
     }));
   }
 
   async function deleteImage(productId: string, imageId: string) {
     if (!confirm('Remove this image?')) return;
-    await fetch(`/api/product-images/${productId}?id=${imageId}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    });
+    await fetch(`/api/product-images/${productId}?id=${imageId}`, { method: 'DELETE', credentials: 'include' });
     setImageMap(m => ({ ...m, [productId]: (m[productId] ?? []).filter(i => i.id !== imageId) }));
   }
 
@@ -245,19 +260,13 @@ export default function AdminProductsPage() {
       fd.append('product_id', productId);
       fd.append('colour',     colour || 'Unassigned');
       fd.append('sort_order', String(baseOrder++));
-      const res = await fetch('/api/admin/scan-upload', {
-        method: 'POST',
-        credentials: 'include',
-        body: fd,
-      });
+      const res = await fetch('/api/admin/scan-upload', { method: 'POST', credentials: 'include', body: fd });
       if (res.ok) {
         const d = await res.json();
         if (d?.image) newImgs.push(d.image as ProductImage);
       }
     }
-    if (newImgs.length) {
-      setImageMap(m => ({ ...m, [productId]: [...(m[productId] ?? []), ...newImgs] }));
-    }
+    if (newImgs.length) setImageMap(m => ({ ...m, [productId]: [...(m[productId] ?? []), ...newImgs] }));
   }
 
   async function deleteProduct(id: string, name: string) {
@@ -269,6 +278,19 @@ export default function AdminProductsPage() {
 
   const allSelected = filtered.length > 0 && selectedIds.size === filtered.length;
   const someSelected = selectedIds.size > 0 && !allSelected;
+  const hasFilters = !!(search || filterCat || filterGender || filterStock);
+
+  const selectStyle: React.CSSProperties = {
+    padding: '.45rem .65rem',
+    borderRadius: '.45rem',
+    border: '1px solid #e5e7eb',
+    fontSize: '.8rem',
+    background: 'white',
+    color: '#374151',
+    cursor: 'pointer',
+    outline: 'none',
+    minWidth: 0,
+  };
 
   return (
     <div>
@@ -284,17 +306,61 @@ export default function AdminProductsPage() {
         >+ New product</a>
       </div>
 
-      {/* Search */}
-      <input
-        type="search" placeholder="Search products or category…"
-        value={search} onChange={e => { setSearch(e.target.value); setSelectedIds(new Set()); }}
-        style={{ width: '100%', padding: '.55rem .85rem', borderRadius: '.5rem', border: '1px solid #e5e7eb', fontSize: '.875rem', marginBottom: '1rem', outline: 'none', boxSizing: 'border-box' }}
-      />
+      {/* ── Filter bar ── */}
+      <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', marginBottom: '.75rem', alignItems: 'center' }}>
+        <input
+          type="search" placeholder="Search name or category…"
+          value={search} onChange={e => { setSearch(e.target.value); setSelectedIds(new Set()); }}
+          style={{ ...selectStyle, flex: '1 1 180px', padding: '.45rem .75rem' }}
+        />
 
-      {/* Summary + Select All row */}
+        {/* Category dropdown */}
+        <select
+          value={filterCat}
+          onChange={e => { setFilterCat(e.target.value); setSelectedIds(new Set()); }}
+          style={{ ...selectStyle, flex: '0 1 160px' }}
+        >
+          <option value="">All categories</option>
+          {categories.map(c => (
+            <option key={c.id} value={c.slug}>{c.label}</option>
+          ))}
+        </select>
+
+        {/* Gender dropdown */}
+        <select
+          value={filterGender}
+          onChange={e => { setFilterGender(e.target.value); setSelectedIds(new Set()); }}
+          style={{ ...selectStyle, flex: '0 1 130px' }}
+        >
+          <option value="">All genders</option>
+          {allGenders.map(g => (
+            <option key={g} value={g}>{g.charAt(0).toUpperCase() + g.slice(1)}</option>
+          ))}
+        </select>
+
+        {/* Stock status */}
+        <select
+          value={filterStock}
+          onChange={e => { setFilterStock(e.target.value); setSelectedIds(new Set()); }}
+          style={{ ...selectStyle, flex: '0 1 130px' }}
+        >
+          <option value="">All stock</option>
+          <option value="out">Out of stock</option>
+          <option value="low">Low (≤5)</option>
+          <option value="in">In stock</option>
+        </select>
+
+        {hasFilters && (
+          <button
+            onClick={resetFilters}
+            style={{ padding: '.45rem .7rem', borderRadius: '.45rem', border: '1px solid #e5e7eb', background: '#f9fafb', color: '#6b7280', fontSize: '.78rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >✕ Clear</button>
+        )}
+      </div>
+
+      {/* Summary + Select All */}
       {!loading && !fetchError && filtered.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '.75rem', color: '#9ca3af', marginBottom: '.75rem', flexWrap: 'wrap' }}>
-          {/* Select all checkbox */}
           <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', cursor: 'pointer', userSelect: 'none', color: '#6b7280', fontWeight: 600 }}>
             <input
               type="checkbox"
@@ -305,14 +371,14 @@ export default function AdminProductsPage() {
             />
             Select all
           </label>
-          <span>{filtered.length} product{filtered.length !== 1 ? 's' : ''}{search && ` matching "${search}"`}</span>
+          <span>{filtered.length} product{filtered.length !== 1 ? 's' : ''}{hasFilters ? ' matching filters' : ''}</span>
           {filtered.filter(p => totalStock(p.variants) === 0).length > 0 && (
             <span style={{ color: '#991b1b', fontWeight: 600 }}>⚠ {filtered.filter(p => totalStock(p.variants) === 0).length} out of stock</span>
           )}
         </div>
       )}
 
-      {/* ── Bulk action toolbar (shown only when items are selected) ── */}
+      {/* Bulk action toolbar */}
       {selectedIds.size > 0 && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: '.75rem',
@@ -320,33 +386,18 @@ export default function AdminProductsPage() {
           borderRadius: '.7rem', padding: '.6rem 1rem',
           marginBottom: '1rem', flexWrap: 'wrap',
         }}>
-          <span style={{ fontWeight: 700, color: '#9d174d', fontSize: '.88rem' }}>
-            {selectedIds.size} selected
-          </span>
+          <span style={{ fontWeight: 700, color: '#9d174d', fontSize: '.88rem' }}>{selectedIds.size} selected</span>
           <button
             onClick={handleBulkDelete}
             disabled={bulkDeleting}
-            style={{
-              background: '#be123c', color: 'white', border: 'none',
-              borderRadius: '.45rem', padding: '.38rem .9rem',
-              cursor: bulkDeleting ? 'default' : 'pointer',
-              fontSize: '.83rem', fontWeight: 700,
-              opacity: bulkDeleting ? .65 : 1,
-              transition: 'opacity .15s',
-            }}
+            style={{ background: '#be123c', color: 'white', border: 'none', borderRadius: '.45rem', padding: '.38rem .9rem', cursor: bulkDeleting ? 'default' : 'pointer', fontSize: '.83rem', fontWeight: 700, opacity: bulkDeleting ? .65 : 1 }}
           >
             {bulkDeleting ? 'Deleting…' : `🗑 Delete ${selectedIds.size} product${selectedIds.size > 1 ? 's' : ''}`}
           </button>
           <button
             onClick={() => setSelectedIds(new Set())}
-            style={{
-              background: 'none', border: '1px solid #fca5a5',
-              borderRadius: '.45rem', padding: '.38rem .7rem',
-              color: '#6b7280', cursor: 'pointer', fontSize: '.83rem',
-            }}
-          >
-            Clear
-          </button>
+            style={{ background: 'none', border: '1px solid #fca5a5', borderRadius: '.45rem', padding: '.38rem .7rem', color: '#6b7280', cursor: 'pointer', fontSize: '.83rem' }}
+          >Clear</button>
         </div>
       )}
 
@@ -363,7 +414,9 @@ export default function AdminProductsPage() {
         <div style={{ textAlign: 'center', padding: '3rem', color: '#9ca3af' }}>
           <div style={{ fontSize: '2.5rem', marginBottom: '.5rem' }}>👗</div>
           <p style={{ fontWeight: 600, color: '#6b7280' }}>No products found</p>
-          {search && <p style={{ fontSize: '.8rem', marginTop: '.25rem' }}>Try a different search term</p>}
+          {hasFilters && (
+            <button onClick={resetFilters} style={{ marginTop: '.5rem', fontSize: '.8rem', color: '#9d174d', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Clear filters</button>
+          )}
         </div>
       )}
 
@@ -385,20 +438,13 @@ export default function AdminProductsPage() {
               opacity: total === 0 && !selected ? .88 : 1,
               transition: 'border-color .12s, box-shadow .12s',
             }}>
-
-              {/* ─── Product row ─── */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '.85rem', padding: '.75rem 1rem', flexWrap: 'wrap' }}>
-
-                {/* Checkbox */}
                 <input
-                  type="checkbox"
-                  checked={selected}
+                  type="checkbox" checked={selected}
                   onChange={() => toggleSelect(p.id)}
                   onClick={e => e.stopPropagation()}
                   style={{ width: 16, height: 16, accentColor: '#9d174d', cursor: 'pointer', flexShrink: 0 }}
                 />
-
-                {/* Thumbnail */}
                 {p.image ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={p.image} alt={p.name} width={44} height={44}
@@ -406,22 +452,18 @@ export default function AdminProductsPage() {
                 ) : (
                   <div style={{ width: 44, height: 44, borderRadius: '.4rem', background: '#fdf2f8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem', flexShrink: 0, border: '1px solid #fce7f3' }}>👗</div>
                 )}
-
-                {/* Info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: '.88rem', color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.name}
                     {p.badge && <span style={{ marginLeft: '.35rem', fontSize: '.63rem', background: '#fce7f3', color: '#9d174d', borderRadius: '2rem', padding: '.1rem .4rem', fontWeight: 700 }}>{p.badge}</span>}
                   </div>
                   <div style={{ fontSize: '.73rem', color: '#6b7280', marginTop: '.1rem', display: 'flex', gap: '.4rem', flexWrap: 'wrap' }}>
-                    <span>{p.category}</span>
-                    {p.gender && <span>· {p.gender}</span>}
+                    <span style={{ background: '#fdf2f8', color: '#9d174d', padding: '.05rem .4rem', borderRadius: '2rem', fontWeight: 600 }}>{p.category}</span>
+                    {p.gender && <span style={{ background: '#f0fdf4', color: '#166534', padding: '.05rem .4rem', borderRadius: '2rem', fontWeight: 600 }}>{p.gender}</span>}
                     <span>· <strong style={{ color: '#111827' }}>A${p.price}</strong></span>
                     {colours.length > 0 && <span>· {colours.length} colour{colours.length !== 1 ? 's' : ''}</span>}
                   </div>
                 </div>
-
-                {/* Stock badge */}
                 <span style={{
                   fontSize: '.71rem', fontWeight: 700, borderRadius: '2rem', padding: '.2rem .55rem', flexShrink: 0,
                   background: total === 0 ? '#fee2e2' : low ? '#fef9c3' : '#dcfce7',
@@ -429,17 +471,10 @@ export default function AdminProductsPage() {
                 }}>
                   {total === 0 ? '⚠ Out of stock' : low ? `⚠ ${total} left` : `${total} units`}
                 </span>
-
-                {/* Actions */}
                 <div style={{ display: 'flex', gap: '.35rem', flexShrink: 0, alignItems: 'center' }}>
                   <button
                     onClick={() => toggleExpand(p.id)}
-                    style={{
-                      fontSize: '.75rem', fontWeight: 600,
-                      background: isOpen ? '#9d174d' : '#fdf2f8',
-                      color: isOpen ? 'white' : '#9d174d',
-                      border: 'none', borderRadius: '.4rem', padding: '.32rem .65rem', cursor: 'pointer',
-                    }}
+                    style={{ fontSize: '.75rem', fontWeight: 600, background: isOpen ? '#9d174d' : '#fdf2f8', color: isOpen ? 'white' : '#9d174d', border: 'none', borderRadius: '.4rem', padding: '.32rem .65rem', cursor: 'pointer' }}
                   >{isOpen ? '▲ Close' : '▼ Manage'}</button>
                   <a
                     href={`/admin/products/${p.id}/edit`}
@@ -454,7 +489,6 @@ export default function AdminProductsPage() {
                 </div>
               </div>
 
-              {/* ─── Expanded inline panel ─── */}
               {isOpen && (
                 <ExpandedPanel
                   product={p}
@@ -521,28 +555,16 @@ function ExpandedPanel({
 
   return (
     <div style={{ borderTop: '1px solid #fce7f3', background: '#fffbfd', padding: '1rem' }}>
-
-      {/* Panel header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '.85rem', flexWrap: 'wrap', gap: '.5rem' }}>
-        <span style={{ fontSize: '.72rem', fontWeight: 700, color: '#9d174d', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-          Images &amp; Stock
-        </span>
+        <span style={{ fontSize: '.72rem', fontWeight: 700, color: '#9d174d', textTransform: 'uppercase', letterSpacing: '.05em' }}>Images &amp; Stock</span>
         <button
           onClick={() => setShowColourForm(v => !v)}
-          style={{
-            fontSize: '.75rem', fontWeight: 700, background: '#7c3aed', color: 'white',
-            border: 'none', borderRadius: '.4rem', padding: '.3rem .7rem', cursor: 'pointer',
-          }}
+          style={{ fontSize: '.75rem', fontWeight: 700, background: '#7c3aed', color: 'white', border: 'none', borderRadius: '.4rem', padding: '.3rem .7rem', cursor: 'pointer' }}
         >+ Add colour</button>
       </div>
 
-      {/* Add colour inline form */}
       {showColourForm && (
-        <div style={{
-          display: 'flex', gap: '.4rem', alignItems: 'center', flexWrap: 'wrap',
-          background: 'white', border: '1px solid #ede9fe', borderRadius: '.55rem',
-          padding: '.6rem .75rem', marginBottom: '.85rem',
-        }}>
+        <div style={{ display: 'flex', gap: '.4rem', alignItems: 'center', flexWrap: 'wrap', background: 'white', border: '1px solid #ede9fe', borderRadius: '.55rem', padding: '.6rem .75rem', marginBottom: '.85rem' }}>
           <span style={{ fontSize: '.78rem', fontWeight: 600, color: '#7c3aed', whiteSpace: 'nowrap' }}>Colour name:</span>
           <input
             value={newColourName}
@@ -550,34 +572,20 @@ function ExpandedPanel({
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submitColour(); } }}
             placeholder="e.g. Maroon, Royal Blue…"
             autoFocus
-            style={{
-              flex: 1, minWidth: '140px', padding: '.35rem .5rem',
-              border: '1px solid #e5e7eb', borderRadius: '.4rem',
-              fontSize: '.8rem', outline: 'none',
-            }}
+            style={{ flex: 1, minWidth: '140px', padding: '.35rem .5rem', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.8rem', outline: 'none' }}
           />
           <button
             disabled={!newColourName.trim() || addingColour}
             onClick={submitColour}
-            style={{
-              padding: '.35rem .75rem', background: '#7c3aed', color: 'white',
-              border: 'none', borderRadius: '.4rem', fontSize: '.78rem',
-              fontWeight: 700, cursor: 'pointer',
-              opacity: newColourName.trim() && !addingColour ? 1 : .5,
-            }}
+            style={{ padding: '.35rem .75rem', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '.4rem', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer', opacity: newColourName.trim() && !addingColour ? 1 : .5 }}
           >{addingColour ? 'Saving…' : 'Add'}</button>
           <button
             onClick={() => { setShowColourForm(false); setNewColourName(''); }}
-            style={{
-              padding: '.35rem .55rem', background: '#f9fafb', color: '#6b7280',
-              border: '1px solid #e5e7eb', borderRadius: '.4rem',
-              fontSize: '.78rem', cursor: 'pointer',
-            }}
+            style={{ padding: '.35rem .55rem', background: '#f9fafb', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.78rem', cursor: 'pointer' }}
           >Cancel</button>
         </div>
       )}
 
-      {/* Empty state */}
       {colours.length === 0 && (
         <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#9ca3af' }}>
           <div style={{ fontSize: '2rem', marginBottom: '.35rem' }}>🎨</div>
@@ -586,7 +594,6 @@ function ExpandedPanel({
         </div>
       )}
 
-      {/* One ColourGroup per unique colour */}
       {colours.map(colour => (
         <ColourGroup
           key={colour}
@@ -605,7 +612,6 @@ function ExpandedPanel({
         />
       ))}
 
-      {/* Variants with no colour assigned */}
       {noColourVariants.length > 0 && (
         <div style={{ marginTop: '.5rem', paddingTop: '.75rem', borderTop: '1px dashed #fce7f3' }}>
           <div style={{ fontSize: '.7rem', fontWeight: 700, color: '#9ca3af', marginBottom: '.4rem' }}>NO COLOUR ASSIGNED</div>
@@ -659,18 +665,8 @@ function ColourGroup({
   const stockTotal = variants.reduce((s,v) => s + (variantDrafts[v.id] ?? v.stock_count), 0);
 
   return (
-    <div style={{
-      background: 'white', border: '1px solid #fce7f3',
-      borderRadius: '.6rem', marginBottom: '.75rem',
-      overflow: 'hidden',
-    }}>
-      {/* Group header */}
-      <div style={{
-        background: 'linear-gradient(to right,#fdf2f8,#fdf8ff)',
-        borderBottom: '1px solid #fce7f3',
-        padding: '.45rem .75rem',
-        display: 'flex', alignItems: 'center', gap: '.4rem',
-      }}>
+    <div style={{ background: 'white', border: '1px solid #fce7f3', borderRadius: '.6rem', marginBottom: '.75rem', overflow: 'hidden' }}>
+      <div style={{ background: 'linear-gradient(to right,#fdf2f8,#fdf8ff)', borderBottom: '1px solid #fce7f3', padding: '.45rem .75rem', display: 'flex', alignItems: 'center', gap: '.4rem' }}>
         <span style={{ fontSize: '.95rem' }}>🎨</span>
         <span style={{ fontWeight: 700, fontSize: '.82rem', color: '#9d174d', flex: 1, textTransform: 'capitalize' }}>{colour}</span>
         <span style={{ fontSize: '.68rem', color: '#9ca3af' }}>
@@ -679,108 +675,63 @@ function ColourGroup({
         </span>
       </div>
 
-      <div style={{
-        padding: '.65rem .75rem',
-        display: 'grid',
-        gridTemplateColumns: 'minmax(160px,1fr) minmax(160px,1.2fr)',
-        gap: '1rem',
-      }}>
-
-        {/* ── Left: Images ── */}
+      <div style={{ padding: '.65rem .75rem', display: 'grid', gridTemplateColumns: 'minmax(160px,1fr) minmax(160px,1.2fr)', gap: '1rem' }}>
         <div>
           <div style={{ fontSize: '.67rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '.4rem' }}>Photos</div>
-
           {images.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.3rem', marginBottom: '.5rem' }}>
               {images.map((img, idx) => (
                 <div key={img.id} style={{ position: 'relative', width: 58, height: 58, flexShrink: 0 }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={img.url} alt={`${colour} ${idx+1}`} width={58} height={58}
+                  <img src={img.url} alt={`${colour} ${idx+1}`} width={58} height={58}
                     style={{ width: 58, height: 58, objectFit: 'cover', borderRadius: '.35rem', border: '1px solid #fce7f3', display: 'block' }}
                   />
                   {idx === 0 && (
-                    <span style={{
-                      position: 'absolute', bottom: 2, left: 2,
-                      fontSize: '.48rem', background: '#9d174d', color: 'white',
-                      borderRadius: '.2rem', padding: '.05rem .25rem', fontWeight: 700, lineHeight: 1.4,
-                    }}>MAIN</span>
+                    <span style={{ position: 'absolute', bottom: 2, left: 2, fontSize: '.48rem', background: '#9d174d', color: 'white', borderRadius: '.2rem', padding: '.05rem .25rem', fontWeight: 700, lineHeight: 1.4 }}>MAIN</span>
                   )}
                   <button
                     onClick={() => onDeleteImage(img.id)}
-                    style={{
-                      position: 'absolute', top: 2, right: 2,
-                      width: 16, height: 16, background: 'rgba(0,0,0,.55)',
-                      color: 'white', border: 'none', borderRadius: '50%',
-                      fontSize: '.55rem', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      lineHeight: 1,
-                    }}
+                    style={{ position: 'absolute', top: 2, right: 2, width: 16, height: 16, background: 'rgba(0,0,0,.55)', color: 'white', border: 'none', borderRadius: '50%', fontSize: '.55rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
                   >✕</button>
                 </div>
               ))}
             </div>
           )}
-
-          {/* Drop zone */}
           <div
             onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
             onDragLeave={() => setIsDragOver(false)}
             onDrop={e => { e.preventDefault(); setIsDragOver(false); if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); }}
             onClick={() => !uploading && fileRef.current?.click()}
-            style={{
-              border: `2px dashed ${isDragOver ? '#9d174d' : '#fce7f3'}`,
-              borderRadius: '.45rem', padding: '.55rem .5rem',
-              textAlign: 'center', cursor: uploading ? 'default' : 'pointer',
-              background: isDragOver ? '#fdf2f8' : '#fffbfd',
-              transition: 'border-color .15s, background .15s',
-            }}
+            style={{ border: `2px dashed ${isDragOver ? '#9d174d' : '#fce7f3'}`, borderRadius: '.45rem', padding: '.55rem .5rem', textAlign: 'center', cursor: uploading ? 'default' : 'pointer', background: isDragOver ? '#fdf2f8' : '#fffbfd', transition: 'border-color .15s, background .15s' }}
           >
             {uploading ? (
               <span style={{ fontSize: '.72rem', color: '#9d174d', fontWeight: 600 }}>Uploading… ⏳</span>
             ) : (
               <>
                 <div style={{ fontSize: '1.1rem', marginBottom: '.1rem' }}>📤</div>
-                <div style={{ fontSize: '.7rem', color: '#6b7280', fontWeight: 600 }}>
-                  {images.length ? 'Add more' : 'Upload images'}
-                </div>
+                <div style={{ fontSize: '.7rem', color: '#6b7280', fontWeight: 600 }}>{images.length ? 'Add more' : 'Upload images'}</div>
                 <div style={{ fontSize: '.62rem', color: '#9ca3af' }}>Click or drag · JPG PNG WEBP</div>
               </>
             )}
           </div>
-          <input
-            ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
+          <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
             onChange={e => { if (e.target.files?.length) handleFiles(e.target.files); }}
           />
         </div>
 
-        {/* ── Right: Sizes & stock ── */}
         <div>
           <div style={{ fontSize: '.67rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '.4rem' }}>Sizes &amp; Stock</div>
-
           {variants.length === 0 ? (
             <p style={{ fontSize: '.73rem', color: '#9ca3af', marginBottom: '.5rem' }}>No sizes yet — add one below.</p>
           ) : (
             <div style={{ marginBottom: '.4rem' }}>
-              <VariantChips
-                variants={variants}
-                drafts={variantDrafts}
-                saving={saving}
-                setDrafts={setVariantDrafts}
-                onSave={onSave}
-                onDelete={onDeleteVariant}
-              />
+              <VariantChips variants={variants} drafts={variantDrafts} saving={saving} setDrafts={setVariantDrafts} onSave={onSave} onDelete={onDeleteVariant} />
             </div>
           )}
-
           {!showSizeForm ? (
             <button
               onClick={() => setShowSizeForm(true)}
-              style={{
-                fontSize: '.7rem', color: '#9d174d', background: '#fdf2f8',
-                border: '1px dashed #fce7f3', borderRadius: '.35rem',
-                padding: '.25rem .55rem', cursor: 'pointer', fontWeight: 600,
-              }}
+              style={{ fontSize: '.7rem', color: '#9d174d', background: '#fdf2f8', border: '1px dashed #fce7f3', borderRadius: '.35rem', padding: '.25rem .55rem', cursor: 'pointer', fontWeight: 600 }}
             >+ Add size</button>
           ) : (
             <div style={{ display: 'flex', gap: '.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -799,11 +750,7 @@ function ColourGroup({
               />
               <button
                 disabled={addingSize || !newSize.trim()}
-                onClick={async () => {
-                  setAddingSize(true);
-                  await onAddVariant(newSize.trim());
-                  setNewSize(''); setShowSizeForm(false); setAddingSize(false);
-                }}
+                onClick={async () => { setAddingSize(true); await onAddVariant(newSize.trim()); setNewSize(''); setShowSizeForm(false); setAddingSize(false); }}
                 style={{ padding: '.28rem .5rem', background: '#9d174d', color: 'white', border: 'none', borderRadius: '.35rem', fontSize: '.72rem', fontWeight: 700, cursor: 'pointer', opacity: addingSize || !newSize.trim() ? .6 : 1 }}
               >{addingSize ? '…' : 'Add'}</button>
               <button
@@ -833,12 +780,7 @@ function VariantChips({ variants, drafts, saving, setDrafts, onSave, onDelete }:
         const qty     = drafts[v.id] ?? v.stock_count;
         const isDirty = drafts[v.id] !== undefined && drafts[v.id] !== v.stock_count;
         return (
-          <div key={v.id} style={{
-            display: 'flex', alignItems: 'center', gap: '.3rem',
-            background: qty === 0 ? '#fff5f5' : 'white',
-            border: `1px solid ${qty === 0 ? '#fecaca' : qty <= 3 ? '#fef08a' : '#e5e7eb'}`,
-            borderRadius: '.4rem', padding: '.25rem .4rem',
-          }}>
+          <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: '.3rem', background: qty === 0 ? '#fff5f5' : 'white', border: `1px solid ${qty === 0 ? '#fecaca' : qty <= 3 ? '#fef08a' : '#e5e7eb'}`, borderRadius: '.4rem', padding: '.25rem .4rem' }}>
             <span style={{ fontSize: '.72rem', fontWeight: 700, color: '#374151', minWidth: '1.6rem' }}>{v.size}</span>
             <input
               type="number" min={0} value={qty}
