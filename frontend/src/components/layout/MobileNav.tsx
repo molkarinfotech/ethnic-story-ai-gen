@@ -10,7 +10,8 @@ type NavGroup = {
   categories: { id: string; slug: string; label: string; sort_order: number }[];
 };
 
-// Fixed display order — Accessories is always its own top-level group
+// Fixed display order — defines the canonical top-to-bottom sequence.
+// Only groups that actually have products will be rendered.
 const GROUP_ORDER = ['women', 'men', 'kids', 'accessories'] as const;
 const GENDER_LABELS: Record<string, string> = {
   women: 'Women',
@@ -33,14 +34,8 @@ type Section = {
 };
 
 function buildSections(groups: NavGroup[]): Section[] {
-  // Strip any 'accessories' sub-category nested under another gender group —
-  // it should only appear as its own top-level group.
-  const normalised = groups.map(g => ({
-    ...g,
-    categories: g.categories.filter(c => c.slug !== 'accessories'),
-  }));
-
-  const sorted = [...normalised].sort((a, b) => {
+  // Sort incoming groups by the canonical GROUP_ORDER.
+  const sorted = [...groups].sort((a, b) => {
     const ai = GROUP_ORDER.indexOf(a.gender as typeof GROUP_ORDER[number]);
     const bi = GROUP_ORDER.indexOf(b.gender as typeof GROUP_ORDER[number]);
     if (ai === -1 && bi === -1) return 0;
@@ -49,6 +44,8 @@ function buildSections(groups: NavGroup[]): Section[] {
     return ai - bi;
   });
 
+  // Map every group — all categories from the API are shown.
+  // No client-side filtering: the API is the source of truth.
   const sections: Section[] = sorted.map(g => ({
     label: GENDER_LABELS[g.gender] ?? g.gender.charAt(0).toUpperCase() + g.gender.slice(1),
     href: `/collections/${g.gender}`,

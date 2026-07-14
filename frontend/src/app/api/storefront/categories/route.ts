@@ -13,21 +13,15 @@ type Gender = typeof GENDER_ORDER[number];
 /**
  * Public storefront endpoint — no auth required.
  *
- * Queries products.gender + products.category directly (no separate
- * categories table, no status/category_id columns needed).
+ * Queries products.gender + products.category directly.
+ * Top-level nav groups are always Women → Men → Kids → Accessories.
+ * A group only appears if ≥1 product exists for that gender.
+ * A category only appears if ≥1 product exists for that gender+category pair.
  *
- * Returns a grouped nav structure:
- * [
- *   { gender: 'women',       categories: [{ slug, label }, ...] },
- *   { gender: 'men',         categories: [...] },
- *   ...   // only groups with ≥1 product appear
- * ]
- *
- * Adding a new product with a new category automatically surfaces it
- * in the nav on the next request (CDN revalidation ~60 s).
+ * Adding a product with a new category auto-surfaces it in the
+ * nav on the next request (CDN revalidation ~60 s).
  */
 export async function GET() {
-  // Fetch distinct gender + category combos directly from products
   const { data: rows, error } = await supabase
     .from('products')
     .select('gender, category')
@@ -37,7 +31,6 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!rows || rows.length === 0) return NextResponse.json([]);
 
-  // Normalise gender values to lowercase for matching
   type CatItem = { slug: string; label: string };
   const grouped: Record<Gender, CatItem[]> = {
     women: [],
@@ -87,7 +80,6 @@ export async function GET() {
 
   return NextResponse.json(result, {
     headers: {
-      // Cache 60 s on CDN; serve stale up to 5 min while revalidating
       'Cache-Control': 's-maxage=60, stale-while-revalidate=300',
     },
   });

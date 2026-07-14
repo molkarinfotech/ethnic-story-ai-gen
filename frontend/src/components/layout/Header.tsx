@@ -9,7 +9,8 @@ type NavGroup = {
   categories: { id: string; slug: string; label: string; sort_order: number }[];
 };
 
-// Fixed display order — Accessories is always its own top-level group
+// Fixed display order — defines the canonical left-to-right sequence.
+// Only groups that actually have products will be rendered.
 const GROUP_ORDER = ['women', 'men', 'kids', 'accessories'] as const;
 const GENDER_LABELS: Record<string, string> = {
   women: 'Women',
@@ -21,14 +22,9 @@ const GENDER_LABELS: Record<string, string> = {
 type NavItemData = { label: string; href: string; children: { label: string; href: string }[] };
 
 function buildNav(groups: NavGroup[]): NavItemData[] {
-  // Filter out 'accessories' sub-entries nested under other groups — it should only
-  // appear as its own top-level group from the API
-  const normalised = groups.map(g => ({
-    ...g,
-    categories: g.categories.filter(c => c.slug !== 'accessories'),
-  }));
-
-  const sorted = [...normalised].sort((a, b) => {
+  // Sort incoming groups by the canonical GROUP_ORDER.
+  // Groups not in GROUP_ORDER are appended at the end.
+  const sorted = [...groups].sort((a, b) => {
     const ai = GROUP_ORDER.indexOf(a.gender as typeof GROUP_ORDER[number]);
     const bi = GROUP_ORDER.indexOf(b.gender as typeof GROUP_ORDER[number]);
     if (ai === -1 && bi === -1) return 0;
@@ -37,6 +33,8 @@ function buildNav(groups: NavGroup[]): NavItemData[] {
     return ai - bi;
   });
 
+  // Map every group — all categories from the API are shown.
+  // No client-side filtering: the API is the source of truth.
   return sorted.map(g => ({
     label: GENDER_LABELS[g.gender] ?? g.gender.charAt(0).toUpperCase() + g.gender.slice(1),
     href: `/collections/${g.gender}`,
@@ -55,8 +53,6 @@ function NavItem({ item }: { item: NavItemData }) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasChildren = item.children.length > 0;
 
-  // Use a 300 ms delay before closing — gives the cursor plenty of time
-  // to travel from the trigger word down into the dropdown panel.
   function scheduleClose() {
     timerRef.current = setTimeout(() => setOpen(false), 300);
   }
@@ -120,12 +116,6 @@ function NavItem({ item }: { item: NavItemData }) {
 
       {hasChildren && (
         <>
-          {/*
-           * Invisible hover-bridge: a thin strip that sits in the gap between
-           * the trigger link and the dropdown panel. Without this, moving the
-           * cursor diagonally from the link into the panel crosses empty space
-           * and fires onMouseLeave on the wrapper, scheduling a close.
-           */}
           {open && (
             <div
               onMouseEnter={cancelClose}
