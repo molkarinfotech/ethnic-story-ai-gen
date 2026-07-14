@@ -5,10 +5,12 @@ import Image from 'next/image';
 import { useCart } from '../../context/CartContext';
 import { usePathname } from 'next/navigation';
 
-type Category = { id: string; slug: string; label: string; genders: string[]; sort_order?: number };
+// Shape returned by /api/storefront/categories
+type NavGroup = {
+  gender: string;
+  categories: { id: string; slug: string; label: string; sort_order: number }[];
+};
 
-// Top-level nav groups — only these four, in this order
-const GENDER_ORDER = ['women', 'men', 'kids', 'accessories'];
 const GENDER_LABELS: Record<string, string> = {
   women: 'Women',
   men: 'Men',
@@ -30,35 +32,19 @@ type Section = {
 };
 
 /**
- * Build mobile nav sections from flat category list.
- * A section only appears if at least one category has that gender value.
+ * Convert API grouped response to mobile nav sections.
+ * Only groups with ≥1 category appear (API already guarantees this).
  */
-function buildSections(categories: Category[]): Section[] {
-  const grouped: Record<string, Category[]> = {};
-
-  for (const cat of categories) {
-    const genders = cat.genders ?? [];
-    for (const g of genders) {
-      if (!grouped[g]) grouped[g] = [];
-      grouped[g].push(cat);
-    }
-  }
-
-  const sections: Section[] = [];
-
-  for (const gender of GENDER_ORDER) {
-    const cats = grouped[gender];
-    if (!cats || cats.length === 0) continue; // skip if no products in this group
-    sections.push({
-      label: GENDER_LABELS[gender] ?? gender,
-      href: `/collections/${gender}`,
-      emoji: GENDER_EMOJI[gender] ?? '🛍️',
-      children: cats.map(c => ({
-        label: c.label,
-        href: `/collections/${gender}/${c.slug}`,
-      })),
-    });
-  }
+function buildSections(groups: NavGroup[]): Section[] {
+  const sections: Section[] = groups.map(g => ({
+    label: GENDER_LABELS[g.gender] ?? g.gender,
+    href: `/collections/${g.gender}`,
+    emoji: GENDER_EMOJI[g.gender] ?? '🛍️',
+    children: g.categories.map(c => ({
+      label: c.label,
+      href: `/collections/${g.gender}/${c.slug}`,
+    })),
+  }));
 
   sections.push({ href: '/collections', label: 'All Collections', emoji: '✨', children: [] });
 
@@ -175,12 +161,12 @@ export function MobileNav() {
   const [open, setOpen] = useState(false);
   const [sections, setSections] = useState<Section[]>([]);
 
-  // Fetch from the public storefront API — no admin cookie needed
+  // Fetch grouped nav structure from the public storefront API — no admin cookie needed
   useEffect(() => {
     fetch('/api/storefront/categories')
       .then(r => r.ok ? r.json() : [])
-      .then((cats: Category[]) => {
-        if (Array.isArray(cats) && cats.length > 0) setSections(buildSections(cats));
+      .then((groups: NavGroup[]) => {
+        if (Array.isArray(groups) && groups.length > 0) setSections(buildSections(groups));
       })
       .catch(() => {});
   }, []);

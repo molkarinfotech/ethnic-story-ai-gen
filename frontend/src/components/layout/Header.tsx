@@ -4,10 +4,13 @@ import Image from 'next/image';
 import { useCart } from '../../context/CartContext';
 import { MobileNav } from './MobileNav';
 
-type Category = { id: string; slug: string; label: string; genders: string[]; sort_order?: number };
+// Shape returned by /api/storefront/categories
+type NavGroup = {
+  gender: string;
+  categories: { id: string; slug: string; label: string; sort_order: number }[];
+};
 
-// Top-level nav groups — only these four appear; order matters
-const GENDER_ORDER = ['women', 'men', 'kids', 'accessories'];
+// Fixed display labels for each group key
 const GENDER_LABELS: Record<string, string> = {
   women: 'Women',
   men: 'Men',
@@ -15,41 +18,22 @@ const GENDER_LABELS: Record<string, string> = {
   accessories: 'Accessories',
 };
 
-/**
- * Build nav items from flat category list.
- * A group only appears if at least one category has that gender value.
- * Categories appear as dropdown children under their group.
- */
-function buildNav(categories: Category[]) {
-  const grouped: Record<string, Category[]> = {};
-
-  for (const cat of categories) {
-    const genders = cat.genders ?? [];
-    for (const g of genders) {
-      if (!grouped[g]) grouped[g] = [];
-      grouped[g].push(cat);
-    }
-  }
-
-  const items: { label: string; href: string; children: { label: string; href: string }[] }[] = [];
-
-  for (const gender of GENDER_ORDER) {
-    const cats = grouped[gender];
-    if (!cats || cats.length === 0) continue; // skip group if no products
-    items.push({
-      label: GENDER_LABELS[gender] ?? gender,
-      href: `/collections/${gender}`,
-      children: cats.map(c => ({
-        label: c.label,
-        href: `/collections/${gender}/${c.slug}`,
-      })),
-    });
-  }
-
-  return items;
-}
-
 type NavItemData = { label: string; href: string; children: { label: string; href: string }[] };
+
+/**
+ * Convert API response to the flat NavItemData[] that NavItem expects.
+ * Only groups with ≥1 category are included (the API already guarantees this).
+ */
+function buildNav(groups: NavGroup[]): NavItemData[] {
+  return groups.map(g => ({
+    label: GENDER_LABELS[g.gender] ?? g.gender,
+    href: `/collections/${g.gender}`,
+    children: g.categories.map(c => ({
+      label: c.label,
+      href: `/collections/${g.gender}/${c.slug}`,
+    })),
+  }));
+}
 
 function NavItem({ item }: { item: NavItemData }) {
   const [open, setOpen] = useState(false);
@@ -162,13 +146,13 @@ export function Header() {
   const { totalItems, openCart } = useCart();
   const [navItems, setNavItems] = useState<NavItemData[]>([]);
 
-  // Fetch categories from the public storefront API (no admin auth needed)
+  // Fetch grouped nav structure from the public storefront API (no admin auth needed)
   useEffect(() => {
     fetch('/api/storefront/categories')
       .then(r => r.ok ? r.json() : [])
-      .then((cats: Category[]) => {
-        if (Array.isArray(cats) && cats.length > 0) {
-          setNavItems(buildNav(cats));
+      .then((groups: NavGroup[]) => {
+        if (Array.isArray(groups) && groups.length > 0) {
+          setNavItems(buildNav(groups));
         }
       })
       .catch(() => {});
