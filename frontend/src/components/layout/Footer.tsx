@@ -45,19 +45,14 @@ export function Footer() {
             <div className="site-footer__col-title">Help</div>
             <ul className="site-footer__links">
               {([
-                ['Sizing Guide',  '/collections'],
-                ['Shipping Info', '/account'],
-                ['Returns',       '/account'],
+                ['Sizing Guide',  '/sizing'],
+                ['Shipping Info', '/shipping'],
+                ['Returns',       '/returns'],
                 ['Track Order',   '/orders'],
                 ['Contact Us',    'mailto:hello@ethnicstory.com.au'],
               ] as [string, string][]).map(([label, href]) => (
                 <li key={label}>
-                  <a
-                    href={href}
-                    {...(href.startsWith('mailto') ? {} : {})}
-                  >
-                    {label}
-                  </a>
+                  <a href={href}>{label}</a>
                 </li>
               ))}
             </ul>
