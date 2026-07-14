@@ -10,7 +10,7 @@ type NavGroup = {
   categories: { id: string; slug: string; label: string; sort_order: number }[];
 };
 
-// Fixed display order — Accessories is its own top-level group
+// Fixed display order — Accessories is always its own top-level group
 const GROUP_ORDER = ['women', 'men', 'kids', 'accessories'] as const;
 const GENDER_LABELS: Record<string, string> = {
   women: 'Women',
@@ -33,7 +33,14 @@ type Section = {
 };
 
 function buildSections(groups: NavGroup[]): Section[] {
-  const sorted = [...groups].sort((a, b) => {
+  // Strip any 'accessories' sub-category nested under another gender group —
+  // it should only appear as its own top-level group.
+  const normalised = groups.map(g => ({
+    ...g,
+    categories: g.categories.filter(c => c.slug !== 'accessories'),
+  }));
+
+  const sorted = [...normalised].sort((a, b) => {
     const ai = GROUP_ORDER.indexOf(a.gender as typeof GROUP_ORDER[number]);
     const bi = GROUP_ORDER.indexOf(b.gender as typeof GROUP_ORDER[number]);
     if (ai === -1 && bi === -1) return 0;
@@ -145,7 +152,6 @@ function Drawer({ open, onClose, sections }: { open: boolean; onClose: () => voi
                   </div>
                   {expanded === item.href && (
                     <ul style={{ listStyle: 'none', padding: '0 0 .5rem 0', margin: 0, background: '#fdf2f8' }}>
-                      {/* "All [group]" entry at top of expanded list */}
                       <li>
                         <a href={item.href} onClick={close}
                           style={{ display: 'block', padding: '.55rem 2.5rem', fontSize: '.85rem', color: '#9d174d', textDecoration: 'none', fontWeight: 700 }}>

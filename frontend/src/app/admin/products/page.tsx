@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 type ProductImage = { id: string; colour: string; url: string; sort_order: number };
 type Variant = { id: string; size: string; colour: string; stock_count: number; image_url?: string | null };
@@ -42,7 +42,7 @@ function uniqueColours(variants: Variant[], images: ProductImage[]): string[] {
   return out.sort();
 }
 
-// ── pill helper ──────────────────────────────────────────────
+// ── Pill ────────────────────────────────────────────────────────
 function Pill({ label, active, count, onClick }: { label: string; active: boolean; count?: number; onClick: () => void }) {
   return (
     <button
@@ -76,6 +76,19 @@ function Pill({ label, active, count, onClick }: { label: string; active: boolea
         }}>{count}</span>
       )}
     </button>
+  );
+}
+
+// ── Section label above a pill row ──────────────────────────────
+function PillSection({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '.3rem', minWidth: 0 }}>
+      <span style={{
+        fontSize: '.65rem', fontWeight: 700, color: '#9ca3af',
+        textTransform: 'uppercase', letterSpacing: '.07em',
+      }}>{label}</span>
+      <div style={{ display: 'flex', gap: '.3rem', flexWrap: 'wrap' }}>{children}</div>
+    </div>
   );
 }
 
@@ -139,13 +152,19 @@ export default function AdminProductsPage() {
     }
   }
 
-  // Derive unique genders from loaded products
-  const allGenders = Array.from(new Set(products.map(p => p.gender).filter(Boolean) as string[])).sort();
+  // Derive filter dimensions from loaded products
+  const allGenders    = Array.from(new Set(products.map(p => p.gender).filter(Boolean) as string[])).sort();
+  const allCategories = Array.from(new Set(products.map(p => p.category).filter(Boolean))).sort();
 
-  // Derive unique categories from loaded products (not from API — reflects actual inventory)
-  const allCategories = Array.from(
-    new Set(products.map(p => p.category).filter(Boolean))
-  ).sort();
+  // When gender filter is active, show only categories belonging to that gender
+  const visibleCategories = filterGender
+    ? Array.from(new Set(
+        products
+          .filter(p => p.gender === filterGender)
+          .map(p => p.category)
+          .filter(Boolean)
+      )).sort()
+    : allCategories;
 
   const filtered = products
     .filter(p => {
@@ -317,14 +336,16 @@ export default function AdminProductsPage() {
     setProducts(ps => ps.filter(p => p.id !== id));
   }
 
-  const allSelected = filtered.length > 0 && selectedIds.size === filtered.length;
-  const someSelected = selectedIds.size > 0 && !allSelected;
-  const hasFilters = !!(search || filterCat || filterGender || filterStock);
+  const allSelected  = filtered.length > 0 && selectedIds.size === filtered.length;
+  const hasFilters   = !!(search || filterCat || filterGender || filterStock);
 
-  // Count helpers for pills
   function countByGender(g: string)  { return products.filter(p => p.gender === g).length; }
-  function countByCat(c: string)     { return products.filter(p => p.category === c).length; }
-  function countByStock(s: string)   {
+  function countByCat(c: string)     {
+    return products.filter(p =>
+      p.category === c && (!filterGender || p.gender === filterGender)
+    ).length;
+  }
+  function countByStock(s: string) {
     return products.filter(p => {
       const st = totalStock(p.variants);
       if (s === 'out') return st === 0;
@@ -337,566 +358,460 @@ export default function AdminProductsPage() {
   const outCount = countByStock('out');
   const lowCount = countByStock('low');
 
+  // ─── Gender label mapping for display ─────────────────────────
+  const GENDER_DISPLAY: Record<string, string> = {
+    women: 'Women', men: 'Men', kids: 'Kids', accessories: 'Accessories',
+  };
+
   return (
     <div>
-      <style>{`
-        .pill-row { display: flex; gap: .35rem; flex-wrap: wrap; align-items: center; }
-        .pill-section-label {
-          font-size: .67rem; font-weight: 700; color: #9ca3af;
-          text-transform: uppercase; letter-spacing: .07em;
-          white-space: nowrap; margin-right: .1rem;
-        }
-        .pill-divider {
-          width: 1px; height: 20px; background: #e5e7eb;
-          margin: 0 .35rem; flex-shrink: 0;
-        }
-        @media (max-width: 640px) {
-          .pill-divider { display: none; }
-        }
-      `}</style>
-
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '.75rem' }}>
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '.75rem' }}>
         <div>
           <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#111827', marginBottom: '.15rem' }}>Products</h1>
           <p style={{ fontSize: '.78rem', color: '#9ca3af', margin: 0 }}>Manage listings, stock &amp; images</p>
         </div>
-        <a
-          href="/admin/products/new"
-          style={{ background: '#9d174d', color: 'white', borderRadius: '.5rem', padding: '.5rem 1.1rem', textDecoration: 'none', fontSize: '.82rem', fontWeight: 700 }}
-        >+ New product</a>
-      </div>
-
-      {/* ── Search bar ── */}
-      <div style={{ marginBottom: '.9rem' }}>
-        <div style={{ position: 'relative', maxWidth: 400 }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
-            style={{ position: 'absolute', left: '.75rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          <input
-            type="search"
-            placeholder="Search products…"
-            value={search}
-            onChange={e => { setSearch(e.target.value); setSelectedIds(new Set()); }}
+        <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+              style={{
+                padding: '.38rem .9rem', borderRadius: '6px',
+                background: bulkDeleting ? '#fca5a5' : '#fee2e2',
+                color: '#b91c1c', fontWeight: 600, fontSize: '.78rem',
+                border: '1px solid #fca5a5', cursor: bulkDeleting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {bulkDeleting ? 'Deleting…' : `Delete ${selectedIds.size} selected`}
+            </button>
+          )}
+          <a
+            href="/admin/products/new"
             style={{
-              width: '100%',
-              padding: '.45rem .75rem .45rem 2.2rem',
-              border: '1.5px solid #e5e7eb',
-              borderRadius: '.55rem',
-              fontSize: '.85rem',
-              background: 'white',
-              outline: 'none',
-              color: '#111827',
+              padding: '.38rem .9rem', borderRadius: '6px',
+              background: '#9d174d', color: 'white',
+              fontWeight: 600, fontSize: '.78rem',
+              textDecoration: 'none', border: 'none',
+              display: 'inline-flex', alignItems: 'center', gap: '.3rem',
             }}
-          />
+          >
+            + Add Product
+          </a>
         </div>
       </div>
 
-      {/* ── Filter pills ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '.55rem', marginBottom: '1rem', padding: '.7rem .85rem', background: '#fafafa', border: '1px solid #f3f4f6', borderRadius: '.7rem' }}>
+      {/* ── Filter bar ─────────────────────────────────────────── */}
+      <div style={{
+        background: '#fff',
+        border: '1px solid #f3f4f6',
+        borderRadius: '10px',
+        padding: '1rem 1.1rem',
+        marginBottom: '1rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '.85rem',
+      }}>
+        {/* Search */}
+        <div style={{ position: 'relative' }}>
+          <span style={{ position: 'absolute', left: '.7rem', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: '.85rem', pointerEvents: 'none' }}>🔍</span>
+          <input
+            type="search"
+            placeholder="Search by name or category…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              padding: '.45rem .75rem .45rem 2rem',
+              border: '1.5px solid #e5e7eb', borderRadius: '6px',
+              fontSize: '.82rem', color: '#111827',
+              outline: 'none',
+              transition: 'border-color .15s',
+            }}
+            onFocus={e => (e.currentTarget.style.borderColor = '#9d174d')}
+            onBlur={e  => (e.currentTarget.style.borderColor = '#e5e7eb')}
+          />
+        </div>
 
-        {/* Group / Gender pills */}
+        {/* Gender pills */}
         {allGenders.length > 0 && (
-          <div className="pill-row">
-            <span className="pill-section-label">Group</span>
-            <Pill label="All" active={!filterGender} count={products.length} onClick={() => { setFilterGender(''); setSelectedIds(new Set()); }} />
+          <PillSection label="Gender">
             {allGenders.map(g => (
               <Pill
                 key={g}
-                label={g.charAt(0).toUpperCase() + g.slice(1)}
+                label={GENDER_DISPLAY[g] ?? g.charAt(0).toUpperCase() + g.slice(1)}
                 active={filterGender === g}
                 count={countByGender(g)}
-                onClick={() => { setFilterGender(filterGender === g ? '' : g); setSelectedIds(new Set()); }}
+                onClick={() => {
+                  const next = filterGender === g ? '' : g;
+                  setFilterGender(next);
+                  // Reset category filter if it no longer belongs to the new gender
+                  if (next && filterCat) {
+                    const stillValid = products.some(p => p.gender === next && p.category === filterCat);
+                    if (!stillValid) setFilterCat('');
+                  }
+                }}
               />
             ))}
-          </div>
+          </PillSection>
         )}
 
-        {/* Category pills — dynamically from actual products */}
-        {allCategories.length > 0 && (
-          <div className="pill-row">
-            <span className="pill-section-label">Category</span>
-            <Pill label="All" active={!filterCat} onClick={() => { setFilterCat(''); setSelectedIds(new Set()); }} />
-            {allCategories.map(c => (
+        {/* Category pills — context-aware: shows only categories for the active gender */}
+        {visibleCategories.length > 0 && (
+          <PillSection label={filterGender ? `Categories · ${GENDER_DISPLAY[filterGender] ?? filterGender}` : 'Category'}>
+            {visibleCategories.map(c => (
               <Pill
                 key={c}
                 label={c}
                 active={filterCat === c}
                 count={countByCat(c)}
-                onClick={() => { setFilterCat(filterCat === c ? '' : c); setSelectedIds(new Set()); }}
+                onClick={() => setFilterCat(filterCat === c ? '' : c)}
               />
             ))}
-          </div>
+          </PillSection>
         )}
 
-        {/* Stock status pills */}
-        <div className="pill-row">
-          <span className="pill-section-label">Stock</span>
-          <Pill label="All" active={!filterStock} onClick={() => { setFilterStock(''); setSelectedIds(new Set()); }} />
-          <Pill label="In stock" active={filterStock === 'in'}  count={countByStock('in')}  onClick={() => { setFilterStock(filterStock === 'in'  ? '' : 'in');  setSelectedIds(new Set()); }} />
-          {lowCount > 0 && (
-            <Pill label="⚠ Low (≤5)" active={filterStock === 'low'} count={lowCount} onClick={() => { setFilterStock(filterStock === 'low' ? '' : 'low'); setSelectedIds(new Set()); }} />
-          )}
+        {/* Stock pills */}
+        <PillSection label="Stock">
+          <Pill label="In stock"  active={filterStock === 'in'}  count={countByStock('in')}  onClick={() => setFilterStock(filterStock === 'in'  ? '' : 'in')}  />
+          <Pill label="Low ≤5"   active={filterStock === 'low'} count={countByStock('low')} onClick={() => setFilterStock(filterStock === 'low' ? '' : 'low')} />
           {outCount > 0 && (
-            <Pill label="⛔ Out of stock" active={filterStock === 'out'} count={outCount} onClick={() => { setFilterStock(filterStock === 'out' ? '' : 'out'); setSelectedIds(new Set()); }} />
+            <Pill label="Out of stock" active={filterStock === 'out'} count={outCount} onClick={() => setFilterStock(filterStock === 'out' ? '' : 'out')} />
           )}
-        </div>
+        </PillSection>
 
+        {/* Active filter summary + reset */}
         {hasFilters && (
-          <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '.75rem', color: '#6b7280' }}>
+              Showing <strong>{filtered.length}</strong> of {products.length} products
+            </span>
             <button
               onClick={resetFilters}
-              style={{ fontSize: '.73rem', color: '#9d174d', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600, textDecoration: 'underline' }}
-            >✕ Clear all filters</button>
+              style={{
+                fontSize: '.72rem', color: '#9d174d', background: 'none',
+                border: '1px solid #fce7f3', borderRadius: '2rem',
+                padding: '.18rem .6rem', cursor: 'pointer', fontWeight: 600,
+              }}
+            >
+              Clear filters ×
+            </button>
           </div>
         )}
       </div>
 
-      {/* Summary + Select All */}
-      {!loading && !fetchError && filtered.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '.75rem', color: '#9ca3af', marginBottom: '.75rem', flexWrap: 'wrap' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', cursor: 'pointer', userSelect: 'none', color: '#6b7280', fontWeight: 600 }}>
+      {/* ── Product list ───────────────────────────────────────── */}
+      {fetchError && (
+        <div style={{ color: '#b91c1c', background: '#fee2e2', borderRadius: 8, padding: '1rem', marginBottom: '1rem', fontSize: '.85rem' }}>
+          Error: {fetchError}
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
+          {[1,2,3,4,5].map(i => (
+            <div key={i} style={{ height: 64, borderRadius: 8, background: '#f9fafb', border: '1px solid #f3f4f6',
+              backgroundImage: 'linear-gradient(90deg,#f9fafb 25%,#f3f4f6 50%,#f9fafb 75%)',
+              backgroundSize: '200% 100%',
+              animation: 'shimmer 1.4s ease-in-out infinite',
+            }} />
+          ))}
+          <style>{`@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}`}</style>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#9ca3af' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>📦</div>
+          <div style={{ fontWeight: 600, marginBottom: '.25rem', color: '#374151' }}>No products found</div>
+          <div style={{ fontSize: '.8rem' }}>Try adjusting your filters or search term</div>
+          {hasFilters && (
+            <button onClick={resetFilters} style={{ marginTop: '.75rem', color: '#9d174d', background: 'none', border: '1px solid #fce7f3', borderRadius: '2rem', padding: '.3rem .85rem', fontSize: '.78rem', cursor: 'pointer', fontWeight: 600 }}>
+              Clear all filters
+            </button>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '.45rem' }}>
+          {/* Select-all row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', padding: '.3rem .5rem', fontSize: '.75rem', color: '#9ca3af' }}>
             <input
               type="checkbox"
               checked={allSelected}
-              ref={el => { if (el) el.indeterminate = someSelected; }}
+              ref={el => { if (el) el.indeterminate = selectedIds.size > 0 && !allSelected; }}
               onChange={toggleSelectAll}
-              style={{ width: 15, height: 15, accentColor: '#9d174d', cursor: 'pointer' }}
+              style={{ accentColor: '#9d174d', width: 14, height: 14, cursor: 'pointer' }}
             />
-            Select all
-          </label>
-          <span>{filtered.length} product{filtered.length !== 1 ? 's' : ''}{hasFilters ? ' matching filters' : ''}</span>
-          {filtered.filter(p => totalStock(p.variants) === 0).length > 0 && (
-            <span style={{ color: '#991b1b', fontWeight: 600 }}>⚠ {filtered.filter(p => totalStock(p.variants) === 0).length} out of stock</span>
-          )}
-        </div>
-      )}
-
-      {/* Bulk action toolbar */}
-      {selectedIds.size > 0 && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '.75rem',
-          background: '#fff1f2', border: '1.5px solid #fca5a5',
-          borderRadius: '.7rem', padding: '.6rem 1rem',
-          marginBottom: '1rem', flexWrap: 'wrap',
-        }}>
-          <span style={{ fontWeight: 700, color: '#9d174d', fontSize: '.88rem' }}>{selectedIds.size} selected</span>
-          <button
-            onClick={handleBulkDelete}
-            disabled={bulkDeleting}
-            style={{ background: '#be123c', color: 'white', border: 'none', borderRadius: '.45rem', padding: '.38rem .9rem', cursor: bulkDeleting ? 'default' : 'pointer', fontSize: '.83rem', fontWeight: 700, opacity: bulkDeleting ? .65 : 1 }}
-          >
-            {bulkDeleting ? 'Deleting…' : `🗑 Delete ${selectedIds.size} product${selectedIds.size > 1 ? 's' : ''}`}
-          </button>
-          <button
-            onClick={() => setSelectedIds(new Set())}
-            style={{ background: 'none', border: '1px solid #fca5a5', borderRadius: '.45rem', padding: '.38rem .7rem', color: '#6b7280', cursor: 'pointer', fontSize: '.83rem' }}
-          >Clear</button>
-        </div>
-      )}
-
-      {loading && <p style={{ color: '#6b7280', fontSize: '.875rem', textAlign: 'center', padding: '2rem' }}>Loading…</p>}
-
-      {fetchError && (
-        <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '.65rem', padding: '.75rem 1rem', color: '#dc2626', fontSize: '.85rem', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>⚠ {fetchError}</span>
-          <button onClick={load} style={{ background: '#9d174d', color: 'white', border: 'none', borderRadius: '.4rem', padding: '.25rem .65rem', fontSize: '.78rem', cursor: 'pointer' }}>Retry</button>
-        </div>
-      )}
-
-      {!loading && !fetchError && filtered.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '3rem', color: '#9ca3af' }}>
-          <div style={{ fontSize: '2.5rem', marginBottom: '.5rem' }}>👗</div>
-          <p style={{ fontWeight: 600, color: '#6b7280' }}>No products found</p>
-          {hasFilters && (
-            <button onClick={resetFilters} style={{ marginTop: '.5rem', fontSize: '.8rem', color: '#9d174d', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Clear filters</button>
-          )}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
-        {filtered.map(p => {
-          const total    = totalStock(p.variants);
-          const low      = total > 0 && total <= 5;
-          const isOpen   = expandedId === p.id;
-          const images   = imageMap[p.id] ?? [];
-          const colours  = uniqueColours(p.variants, images);
-          const selected = selectedIds.has(p.id);
-
-          return (
-            <div key={p.id} style={{
-              background: 'white', borderRadius: '.7rem',
-              border: `1.5px solid ${selected ? '#9d174d' : total === 0 ? '#fecaca' : '#fce7f3'}`,
-              boxShadow: selected ? '0 0 0 3px rgba(157,23,77,.1)' : '0 1px 3px rgba(0,0,0,.04)',
-              overflow: 'hidden',
-              opacity: total === 0 && !selected ? .88 : 1,
-              transition: 'border-color .12s, box-shadow .12s',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '.85rem', padding: '.75rem 1rem', flexWrap: 'wrap' }}>
-                <input
-                  type="checkbox" checked={selected}
-                  onChange={() => toggleSelect(p.id)}
-                  onClick={e => e.stopPropagation()}
-                  style={{ width: 16, height: 16, accentColor: '#9d174d', cursor: 'pointer', flexShrink: 0 }}
-                />
-                {p.image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={p.image} alt={p.name} width={44} height={44}
-                    style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: '.4rem', flexShrink: 0, border: '1px solid #fce7f3' }} />
-                ) : (
-                  <div style={{ width: 44, height: 44, borderRadius: '.4rem', background: '#fdf2f8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem', flexShrink: 0, border: '1px solid #fce7f3' }}>👗</div>
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: '.88rem', color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {p.name}
-                    {p.badge && <span style={{ marginLeft: '.35rem', fontSize: '.63rem', background: '#fce7f3', color: '#9d174d', borderRadius: '2rem', padding: '.1rem .4rem', fontWeight: 700 }}>{p.badge}</span>}
-                  </div>
-                  <div style={{ fontSize: '.73rem', color: '#6b7280', marginTop: '.1rem', display: 'flex', gap: '.4rem', flexWrap: 'wrap' }}>
-                    <span style={{ background: '#fdf2f8', color: '#9d174d', padding: '.05rem .4rem', borderRadius: '2rem', fontWeight: 600 }}>{p.category}</span>
-                    {p.gender && <span style={{ background: '#f0fdf4', color: '#166534', padding: '.05rem .4rem', borderRadius: '2rem', fontWeight: 600 }}>{p.gender}</span>}
-                    <span>· <strong style={{ color: '#111827' }}>A${p.price}</strong></span>
-                    {colours.length > 0 && <span>· {colours.length} colour{colours.length !== 1 ? 's' : ''}</span>}
-                  </div>
-                </div>
-                <span style={{
-                  fontSize: '.71rem', fontWeight: 700, borderRadius: '2rem', padding: '.2rem .55rem', flexShrink: 0,
-                  background: total === 0 ? '#fee2e2' : low ? '#fef9c3' : '#dcfce7',
-                  color:      total === 0 ? '#991b1b' : low ? '#854d0e' : '#166534',
-                }}>
-                  {total === 0 ? '⚠ Out of stock' : low ? `⚠ ${total} left` : `${total} units`}
-                </span>
-                <div style={{ display: 'flex', gap: '.35rem', flexShrink: 0, alignItems: 'center' }}>
-                  <button
-                    onClick={() => toggleExpand(p.id)}
-                    style={{ fontSize: '.75rem', fontWeight: 600, background: isOpen ? '#9d174d' : '#fdf2f8', color: isOpen ? 'white' : '#9d174d', border: 'none', borderRadius: '.4rem', padding: '.32rem .65rem', cursor: 'pointer' }}
-                  >{isOpen ? '▲ Close' : '▼ Manage'}</button>
-                  <a
-                    href={`/admin/products/${p.id}/edit`}
-                    style={{ fontSize: '.75rem', fontWeight: 600, color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '.4rem', padding: '.32rem .55rem', textDecoration: 'none' }}
-                    title="Edit product details"
-                  >✏️</a>
-                  <button
-                    onClick={() => deleteProduct(p.id, p.name)}
-                    style={{ fontSize: '.75rem', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '.3rem .35rem' }}
-                    title="Delete product"
-                  >🗑</button>
-                </div>
-              </div>
-
-              {isOpen && (
-                <ExpandedPanel
-                  product={p}
-                  images={images}
-                  colours={colours}
-                  variantDrafts={variantDrafts}
-                  setVariantDrafts={setVariantDrafts}
-                  saving={saving}
-                  onSave={saveVariantStock}
-                  onAddVariant={addVariant}
-                  onDeleteVariant={deleteVariant}
-                  onAddColour={(name) => addColourGroup(p.id, name)}
-                  onDeleteImage={(imgId) => deleteImage(p.id, imgId)}
-                  onUploadFiles={(colour, files) => uploadFiles(p.id, colour, files)}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════ ExpandedPanel ═══════════════════════ */
-function ExpandedPanel({
-  product, images, colours, variantDrafts, setVariantDrafts, saving,
-  onSave, onAddVariant, onDeleteVariant, onAddColour, onDeleteImage, onUploadFiles,
-}: {
-  product:          Product;
-  images:           ProductImage[];
-  colours:          string[];
-  variantDrafts:    Record<string,number>;
-  setVariantDrafts: React.Dispatch<React.SetStateAction<Record<string,number>>>;
-  saving:           Record<string,boolean>;
-  onSave:           (vid: string, pid: string, size: string, colour: string, qty: number) => Promise<void>;
-  onAddVariant:     (pid: string, size: string, colour: string) => Promise<void>;
-  onDeleteVariant:  (vid: string) => Promise<void>;
-  onAddColour:      (name: string) => Promise<void>;
-  onDeleteImage:    (imgId: string) => Promise<void>;
-  onUploadFiles:    (colour: string, files: File[]) => Promise<void>;
-}) {
-  const [showColourForm, setShowColourForm] = useState(false);
-  const [newColourName,  setNewColourName]  = useState('');
-  const [addingColour,   setAddingColour]   = useState(false);
-
-  async function submitColour() {
-    const name = newColourName.trim();
-    if (!name) return;
-    setAddingColour(true);
-    await onAddColour(name);
-    setNewColourName('');
-    setShowColourForm(false);
-    setAddingColour(false);
-  }
-
-  function variantsByColour(c: string) {
-    return sortVariants(product.variants.filter(v => v.colour === c));
-  }
-  function imagesByColour(c: string) {
-    return images.filter(i => i.colour === c).sort((a,b) => a.sort_order - b.sort_order);
-  }
-  const noColourVariants = sortVariants(product.variants.filter(v => !v.colour || v.colour.trim() === ''));
-
-  return (
-    <div style={{ borderTop: '1px solid #fce7f3', background: '#fffbfd', padding: '1rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '.85rem', flexWrap: 'wrap', gap: '.5rem' }}>
-        <span style={{ fontSize: '.72rem', fontWeight: 700, color: '#9d174d', textTransform: 'uppercase', letterSpacing: '.05em' }}>Images &amp; Stock</span>
-        <button
-          onClick={() => setShowColourForm(v => !v)}
-          style={{ fontSize: '.75rem', fontWeight: 700, background: '#7c3aed', color: 'white', border: 'none', borderRadius: '.4rem', padding: '.3rem .7rem', cursor: 'pointer' }}
-        >+ Add colour</button>
-      </div>
-
-      {showColourForm && (
-        <div style={{ display: 'flex', gap: '.4rem', alignItems: 'center', flexWrap: 'wrap', background: 'white', border: '1px solid #ede9fe', borderRadius: '.55rem', padding: '.6rem .75rem', marginBottom: '.85rem' }}>
-          <span style={{ fontSize: '.78rem', fontWeight: 600, color: '#7c3aed', whiteSpace: 'nowrap' }}>Colour name:</span>
-          <input
-            value={newColourName}
-            onChange={e => setNewColourName(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submitColour(); } }}
-            placeholder="e.g. Maroon, Royal Blue…"
-            autoFocus
-            style={{ flex: 1, minWidth: '140px', padding: '.35rem .5rem', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.8rem', outline: 'none' }}
-          />
-          <button
-            disabled={!newColourName.trim() || addingColour}
-            onClick={submitColour}
-            style={{ padding: '.35rem .75rem', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '.4rem', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer', opacity: newColourName.trim() && !addingColour ? 1 : .5 }}
-          >{addingColour ? 'Saving…' : 'Add'}</button>
-          <button
-            onClick={() => { setShowColourForm(false); setNewColourName(''); }}
-            style={{ padding: '.35rem .55rem', background: '#f9fafb', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: '.4rem', fontSize: '.78rem', cursor: 'pointer' }}
-          >Cancel</button>
-        </div>
-      )}
-
-      {colours.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#9ca3af' }}>
-          <div style={{ fontSize: '2rem', marginBottom: '.35rem' }}>🎨</div>
-          <p style={{ fontWeight: 600, color: '#6b7280', fontSize: '.82rem', marginBottom: '.25rem' }}>No colour variants yet</p>
-          <p style={{ fontSize: '.75rem' }}>Click &ldquo;+ Add colour&rdquo; above to get started.</p>
-        </div>
-      )}
-
-      {colours.map(colour => (
-        <ColourGroup
-          key={colour}
-          colour={colour}
-          variants={variantsByColour(colour)}
-          images={imagesByColour(colour)}
-          productId={product.id}
-          variantDrafts={variantDrafts}
-          setVariantDrafts={setVariantDrafts}
-          saving={saving}
-          onSave={(vid, size, qty) => onSave(vid, product.id, size, colour, qty)}
-          onAddVariant={(size) => onAddVariant(product.id, size, colour)}
-          onDeleteVariant={onDeleteVariant}
-          onDeleteImage={onDeleteImage}
-          onUploadFiles={(files) => onUploadFiles(colour, files)}
-        />
-      ))}
-
-      {noColourVariants.length > 0 && (
-        <div style={{ marginTop: '.5rem', paddingTop: '.75rem', borderTop: '1px dashed #fce7f3' }}>
-          <div style={{ fontSize: '.7rem', fontWeight: 700, color: '#9ca3af', marginBottom: '.4rem' }}>NO COLOUR ASSIGNED</div>
-          <VariantChips
-            variants={noColourVariants} drafts={variantDrafts} saving={saving}
-            setDrafts={setVariantDrafts}
-            onSave={(vid, size, qty) => onSave(vid, product.id, size, '', qty)}
-            onDelete={onDeleteVariant}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ═══════════════════════ ColourGroup ═══════════════════════ */
-function ColourGroup({
-  colour, variants, images,
-  variantDrafts, setVariantDrafts, saving,
-  onSave, onAddVariant, onDeleteVariant, onDeleteImage, onUploadFiles,
-}: {
-  colour:           string;
-  variants:         Variant[];
-  images:           ProductImage[];
-  productId:        string;
-  variantDrafts:    Record<string,number>;
-  setVariantDrafts: React.Dispatch<React.SetStateAction<Record<string,number>>>;
-  saving:           Record<string,boolean>;
-  onSave:           (vid: string, size: string, qty: number) => Promise<void>;
-  onAddVariant:     (size: string) => Promise<void>;
-  onDeleteVariant:  (vid: string) => Promise<void>;
-  onDeleteImage:    (imgId: string) => Promise<void>;
-  onUploadFiles:    (files: File[]) => Promise<void>;
-}) {
-  const [uploading,    setUploading]    = useState(false);
-  const [isDragOver,   setIsDragOver]   = useState(false);
-  const [showSizeForm, setShowSizeForm] = useState(false);
-  const [newSize,      setNewSize]      = useState('');
-  const [addingSize,   setAddingSize]   = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  async function handleFiles(files: FileList | File[]) {
-    const arr = Array.from(files).filter(f => f.type.startsWith('image/'));
-    if (!arr.length) return;
-    setUploading(true);
-    await onUploadFiles(arr);
-    setUploading(false);
-    if (fileRef.current) fileRef.current.value = '';
-  }
-
-  const stockTotal = variants.reduce((s,v) => s + (variantDrafts[v.id] ?? v.stock_count), 0);
-
-  return (
-    <div style={{ background: 'white', border: '1px solid #fce7f3', borderRadius: '.6rem', marginBottom: '.75rem', overflow: 'hidden' }}>
-      <div style={{ background: 'linear-gradient(to right,#fdf2f8,#fdf8ff)', borderBottom: '1px solid #fce7f3', padding: '.45rem .75rem', display: 'flex', alignItems: 'center', gap: '.4rem' }}>
-        <span style={{ fontSize: '.95rem' }}>🎨</span>
-        <span style={{ fontWeight: 700, fontSize: '.82rem', color: '#9d174d', flex: 1, textTransform: 'capitalize' }}>{colour}</span>
-        <span style={{ fontSize: '.68rem', color: '#9ca3af' }}>
-          {images.length} img{images.length !== 1 ? 's' : ''}
-          {variants.length > 0 && ` · ${variants.length} size${variants.length !== 1 ? 's' : ''} · ${stockTotal} units`}
-        </span>
-      </div>
-
-      <div style={{ padding: '.65rem .75rem', display: 'grid', gridTemplateColumns: 'minmax(160px,1fr) minmax(160px,1.2fr)', gap: '1rem' }}>
-        <div>
-          <div style={{ fontSize: '.67rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '.4rem' }}>Photos</div>
-          {images.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.3rem', marginBottom: '.5rem' }}>
-              {images.map((img, idx) => (
-                <div key={img.id} style={{ position: 'relative', width: 58, height: 58, flexShrink: 0 }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={img.url} alt={`${colour} ${idx+1}`} width={58} height={58}
-                    style={{ width: 58, height: 58, objectFit: 'cover', borderRadius: '.35rem', border: '1px solid #fce7f3', display: 'block' }}
-                  />
-                  {idx === 0 && (
-                    <span style={{ position: 'absolute', bottom: 2, left: 2, fontSize: '.48rem', background: '#9d174d', color: 'white', borderRadius: '.2rem', padding: '.05rem .25rem', fontWeight: 700, lineHeight: 1.4 }}>MAIN</span>
-                  )}
-                  <button
-                    onClick={() => onDeleteImage(img.id)}
-                    style={{ position: 'absolute', top: 2, right: 2, width: 16, height: 16, background: 'rgba(0,0,0,.55)', color: 'white', border: 'none', borderRadius: '50%', fontSize: '.55rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
-                  >✕</button>
-                </div>
-              ))}
-            </div>
-          )}
-          <div
-            onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
-            onDragLeave={() => setIsDragOver(false)}
-            onDrop={e => { e.preventDefault(); setIsDragOver(false); if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); }}
-            onClick={() => !uploading && fileRef.current?.click()}
-            style={{ border: `2px dashed ${isDragOver ? '#9d174d' : '#fce7f3'}`, borderRadius: '.45rem', padding: '.55rem .5rem', textAlign: 'center', cursor: uploading ? 'default' : 'pointer', background: isDragOver ? '#fdf2f8' : '#fffbfd', transition: 'border-color .15s, background .15s' }}
-          >
-            {uploading ? (
-              <span style={{ fontSize: '.72rem', color: '#9d174d', fontWeight: 600 }}>Uploading… ⏳</span>
-            ) : (
-              <>
-                <div style={{ fontSize: '1.1rem', marginBottom: '.1rem' }}>📤</div>
-                <div style={{ fontSize: '.7rem', color: '#6b7280', fontWeight: 600 }}>{images.length ? 'Add more' : 'Upload images'}</div>
-                <div style={{ fontSize: '.62rem', color: '#9ca3af' }}>Click or drag · JPG PNG WEBP</div>
-              </>
-            )}
+            <span>{selectedIds.size > 0 ? `${selectedIds.size} selected` : `${filtered.length} products`}</span>
           </div>
-          <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
-            onChange={e => { if (e.target.files?.length) handleFiles(e.target.files); }}
-          />
-        </div>
 
-        <div>
-          <div style={{ fontSize: '.67rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '.4rem' }}>Sizes &amp; Stock</div>
-          {variants.length === 0 ? (
-            <p style={{ fontSize: '.73rem', color: '#9ca3af', marginBottom: '.5rem' }}>No sizes yet — add one below.</p>
-          ) : (
-            <div style={{ marginBottom: '.4rem' }}>
-              <VariantChips variants={variants} drafts={variantDrafts} saving={saving} setDrafts={setVariantDrafts} onSave={onSave} onDelete={onDeleteVariant} />
-            </div>
-          )}
-          {!showSizeForm ? (
-            <button
-              onClick={() => setShowSizeForm(true)}
-              style={{ fontSize: '.7rem', color: '#9d174d', background: '#fdf2f8', border: '1px dashed #fce7f3', borderRadius: '.35rem', padding: '.25rem .55rem', cursor: 'pointer', fontWeight: 600 }}
-            >+ Add size</button>
-          ) : (
-            <div style={{ display: 'flex', gap: '.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
-              <input
-                placeholder="S / M / 38…" value={newSize}
-                onChange={e => setNewSize(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && newSize.trim()) {
-                    e.preventDefault();
-                    setAddingSize(true);
-                    onAddVariant(newSize.trim()).then(() => { setNewSize(''); setShowSizeForm(false); setAddingSize(false); });
-                  }
+          {filtered.map(p => {
+            const stock     = totalStock(p.variants);
+            const colours   = uniqueColours(p.variants, imageMap[p.id] ?? []);
+            const isExpanded = expandedId === p.id;
+            const isSelected = selectedIds.has(p.id);
+            const isSaving  = Object.keys(saving).some(k => p.variants.some(v => v.id === k));
+
+            const stockBadge = stock === 0
+              ? { label: 'Out of stock', bg: '#fee2e2', color: '#b91c1c' }
+              : stock <= 5
+              ? { label: `Low · ${stock}`, bg: '#fef9c3', color: '#854d0e' }
+              : { label: `${stock} in stock`, bg: '#dcfce7', color: '#15803d' };
+
+            return (
+              <div
+                key={p.id}
+                style={{
+                  border: isSelected ? '1.5px solid #9d174d' : '1.5px solid #f3f4f6',
+                  borderRadius: '8px',
+                  background: isSelected ? '#fff7f9' : '#fff',
+                  transition: 'border-color .12s, background .12s',
+                  overflow: 'hidden',
                 }}
-                autoFocus
-                style={{ flex: '1 1 55px', minWidth: '50px', padding: '.28rem .4rem', border: '1px solid #e5e7eb', borderRadius: '.35rem', fontSize: '.75rem', outline: 'none' }}
-              />
-              <button
-                disabled={addingSize || !newSize.trim()}
-                onClick={async () => { setAddingSize(true); await onAddVariant(newSize.trim()); setNewSize(''); setShowSizeForm(false); setAddingSize(false); }}
-                style={{ padding: '.28rem .5rem', background: '#9d174d', color: 'white', border: 'none', borderRadius: '.35rem', fontSize: '.72rem', fontWeight: 700, cursor: 'pointer', opacity: addingSize || !newSize.trim() ? .6 : 1 }}
-              >{addingSize ? '…' : 'Add'}</button>
-              <button
-                onClick={() => { setShowSizeForm(false); setNewSize(''); }}
-                style={{ padding: '.28rem .4rem', background: '#f9fafb', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: '.35rem', fontSize: '.72rem', cursor: 'pointer' }}
-              >✕</button>
-            </div>
-          )}
+              >
+                {/* Row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem', padding: '.65rem .85rem', cursor: 'pointer' }}
+                  onClick={() => toggleExpand(p.id)}
+                >
+                  {/* Checkbox */}
+                  <span onClick={e => { e.stopPropagation(); toggleSelect(p.id); }} style={{ flexShrink: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelect(p.id)}
+                      onClick={e => e.stopPropagation()}
+                      style={{ accentColor: '#9d174d', width: 14, height: 14, cursor: 'pointer' }}
+                    />
+                  </span>
+
+                  {/* Thumbnail */}
+                  {p.image ? (
+                    <img src={p.image} alt={p.name}
+                      style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6, flexShrink: 0, border: '1px solid #f3f4f6' }}
+                    />
+                  ) : (
+                    <div style={{ width: 40, height: 40, borderRadius: 6, background: '#fdf2f8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '1.1rem' }}>🥻</div>
+                  )}
+
+                  {/* Name + meta */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '.85rem', color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.3rem', marginTop: '.2rem', alignItems: 'center' }}>
+                      {p.gender && (
+                        <span style={{ fontSize: '.65rem', background: '#fdf2f8', color: '#9d174d', borderRadius: '2rem', padding: '0 .45rem', fontWeight: 600 }}>
+                          {GENDER_DISPLAY[p.gender] ?? p.gender}
+                        </span>
+                      )}
+                      {p.category && (
+                        <span style={{ fontSize: '.65rem', background: '#f3f4f6', color: '#6b7280', borderRadius: '2rem', padding: '0 .45rem' }}>
+                          {p.category}
+                        </span>
+                      )}
+                      {colours.length > 0 && (
+                        <span style={{ fontSize: '.65rem', color: '#9ca3af' }}>
+                          {colours.length} colour{colours.length !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Price */}
+                  <div style={{ fontSize: '.82rem', fontWeight: 700, color: '#111827', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    ${p.price?.toFixed(2)}
+                  </div>
+
+                  {/* Stock badge */}
+                  <span style={{
+                    fontSize: '.65rem', fontWeight: 700,
+                    background: stockBadge.bg, color: stockBadge.color,
+                    borderRadius: '2rem', padding: '.18rem .55rem',
+                    whiteSpace: 'nowrap', flexShrink: 0,
+                  }}>
+                    {stockBadge.label}
+                  </span>
+
+                  {/* Chevron */}
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.5"
+                    style={{ flexShrink: 0, transition: 'transform .2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)' }}
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </div>
+
+                {/* ── Expanded detail ──────────────────────────────── */}
+                {isExpanded && (
+                  <div style={{ borderTop: '1px solid #f9fafb', padding: '.85rem 1rem', background: '#fafafa' }}>
+                    {/* Action row */}
+                    <div style={{ display: 'flex', gap: '.5rem', marginBottom: '.85rem', flexWrap: 'wrap' }}>
+                      <a
+                        href={`/admin/products/${p.id}/edit`}
+                        style={{
+                          padding: '.3rem .75rem', borderRadius: '6px', fontSize: '.75rem',
+                          background: '#f3f4f6', color: '#374151', fontWeight: 600,
+                          textDecoration: 'none', border: '1px solid #e5e7eb',
+                        }}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        ✏️ Edit
+                      </a>
+                      <button
+                        onClick={e => { e.stopPropagation(); deleteProduct(p.id, p.name); }}
+                        style={{
+                          padding: '.3rem .75rem', borderRadius: '6px', fontSize: '.75rem',
+                          background: '#fee2e2', color: '#b91c1c', fontWeight: 600,
+                          border: '1px solid #fca5a5', cursor: 'pointer',
+                        }}
+                      >
+                        🗑️ Delete
+                      </button>
+                    </div>
+
+                    {/* Variants by colour */}
+                    {colours.map(colour => {
+                      const colourVariants = sortVariants(p.variants.filter(v => v.colour === colour));
+                      const colourImages   = (imageMap[p.id] ?? []).filter(i => i.colour === colour);
+
+                      return (
+                        <div key={colour} style={{ marginBottom: '1rem' }}>
+                          <div style={{ fontWeight: 700, fontSize: '.78rem', color: '#9d174d', marginBottom: '.4rem', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                            {colour}
+                          </div>
+
+                          {/* Images */}
+                          {colourImages.length > 0 && (
+                            <div style={{ display: 'flex', gap: '.4rem', flexWrap: 'wrap', marginBottom: '.5rem' }}>
+                              {colourImages.map(img => (
+                                <div key={img.id} style={{ position: 'relative' }}>
+                                  <img src={img.url} alt={colour}
+                                    style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6, border: '1px solid #f3f4f6' }}
+                                  />
+                                  <button
+                                    onClick={e => { e.stopPropagation(); deleteImage(p.id, img.id); }}
+                                    style={{
+                                      position: 'absolute', top: -6, right: -6,
+                                      width: 18, height: 18, borderRadius: '50%',
+                                      background: '#b91c1c', color: 'white',
+                                      fontSize: '.6rem', fontWeight: 700,
+                                      border: '1.5px solid white', cursor: 'pointer',
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    }}
+                                    title="Remove image"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Upload */}
+                          <label
+                            onClick={e => e.stopPropagation()}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem', cursor: 'pointer', fontSize: '.72rem', color: '#6b7280', marginBottom: '.5rem' }}
+                          >
+                            <input
+                              type="file" multiple accept="image/*"
+                              style={{ display: 'none' }}
+                              onChange={e => { const f = Array.from(e.target.files ?? []); if (f.length) uploadFiles(p.id, colour, f); e.target.value = ''; }}
+                            />
+                            📎 Add images
+                          </label>
+
+                          {/* Size/stock grid */}
+                          {colourVariants.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem', marginBottom: '.5rem' }}>
+                              {colourVariants.map(v => (
+                                <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: '.25rem' }}>
+                                  <span style={{ fontSize: '.72rem', color: '#374151', minWidth: 28, textAlign: 'right' }}>{v.size}</span>
+                                  <input
+                                    type="number" min={0}
+                                    value={variantDrafts[v.id] ?? v.stock_count}
+                                    onClick={e => e.stopPropagation()}
+                                    onChange={e => setVariantDrafts(d => ({ ...d, [v.id]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                                    onBlur={() => {
+                                      const qty = variantDrafts[v.id] ?? v.stock_count;
+                                      if (qty !== v.stock_count) saveVariantStock(v.id, p.id, v.size, v.colour, qty);
+                                    }}
+                                    style={{
+                                      width: 52, padding: '.22rem .35rem', fontSize: '.78rem',
+                                      border: '1.5px solid #e5e7eb', borderRadius: 5,
+                                      textAlign: 'center',
+                                    }}
+                                  />
+                                  {saving[v.id] && <span style={{ fontSize: '.65rem', color: '#9ca3af' }}>…</span>}
+                                  <button
+                                    onClick={e => { e.stopPropagation(); deleteVariant(v.id); }}
+                                    title="Remove size"
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', fontSize: '.75rem', padding: '0 .1rem' }}
+                                  >×</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Add size */}
+                          <AddSizeForm productId={p.id} colour={colour} onAdd={addVariant} />
+                        </div>
+                      );
+                    })}
+
+                    {/* Add colour group */}
+                    <AddColourForm productId={p.id} onAdd={addColourGroup} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
-/* ═══════════════════════ VariantChips ═══════════════════════ */
-function VariantChips({ variants, drafts, saving, setDrafts, onSave, onDelete }: {
-  variants: Variant[];
-  drafts:   Record<string,number>;
-  saving:   Record<string,boolean>;
-  setDrafts:React.Dispatch<React.SetStateAction<Record<string,number>>>;
-  onSave:   (vid: string, size: string, qty: number) => Promise<void>;
-  onDelete: (vid: string) => Promise<void>;
-}) {
+// ── Sub-forms ────────────────────────────────────────────────────
+
+function AddSizeForm({ productId, colour, onAdd }: { productId: string; colour: string; onAdd: (pid: string, size: string, colour: string) => void }) {
+  const [size, setSize] = useState('');
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem' }}>
-      {variants.map(v => {
-        const qty     = drafts[v.id] ?? v.stock_count;
-        const isDirty = drafts[v.id] !== undefined && drafts[v.id] !== v.stock_count;
-        return (
-          <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: '.3rem', background: qty === 0 ? '#fff5f5' : 'white', border: `1px solid ${qty === 0 ? '#fecaca' : qty <= 3 ? '#fef08a' : '#e5e7eb'}`, borderRadius: '.4rem', padding: '.25rem .4rem' }}>
-            <span style={{ fontSize: '.72rem', fontWeight: 700, color: '#374151', minWidth: '1.6rem' }}>{v.size}</span>
-            <input
-              type="number" min={0} value={qty}
-              onChange={e => setDrafts(d => ({ ...d, [v.id]: parseInt(e.target.value) || 0 }))}
-              style={{ width: '2.8rem', padding: '.15rem .25rem', border: '1px solid #e5e7eb', borderRadius: '.28rem', fontSize: '.75rem', textAlign: 'center', outline: 'none' }}
-            />
-            {isDirty && (
-              <button
-                disabled={saving[v.id]}
-                onClick={() => onSave(v.id, v.size, qty)}
-                style={{ fontSize: '.65rem', background: '#9d174d', color: 'white', border: 'none', borderRadius: '.28rem', padding: '.15rem .3rem', cursor: 'pointer', fontWeight: 700 }}
-              >{saving[v.id] ? '…' : '✓'}</button>
-            )}
-            <button
-              onClick={() => onDelete(v.id)}
-              style={{ fontSize: '.58rem', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '.08rem' }}
-              title="Remove size"
-            >✕</button>
-          </div>
-        );
-      })}
-    </div>
+    <form
+      onSubmit={e => { e.preventDefault(); e.stopPropagation(); if (size.trim()) { onAdd(productId, size, colour); setSize(''); } }}
+      onClick={e => e.stopPropagation()}
+      style={{ display: 'flex', gap: '.3rem', alignItems: 'center', marginTop: '.25rem' }}
+    >
+      <input
+        value={size}
+        onChange={e => setSize(e.target.value)}
+        placeholder="Size…"
+        style={{
+          width: 70, padding: '.22rem .4rem', fontSize: '.75rem',
+          border: '1.5px solid #e5e7eb', borderRadius: 5,
+        }}
+      />
+      <button type="submit" style={{ padding: '.22rem .55rem', borderRadius: 5, background: '#f3f4f6', color: '#374151', fontSize: '.72rem', fontWeight: 600, border: '1px solid #e5e7eb', cursor: 'pointer' }}>
+        + Size
+      </button>
+    </form>
+  );
+}
+
+function AddColourForm({ productId, onAdd }: { productId: string; onAdd: (pid: string, colour: string) => void }) {
+  const [colour, setColour] = useState('');
+  return (
+    <form
+      onSubmit={e => { e.preventDefault(); e.stopPropagation(); if (colour.trim()) { onAdd(productId, colour); setColour(''); } }}
+      onClick={e => e.stopPropagation()}
+      style={{ display: 'flex', gap: '.3rem', alignItems: 'center', marginTop: '.5rem', borderTop: '1px dashed #f3f4f6', paddingTop: '.5rem' }}
+    >
+      <input
+        value={colour}
+        onChange={e => setColour(e.target.value)}
+        placeholder="New colour…"
+        style={{
+          width: 120, padding: '.22rem .4rem', fontSize: '.75rem',
+          border: '1.5px solid #e5e7eb', borderRadius: 5,
+        }}
+      />
+      <button type="submit" style={{ padding: '.22rem .55rem', borderRadius: 5, background: '#fdf2f8', color: '#9d174d', fontSize: '.72rem', fontWeight: 600, border: '1px solid #fce7f3', cursor: 'pointer' }}>
+        + Colour group
+      </button>
+    </form>
   );
 }

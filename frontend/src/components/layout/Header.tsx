@@ -4,13 +4,12 @@ import Image from 'next/image';
 import { useCart } from '../../context/CartContext';
 import { MobileNav } from './MobileNav';
 
-// Shape returned by /api/storefront/categories
 type NavGroup = {
   gender: string;
   categories: { id: string; slug: string; label: string; sort_order: number }[];
 };
 
-// Fixed display order and labels
+// Fixed display order — Accessories is always its own top-level group
 const GROUP_ORDER = ['women', 'men', 'kids', 'accessories'] as const;
 const GENDER_LABELS: Record<string, string> = {
   women: 'Women',
@@ -22,8 +21,14 @@ const GENDER_LABELS: Record<string, string> = {
 type NavItemData = { label: string; href: string; children: { label: string; href: string }[] };
 
 function buildNav(groups: NavGroup[]): NavItemData[] {
-  // Sort by fixed GROUP_ORDER, fall back to api order for unknown groups
-  const sorted = [...groups].sort((a, b) => {
+  // Filter out 'accessories' sub-entries nested under other groups — it should only
+  // appear as its own top-level group from the API
+  const normalised = groups.map(g => ({
+    ...g,
+    categories: g.categories.filter(c => c.slug !== 'accessories'),
+  }));
+
+  const sorted = [...normalised].sort((a, b) => {
     const ai = GROUP_ORDER.indexOf(a.gender as typeof GROUP_ORDER[number]);
     const bi = GROUP_ORDER.indexOf(b.gender as typeof GROUP_ORDER[number]);
     if (ai === -1 && bi === -1) return 0;
@@ -42,22 +47,23 @@ function buildNav(groups: NavGroup[]): NavItemData[] {
   }));
 }
 
-// ── Mega-panel nav item ──────────────────────────────────────
+// ── Dropdown nav item with a generous hover-bridge so the cursor
+//    can travel into the panel without it vanishing ──────────────
 function NavItem({ item }: { item: NavItemData }) {
   const [open, setOpen] = useState(false);
-  const ref  = useRef<HTMLDivElement>(null);
+  const ref      = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasChildren = item.children.length > 0;
 
-  // Delayed close so moving cursor into the panel doesn't flicker
+  // Use a 300 ms delay before closing — gives the cursor plenty of time
+  // to travel from the trigger word down into the dropdown panel.
   function scheduleClose() {
-    timerRef.current = setTimeout(() => setOpen(false), 180);
+    timerRef.current = setTimeout(() => setOpen(false), 300);
   }
   function cancelClose() {
     if (timerRef.current) clearTimeout(timerRef.current);
   }
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -67,7 +73,6 @@ function NavItem({ item }: { item: NavItemData }) {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // Close on ESC
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
@@ -114,83 +119,101 @@ function NavItem({ item }: { item: NavItemData }) {
       </a>
 
       {hasChildren && (
-        <div
-          role="menu"
-          onMouseEnter={cancelClose}
-          onMouseLeave={scheduleClose}
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 2px)',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'rgba(255,252,249,0.99)',
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            border: '1px solid var(--color-border)',
-            borderTop: '2px solid var(--color-primary)',
-            borderRadius: '0 0 10px 10px',
-            boxShadow: '0 16px 40px -8px rgba(0,0,0,0.16)',
-            minWidth: '180px',
-            padding: '0.5rem 0 0.75rem',
-            zIndex: 200,
-            // Visibility driven by open state — no CSS hover dependency
-            opacity: open ? 1 : 0,
-            visibility: open ? 'visible' : 'hidden',
-            pointerEvents: open ? 'all' : 'none',
-            transition: 'opacity 0.15s cubic-bezier(0.16,1,0.3,1), visibility 0.15s',
-            transform: open
-              ? 'translateX(-50%) translateY(0)'
-              : 'translateX(-50%) translateY(-6px)',
-          }}
-        >
-          {/* "All [group]" link */}
-          <a
-            href={item.href}
-            role="menuitem"
+        <>
+          {/*
+           * Invisible hover-bridge: a thin strip that sits in the gap between
+           * the trigger link and the dropdown panel. Without this, moving the
+           * cursor diagonally from the link into the panel crosses empty space
+           * and fires onMouseLeave on the wrapper, scheduling a close.
+           */}
+          {open && (
+            <div
+              onMouseEnter={cancelClose}
+              style={{
+                position: 'absolute',
+                top: '100%',
+                left: '-20px',
+                right: '-20px',
+                height: '10px',
+                zIndex: 199,
+              }}
+            />
+          )}
+          <div
+            role="menu"
+            onMouseEnter={cancelClose}
+            onMouseLeave={scheduleClose}
             style={{
-              display: 'block',
-              padding: '0.45rem 1.2rem',
-              fontSize: '0.8rem',
-              fontWeight: 700,
-              color: 'var(--color-primary)',
-              textDecoration: 'none',
-              letterSpacing: '.03em',
-              textTransform: 'uppercase',
+              position: 'absolute',
+              top: 'calc(100% + 8px)',
+              left: '50%',
+              transform: open
+                ? 'translateX(-50%) translateY(0)'
+                : 'translateX(-50%) translateY(-8px)',
+              background: 'rgba(255,252,249,0.99)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              border: '1px solid var(--color-border)',
+              borderTop: '2px solid var(--color-primary)',
+              borderRadius: '0 0 10px 10px',
+              boxShadow: '0 16px 40px -8px rgba(0,0,0,0.16)',
+              minWidth: '180px',
+              padding: '0.5rem 0 0.75rem',
+              zIndex: 200,
+              opacity: open ? 1 : 0,
+              visibility: open ? 'visible' : 'hidden',
+              pointerEvents: open ? 'all' : 'none',
+              transition: 'opacity 0.18s cubic-bezier(0.16,1,0.3,1), transform 0.18s cubic-bezier(0.16,1,0.3,1), visibility 0.18s',
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface-offset)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
           >
-            All {item.label}
-          </a>
-          <div style={{ height: 1, background: 'var(--color-border)', margin: '0.3rem 1.2rem 0.4rem' }} />
-          {item.children.map(child => (
             <a
-              key={child.href}
-              href={child.href}
+              href={item.href}
               role="menuitem"
               style={{
                 display: 'block',
                 padding: '0.45rem 1.2rem',
-                fontSize: '0.875rem',
-                fontWeight: 500,
-                color: 'var(--color-text)',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                color: 'var(--color-primary)',
                 textDecoration: 'none',
-                transition: 'background 0.1s, color 0.1s',
-                whiteSpace: 'nowrap',
+                letterSpacing: '.03em',
+                textTransform: 'uppercase',
               }}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = 'var(--color-surface-offset)';
-                e.currentTarget.style.color = 'var(--color-primary)';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--color-text)';
-              }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface-offset)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
-              {child.label}
+              All {item.label}
             </a>
-          ))}
-        </div>
+            <div style={{ height: 1, background: 'var(--color-border)', margin: '0.3rem 1.2rem 0.4rem' }} />
+            {item.children.map(child => (
+              <a
+                key={child.href}
+                href={child.href}
+                role="menuitem"
+                style={{
+                  display: 'block',
+                  padding: '0.45rem 1.2rem',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  color: 'var(--color-text)',
+                  textDecoration: 'none',
+                  transition: 'background 0.1s, color 0.1s',
+                  whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'var(--color-surface-offset)';
+                  e.currentTarget.style.color = 'var(--color-primary)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--color-text)';
+                }}
+              >
+                {child.label}
+              </a>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
