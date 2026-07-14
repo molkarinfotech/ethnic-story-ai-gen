@@ -46,8 +46,15 @@ async function fetchStockForItems(items: CartItem[]): Promise<StockMap> {
   const map: StockMap = {};
   for (const { pid, variants } of results) {
     for (const v of variants) {
-      map[itemKey(pid, v.size)] = v.stock_count;
-      map[pid] = Math.max(map[pid] ?? 0, v.stock_count);
+      // Always coerce to number — DB may return string
+      const count = Number(v.stock_count);
+      map[itemKey(pid, v.size)] = count;
+      // product-level key: max stock across all variants (for products without a selected size)
+      map[pid] = Math.max(map[pid] ?? 0, count);
+    }
+    // If no variants exist for this product, mark it explicitly as 0
+    if (!variants || variants.length === 0) {
+      map[pid] = 0;
     }
   }
   return map;
@@ -55,24 +62,20 @@ async function fetchStockForItems(items: CartItem[]): Promise<StockMap> {
 
 // ─── Coupon input widget ──────────────────────────────────────────────────────
 function CouponInput({
-  subtotal,
-  appliedCoupon,
-  onApply,
-  onRemove,
+  subtotal, appliedCoupon, onApply, onRemove,
 }: {
   subtotal: number;
   appliedCoupon: (CouponResult & { valid: true }) | null;
   onApply: (c: CouponResult & { valid: true }) => void;
   onRemove: () => void;
 }) {
-  const [code, setCode]   = useState('');
+  const [code, setCode]       = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError]     = useState('');
 
   async function handleApply() {
     if (!code.trim()) { setError('Enter a coupon code.'); return; }
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
       const res  = await fetch('/api/validate-coupon', {
         method: 'POST',
@@ -80,12 +83,8 @@ function CouponInput({
         body: JSON.stringify({ code: code.trim(), subtotal }),
       });
       const data: CouponResult = await res.json();
-      if (data.valid) {
-        onApply(data);
-        setCode('');
-      } else {
-        setError(data.error);
-      }
+      if (data.valid) { onApply(data); setCode(''); }
+      else setError(data.error);
     } catch {
       setError('Could not validate coupon. Please try again.');
     } finally {
@@ -95,28 +94,12 @@ function CouponInput({
 
   if (appliedCoupon) {
     return (
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        background: '#f0fdf4', border: '1.5px solid #bbf7d0',
-        borderRadius: 'var(--radius-md)', padding: 'var(--space-3) var(--space-4)',
-        marginBottom: 'var(--space-2)',
-      }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: 'var(--radius-md)', padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-2)' }}>
         <div>
-          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: '#15803d' }}>
-            🏷️ {appliedCoupon.code}
-          </div>
-          {appliedCoupon.description && (
-            <div style={{ fontSize: 'var(--text-xs)', color: '#166534', marginTop: '2px' }}>
-              {appliedCoupon.description}
-            </div>
-          )}
+          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: '#15803d' }}>🏷️ {appliedCoupon.code}</div>
+          {appliedCoupon.description && <div style={{ fontSize: 'var(--text-xs)', color: '#166534', marginTop: '2px' }}>{appliedCoupon.description}</div>}
         </div>
-        <button
-          onClick={onRemove}
-          style={{ fontSize: 'var(--text-xs)', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, padding: '0 var(--space-1)' }}
-        >
-          ✕ Remove
-        </button>
+        <button onClick={onRemove} style={{ fontSize: 'var(--text-xs)', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, padding: '0 var(--space-1)' }}>✕ Remove</button>
       </div>
     );
   }
@@ -124,46 +107,17 @@ function CouponInput({
   return (
     <div style={{ marginBottom: 'var(--space-2)' }}>
       <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-        <input
-          type="text"
-          placeholder="Coupon code"
-          value={code}
+        <input type="text" placeholder="Coupon code" value={code}
           onChange={e => { setCode(e.target.value.toUpperCase()); setError(''); }}
           onKeyDown={e => e.key === 'Enter' && handleApply()}
-          style={{
-            flex: 1,
-            padding: 'var(--space-2) var(--space-3)',
-            border: `1.5px solid ${error ? '#fca5a5' : 'var(--color-border)'}`,
-            borderRadius: 'var(--radius-md)',
-            fontSize: 'var(--text-sm)',
-            fontFamily: 'inherit',
-            outline: 'none',
-            letterSpacing: '.05em',
-          }}
+          style={{ flex: 1, padding: 'var(--space-2) var(--space-3)', border: `1.5px solid ${error ? '#fca5a5' : 'var(--color-border)'}`, borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', fontFamily: 'inherit', outline: 'none', letterSpacing: '.05em' }}
         />
-        <button
-          onClick={handleApply}
-          disabled={loading}
-          style={{
-            padding: 'var(--space-2) var(--space-4)',
-            background: loading ? 'var(--color-border)' : 'var(--color-text)',
-            color: 'var(--color-bg)',
-            border: 'none',
-            borderRadius: 'var(--radius-md)',
-            fontSize: 'var(--text-sm)',
-            fontWeight: 700,
-            cursor: loading ? 'default' : 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >
+        <button onClick={handleApply} disabled={loading}
+          style={{ padding: 'var(--space-2) var(--space-4)', background: loading ? 'var(--color-border)' : 'var(--color-text)', color: 'var(--color-bg)', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', fontWeight: 700, cursor: loading ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
           {loading ? '…' : 'Apply'}
         </button>
       </div>
-      {error && (
-        <p style={{ fontSize: 'var(--text-xs)', color: '#dc2626', marginTop: 'var(--space-1)', margin: 'var(--space-1) 0 0' }}>
-          {error}
-        </p>
-      )}
+      {error && <p style={{ fontSize: 'var(--text-xs)', color: '#dc2626', margin: 'var(--space-1) 0 0' }}>{error}</p>}
     </div>
   );
 }
@@ -184,7 +138,7 @@ function PaymentForm({
   discountAmount: number;
   appliedCoupon: (CouponResult & { valid: true }) | null;
 }) {
-  const stripe = useStripe();
+  const stripe   = useStripe();
   const elements = useElements();
   const [loading, setLoading]   = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -210,10 +164,18 @@ function PaymentForm({
       setErrorMsg('Please select at least one item to pay for.');
       return;
     }
+
+    // ── Stock guard: re-check every selected item before charging ──────────
     for (const item of selectedItems) {
-      const stock = stockMap[itemKey(item.id, item.selectedSize)] ?? stockMap[item.id] ?? 99;
+      const key        = itemKey(item.id, item.selectedSize);
+      // Use size-specific stock first; fall back to product-level; default 0 (not 99)
+      const stock      = stockMap[key] ?? stockMap[item.id] ?? 0;
+      if (stock <= 0) {
+        setErrorMsg(`"${item.name}"${item.selectedSize ? ` (${item.selectedSize})` : ''} is out of stock and cannot be purchased.`);
+        return;
+      }
       if (item.quantity > stock) {
-        setErrorMsg(`"${item.name}"${item.selectedSize ? ` (${item.selectedSize})` : ''} only has ${stock} in stock.`);
+        setErrorMsg(`"${item.name}"${item.selectedSize ? ` (${item.selectedSize})` : ''} only has ${stock} in stock — please reduce the quantity.`);
         return;
       }
     }
@@ -278,9 +240,7 @@ function PaymentForm({
     <form className="checkout-form" onSubmit={handleSubmit}>
       <h2 className="checkout-section-title">Contact information</h2>
       {isLoggedIn && (
-        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)', marginTop: '-2px' }}>
-          ✓ Signed in — your details have been pre-filled.
-        </p>
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)', marginTop: '-2px' }}>✓ Signed in — your details have been pre-filled.</p>
       )}
       <div className="checkout-fields">
         <div className="checkout-field">
@@ -292,8 +252,7 @@ function PaymentForm({
             Email address *
             {isLoggedIn && <span style={{ marginLeft: '0.4rem', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>(linked to your account)</span>}
           </label>
-          <input
-            id="co-email" type="email" placeholder="jane@example.com.au" className="checkout-input" required
+          <input id="co-email" type="email" placeholder="jane@example.com.au" className="checkout-input" required
             value={addr.email}
             onChange={e => { if (!isLoggedIn) setAddr(prev => ({ ...prev, email: e.target.value })); }}
             readOnly={isLoggedIn}
@@ -341,9 +300,7 @@ function PaymentForm({
       </div>
 
       <h2 className="checkout-section-title" style={{ marginTop: 'var(--space-8)' }}>Payment</h2>
-      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
-        Card, Afterpay, Apple Pay and Google Pay accepted.
-      </p>
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>Card, Afterpay, Apple Pay and Google Pay accepted.</p>
       <div className="stripe-element-wrap">
         <PaymentElement options={{ layout: 'tabs' }} />
       </div>
@@ -353,19 +310,18 @@ function PaymentForm({
         style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-6)', minHeight: '52px', fontSize: 'var(--text-base)' }}>
         {loading ? 'Processing…' : `Pay ${formatAUD(grandTotal)}`}
       </button>
-      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textAlign: 'center', marginTop: 'var(--space-3)' }}>
-        🔒 Secured by Stripe · 256-bit SSL encryption
-      </p>
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textAlign: 'center', marginTop: 'var(--space-3)' }}>🔒 Secured by Stripe · 256-bit SSL encryption</p>
     </form>
   );
 }
 
 // ─── Item selector ────────────────────────────────────────────────────────────
 function ItemSelector({
-  items, stockMap, selectedKeys, onToggle,
+  items, stockMap, stockLoaded, selectedKeys, onToggle,
 }: {
   items: CartItem[];
   stockMap: StockMap;
+  stockLoaded: boolean;
   selectedKeys: Set<string>;
   onToggle: (key: string) => void;
 }) {
@@ -377,10 +333,11 @@ function ItemSelector({
       </p>
       <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
         {items.map(item => {
-          const key       = itemKey(item.id, item.selectedSize);
-          const stock     = stockMap[key] ?? stockMap[item.id] ?? 99;
-          const outOfStock = stock === 0;
-          const overStock  = !outOfStock && item.quantity > stock;
+          const key = itemKey(item.id, item.selectedSize);
+          // Default to 0 (not 99) — unknown stock = treat as OOS until confirmed
+          const stock      = stockLoaded ? (stockMap[key] ?? stockMap[item.id] ?? 0) : null;
+          const outOfStock = stock !== null && stock <= 0;
+          const overStock  = stock !== null && !outOfStock && item.quantity > stock;
           const checked    = selectedKeys.has(key) && !outOfStock;
           return (
             <li key={key} style={{
@@ -392,17 +349,28 @@ function ItemSelector({
               opacity: outOfStock ? 0.65 : 1,
               transition: 'background 180ms, border-color 180ms',
             }}>
-              <input type="checkbox" id={`item-sel-${key}`} checked={checked} disabled={outOfStock}
-                onChange={() => !outOfStock && onToggle(key)}
-                style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary)', cursor: outOfStock ? 'not-allowed' : 'pointer', flexShrink: 0 }}
+              <input
+                type="checkbox"
+                id={`item-sel-${key}`}
+                checked={checked}
+                // Disable checkbox if OOS or stock not yet loaded
+                disabled={outOfStock || !stockLoaded}
+                onChange={() => { if (!outOfStock && stockLoaded) onToggle(key); }}
+                style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary)', cursor: (outOfStock || !stockLoaded) ? 'not-allowed' : 'pointer', flexShrink: 0 }}
               />
-              <label htmlFor={`item-sel-${key}`} style={{ flex: 1, cursor: outOfStock ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+              <label
+                htmlFor={`item-sel-${key}`}
+                // Also block the label click for OOS items
+                onClick={e => { if (outOfStock || !stockLoaded) e.preventDefault(); }}
+                style={{ flex: 1, cursor: (outOfStock || !stockLoaded) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}
+              >
                 {item.image && <img src={item.image} alt={item.name} style={{ width: '44px', height: '44px', objectFit: 'cover', borderRadius: 'var(--radius-sm)', flexShrink: 0 }} />}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                     {item.selectedSize && <span>Size: {item.selectedSize} · </span>}
                     Qty: {item.quantity}
+                    {!stockLoaded && <span style={{ color: 'var(--color-text-faint)', marginLeft: '0.5rem' }}>· Checking stock…</span>}
                     {outOfStock && <span style={{ color: '#dc2626', fontWeight: 700, marginLeft: '0.5rem' }}>· Out of stock</span>}
                     {overStock && !outOfStock && <span style={{ color: '#d97706', fontWeight: 600, marginLeft: '0.5rem' }}>· Only {stock} left</span>}
                   </div>
@@ -424,13 +392,14 @@ export function CheckoutForm() {
   const { items, totalItems, clearCart, hydrated } = useCart();
   const { user, session } = useAuth();
 
-  const [clientSecret, setClientSecret]     = useState('');
-  const [paymentIntentId, setPaymentIntentId] = useState('');
-  const [intentError, setIntentError]       = useState('');
-  const [prefillLoaded, setPrefillLoaded]   = useState(false);
-  const [stockMap, setStockMap]             = useState<StockMap>({});
-  const [selectedKeys, setSelectedKeys]     = useState<Set<string>>(new Set());
-  const [appliedCoupon, setAppliedCoupon]   = useState<(CouponResult & { valid: true }) | null>(null);
+  const [clientSecret, setClientSecret]       = useState('');
+  const [paymentIntentId, setPaymentIntentId]   = useState('');
+  const [intentError, setIntentError]           = useState('');
+  const [prefillLoaded, setPrefillLoaded]       = useState(false);
+  const [stockMap, setStockMap]                 = useState<StockMap>({});
+  const [stockLoaded, setStockLoaded]           = useState(false);
+  const [selectedKeys, setSelectedKeys]         = useState<Set<string>>(new Set());
+  const [appliedCoupon, setAppliedCoupon]       = useState<(CouponResult & { valid: true }) | null>(null);
   const initialSelectionDone = useRef(false);
   const intentCreated        = useRef(false);
 
@@ -439,15 +408,20 @@ export function CheckoutForm() {
     line1: '', line2: '', suburb: '', state: '', postcode: '',
   });
 
+  // Auto-select all in-stock items once stock is confirmed
   useEffect(() => {
-    if (items.length === 0 || Object.keys(stockMap).length === 0) return;
+    if (items.length === 0 || !stockLoaded) return;
     if (initialSelectionDone.current) return;
     initialSelectionDone.current = true;
     const keys = items
-      .filter(i => (stockMap[itemKey(i.id, i.selectedSize)] ?? stockMap[i.id] ?? 99) > 0)
+      .filter(i => {
+        const k = itemKey(i.id, i.selectedSize);
+        const stock = stockMap[k] ?? stockMap[i.id] ?? 0;
+        return stock > 0;
+      })
       .map(i => itemKey(i.id, i.selectedSize));
     setSelectedKeys(new Set(keys));
-  }, [stockMap, items]);
+  }, [stockMap, stockLoaded, items]);
 
   const toggleItem = (key: string) => {
     setSelectedKeys(prev => {
@@ -465,16 +439,13 @@ export function CheckoutForm() {
   const selectedPrice = selectedItems.reduce((s, i) => s + i.price * i.quantity, 0);
   const shipping      = selectedPrice >= 150 ? 0 : selectedPrice > 0 ? 12.95 : 0;
 
-  // Coupon discount is capped at subtotal (never go below 0)
   const discountAmount = appliedCoupon
     ? Math.min(selectedPrice, appliedCoupon.discount_amount)
     : 0;
   const grandTotal = Math.max(0, selectedPrice + shipping - discountAmount);
 
-  // If coupon is removed or items change, re-validate cached discount
   useEffect(() => {
     if (!appliedCoupon) return;
-    // If selected items changed, discount amount may have changed — re-validate silently
     fetch('/api/validate-coupon', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -491,7 +462,10 @@ export function CheckoutForm() {
 
   useEffect(() => {
     if (!hydrated || items.length === 0) return;
-    fetchStockForItems(items).then(setStockMap);
+    fetchStockForItems(items).then(map => {
+      setStockMap(map);
+      setStockLoaded(true);
+    });
   }, [hydrated, items]);
 
   useEffect(() => {
@@ -524,7 +498,6 @@ export function CheckoutForm() {
     if (!hydrated || grandTotal < 0.5) return;
     if (intentCreated.current) return;
     intentCreated.current = true;
-
     fetch('/api/create-payment-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -585,7 +558,7 @@ export function CheckoutForm() {
     <Elements stripe={stripePromise} options={{ clientSecret, appearance: stripeAppearance }}>
       <div className="checkout-grid">
         <div>
-          <ItemSelector items={items} stockMap={stockMap} selectedKeys={selectedKeys} onToggle={toggleItem} />
+          <ItemSelector items={items} stockMap={stockMap} stockLoaded={stockLoaded} selectedKeys={selectedKeys} onToggle={toggleItem} />
           <PaymentForm
             grandTotal={grandTotal}
             selectedItems={selectedItems}
@@ -622,18 +595,10 @@ export function CheckoutForm() {
             </ul>
           )}
 
-          {/* Coupon input */}
           {selectedItems.length > 0 && (
             <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-4)', marginTop: 'var(--space-3)' }}>
-              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)', fontWeight: 600 }}>
-                🏷️ Have a coupon?
-              </p>
-              <CouponInput
-                subtotal={selectedPrice}
-                appliedCoupon={appliedCoupon}
-                onApply={setAppliedCoupon}
-                onRemove={() => setAppliedCoupon(null)}
-              />
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)', fontWeight: 600 }}>🏷️ Have a coupon?</p>
+              <CouponInput subtotal={selectedPrice} appliedCoupon={appliedCoupon} onApply={setAppliedCoupon} onRemove={() => setAppliedCoupon(null)} />
             </div>
           )}
 
@@ -644,17 +609,11 @@ export function CheckoutForm() {
               <span>{shipping === 0 && selectedPrice > 0 ? <span style={{ color: '#16a34a', fontWeight: 700 }}>Free</span> : selectedPrice > 0 ? formatAUD(shipping) : '—'}</span>
             </div>
             {shipping > 0 && selectedPrice > 0 && (
-              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '-.5rem' }}>
-                Add {formatAUD(150 - selectedPrice)} more for free shipping
-              </p>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '-.5rem' }}>Add {formatAUD(150 - selectedPrice)} more for free shipping</p>
             )}
             {discountAmount > 0 && (
               <div className="order-total-row" style={{ color: '#15803d' }}>
-                <span>
-                  🏷️ Coupon ({appliedCoupon?.discount_type === 'percentage'
-                    ? `${appliedCoupon.discount_value}% off`
-                    : `${appliedCoupon?.code}`})
-                </span>
+                <span>🏷️ Coupon ({appliedCoupon?.discount_type === 'percentage' ? `${appliedCoupon.discount_value}% off` : `${appliedCoupon?.code}`})</span>
                 <span style={{ fontWeight: 700 }}>−{formatAUD(discountAmount)}</span>
               </div>
             )}

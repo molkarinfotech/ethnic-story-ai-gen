@@ -34,23 +34,40 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
   const [expanded, setExpanded]         = useState(false);
   const [added, setAdded]               = useState(false);
   const [loading, setLoading]           = useState(false);
+  // Start as null = not yet checked; true/false = result known
   const [stockLoaded, setStockLoaded]   = useState(false);
+  const [isOOS, setIsOOS]               = useState<boolean | null>(null); // null while loading
   const [images, setImages]             = useState<string[]>(image ? [image] : []);
   const [imgIdx, setImgIdx]             = useState(0);
   const timerRef                        = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isPreOrder = badge === 'Pre-Order';
+  const isComingSoon = badge === 'Coming Soon';
+  const isPreOrder   = badge === 'Pre-Order';
 
   useEffect(() => {
+    // Coming Soon products are never purchasable — skip stock check
+    if (isComingSoon) { setStockLoaded(true); setIsOOS(false); return; }
+
     fetch(`/api/variants/${id}`)
       .then(r => r.json())
       .then((data: Variant[]) => {
         if (Array.isArray(data)) {
-          setAllVariants(data.map(v => ({ ...v, stock_count: Number(v.stock_count) })));
+          const norm = data.map(v => ({ ...v, stock_count: Number(v.stock_count) }));
+          setAllVariants(norm);
+          // OOS if: no variant rows at all, OR every variant has stock_count <= 0
+          const oos = norm.length === 0 || norm.every(v => v.stock_count <= 0);
+          setIsOOS(oos);
+        } else {
+          // Unexpected response — treat as OOS to be safe
+          setIsOOS(true);
         }
         setStockLoaded(true);
       })
-      .catch(() => setStockLoaded(true));
+      .catch(() => {
+        // Network error — default to NOT blocking (fail open), but mark loaded
+        setIsOOS(false);
+        setStockLoaded(true);
+      });
 
     fetch(`/api/products/${id}`)
       .then(r => r.json())
@@ -59,7 +76,7 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
         if (next.length > 0) { setImages(next); setImgIdx(0); }
       })
       .catch(() => {});
-  }, [id, image]);
+  }, [id, image, isComingSoon]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -68,10 +85,19 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
       fetch(`/api/variants/${id}`).then(r => r.json()),
       fetch(`/api/products/${id}`).then(r => r.json()).catch(() => null),
     ]).then(([varData, prodData]) => {
-      const vars: Variant[] = Array.isArray(varData) ? varData.filter((v: Variant) => Number(v.stock_count) > 0) : [];
-      setVariants(vars);
-      const firstColour = vars.find(v => v.colour)?.colour ?? '';
-      setColour(firstColour);
+      // Re-check OOS with fresh data
+      if (Array.isArray(varData)) {
+        const norm = varData.map((v: Variant) => ({ ...v, stock_count: Number(v.stock_count) }));
+        const oos = norm.length === 0 || norm.every(v => v.stock_count <= 0);
+        setIsOOS(oos);
+        // Only show in-stock sizes in the expanded selector
+        const inStock = norm.filter(v => v.stock_count > 0);
+        setVariants(inStock);
+        const firstColour = inStock.find(v => v.colour)?.colour ?? '';
+        setColour(firstColour);
+      } else {
+        setVariants([]);
+      }
       const next = normaliseImageList(prodData, image);
       if (next.length > 0) { setImages(next); setImgIdx(0); }
     }).catch(() => setVariants([])).finally(() => setLoading(false));
@@ -89,7 +115,10 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
 
   function handleAddClick(e: React.MouseEvent) {
     e.preventDefault();
-    if (stockLoaded && totallyOutOfStock) return;
+    // Block if OOS or Coming Soon — guard even before stock loads (isOOS === null)
+    if (isComingSoon || isOOS === true) return;
+    // While stock is still loading, don't expand — wait for result
+    if (!stockLoaded) return;
     if (!expanded) { setExpanded(true); return; }
     if (!selectedSize) return;
     const resolvedImage = images[0] ?? image;
@@ -110,9 +139,22 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
   const selectedVariant = filteredVariants.find(v => v.size === selectedSize);
   const maxQty = selectedVariant?.stock_count ?? 10;
   const currentImage = images[imgIdx] ?? image;
-  const totallyOutOfStock = stockLoaded && allVariants.length > 0 && allVariants.every(v => v.stock_count === 0);
-  const noVariants = stockLoaded && allVariants.length === 0;
-  const isOOS = totallyOutOfStock || noVariants;
+
+  // Derive button label
+  const btnLabel = () => {
+    if (added) return '✓ Added to Bag';
+    if (isComingSoon) return '⏳ Coming Soon';
+    if (!stockLoaded) return 'Checking stock…';
+    if (isOOS) return 'Out of Stock';
+    if (isPreOrder && !expanded) return '🛒 Pre-Order';
+    if (expanded && hasColours && !selectedColour) return 'Select a colour';
+    if (expanded && !selectedSize && variants.length > 0) return 'Select a size';
+    if (expanded && variants.length === 0 && !loading) return 'Out of Stock';
+    return 'Add to Bag';
+  };
+
+  const btnDisabled = isComingSoon || isOOS === true || !stockLoaded
+    || (expanded && (!inStock || (variants.length > 0 && !selectedSize) || (hasColours && !selectedColour)));
 
   return (
     <div className="product-card" style={{ position: 'relative' }} onMouseEnter={startCycle} onMouseLeave={stopCycle}>
@@ -121,10 +163,11 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
           {currentImage
             ? <img src={currentImage} alt={name} loading="lazy" style={{ transition: 'opacity .3s', width: '100%', height: '100%', objectFit: 'cover' }} />
             : <span style={{ fontSize: '4rem' }}>🥻</span>}
-          {badge && <span className="product-card__badge">{badge}</span>}
-          {isOOS && (
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ background: 'rgba(255,255,255,0.92)', color: '#dc2626', fontWeight: 700, fontSize: '.75rem', letterSpacing: '.06em', textTransform: 'uppercase', padding: '.35rem .8rem', borderRadius: '.4rem', border: '1px solid #fca5a5' }}>Out of Stock</span>
+          {badge && !isOOS && <span className="product-card__badge">{badge}</span>}
+          {/* OOS overlay — shown as soon as stock check confirms OOS */}
+          {isOOS === true && (
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.38)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ background: 'rgba(255,255,255,0.93)', color: '#dc2626', fontWeight: 700, fontSize: '.75rem', letterSpacing: '.06em', textTransform: 'uppercase', padding: '.35rem .8rem', borderRadius: '.4rem', border: '1px solid #fca5a5' }}>Out of Stock</span>
             </div>
           )}
           {images.length > 1 && (
@@ -142,7 +185,7 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
             {formatAUD(price)}
             {originalPrice && <s>{formatAUD(originalPrice)}</s>}
           </div>
-          {isPreOrder && (
+          {isPreOrder && !isOOS && (
             <div style={{
               display: 'flex', alignItems: 'flex-start', gap: '.35rem', marginTop: '.45rem',
               background: '#fff1f2', border: '1px solid #fca5a5', borderRadius: '.45rem', padding: '.4rem .55rem',
@@ -196,19 +239,16 @@ export function ProductCard({ id, slug, name, subtitle, price, originalPrice, ba
         <button
           className={`add-to-cart-btn${added ? ' add-to-cart-btn--added' : ''}`}
           onClick={handleAddClick}
-          disabled={isOOS || (expanded && (!inStock || (variants.length > 0 && !selectedSize) || (hasColours && !selectedColour)))}
-          style={{ width: '100%', ...(isOOS ? { background: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb', cursor: 'not-allowed' } : {}) }}
+          disabled={btnDisabled}
+          style={{
+            width: '100%',
+            ...((isOOS || isComingSoon) ? { background: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb', cursor: 'not-allowed' } : {}),
+            ...(!stockLoaded ? { opacity: 0.6, cursor: 'default' } : {}),
+          }}
         >
-          {added ? '✓ Added to Bag'
-            : isOOS ? 'Out of Stock'
-            : isPreOrder && !expanded ? '🛒 Pre-Order'
-            : expanded && hasColours && !selectedColour ? 'Select a colour'
-            : expanded && !selectedSize && variants.length > 0 ? 'Select a size'
-            : expanded && variants.length === 0 && !loading ? 'Out of stock'
-            : 'Add to Bag'}
+          {btnLabel()}
         </button>
 
-        {/* Like button — below Add to Bag on card */}
         <div style={{ marginTop: '.55rem', display: 'flex', justifyContent: 'center' }}>
           <LikeButton productId={id} />
         </div>

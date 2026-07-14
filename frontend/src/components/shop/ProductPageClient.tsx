@@ -26,7 +26,6 @@ const TAB_BAR_HEIGHT = 'calc(64px + env(safe-area-inset-bottom))';
 export function ProductPageClient({ product, colourImages, badge, discount, origPrice }: Props) {
   const { addItem, openCart } = useCart();
 
-  // ── Coming Soon gate ──────────────────────────────────────────────────────
   const isComingSoon = badge === 'Coming Soon';
   const isPreOrder   = badge === 'Pre-Order';
 
@@ -55,21 +54,30 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     return () => obs.disconnect();
   }, []);
 
-  const [globalOOS,    setGlobalOOS]    = useState(false);
+  // null = not yet fetched; true = confirmed OOS; false = has stock
+  const [globalOOS,    setGlobalOOS]    = useState<boolean | null>(null);
   const [stockChecked, setStockChecked] = useState(false);
 
   useEffect(() => {
-    if (isComingSoon) { setStockChecked(true); return; }
-    fetch(`/api/variants/${product.id}`)
+    if (isComingSoon) { setGlobalOOS(false); setStockChecked(true); return; }
+    fetch(`/api/variants/${product.id}?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
       .then((data: { stock_count: number }[]) => {
-        if (!Array.isArray(data) || data.length === 0) {
+        if (!Array.isArray(data)) {
+          // Unexpected response — treat as OOS
+          setGlobalOOS(true);
+        } else if (data.length === 0) {
+          // No variant rows → treat as OOS
           setGlobalOOS(true);
         } else {
-          setGlobalOOS(data.every(v => Number(v.stock_count) === 0));
+          // OOS only if EVERY variant has stock_count <= 0
+          setGlobalOOS(data.every(v => Number(v.stock_count) <= 0));
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        // Network error — fail open (don't block purchase)
+        setGlobalOOS(false);
+      })
       .finally(() => setStockChecked(true));
   }, [product.id, isComingSoon]);
 
@@ -88,16 +96,19 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     setSize(sel);
     setSelectedColour(colour || selectedColour);
     setSizeInStock(inStock);
-    setMaxQty(stockCount);
+    setMaxQty(stockCount > 0 ? stockCount : 0);
     setQty(1);
     setError(false);
   }, [selectedColour]);
 
   function doAdd(sticky = false) {
-    if (isComingSoon || globalOOS) return;
+    if (isComingSoon || globalOOS === true) return;
+    // Don't allow add while stock check hasn't finished
+    if (!stockChecked) return;
     if (!size) { setError(true); return; }
     if (!sizeInStock) return;
     const safeQty = Math.min(qty, maxQty);
+    if (safeQty <= 0) return;
     for (let i = 0; i < safeQty; i++) {
       addItem({ ...product, selectedSize: size, selectedColour } as any);
     }
@@ -106,8 +117,22 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     openCart();
   }
 
-  const outOfStock = !isComingSoon && (globalOOS || (size !== null && !sizeInStock));
-  const atMax      = size !== null && qty >= maxQty;
+  // true = confirmed OOS or selected size is OOS
+  const outOfStock = !isComingSoon && (globalOOS === true || (size !== null && !sizeInStock));
+  const atMax      = size !== null && qty >= maxQty && maxQty > 0;
+
+  // Button is disabled while stock hasn't loaded yet, or when OOS/Coming Soon
+  const atcDisabled = !stockChecked || isComingSoon || outOfStock;
+
+  const atcLabel = () => {
+    if (isComingSoon)               return '⏳ Coming Soon';
+    if (!stockChecked)              return 'Checking stock…';
+    if (added)                      return '✓ Added to Bag';
+    if (globalOOS === true)         return '🚫 Out of Stock';
+    if (outOfStock)                 return 'Out of Stock';
+    if (isPreOrder)                 return '🛒 Pre-Order Now';
+    return 'Add to Bag';
+  };
 
   return (
     <>
@@ -150,7 +175,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
             <span className="pdp-price-main">{formatAUD(product.price)}</span>
             {origPrice && <s style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-faint)' }}>{formatAUD(origPrice)}</s>}
             {discount && <span style={{ background: 'var(--color-gold-soft)', color: 'var(--color-gold)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: '.25rem .7rem', borderRadius: 'var(--radius-full)' }}>Save {discount}%</span>}
-            {stockChecked && globalOOS && !isComingSoon && (
+            {stockChecked && globalOOS === true && !isComingSoon && (
               <span style={{ background: '#fee2e2', color: '#b91c1c', fontSize: 'var(--text-xs)', fontWeight: 700, padding: '.25rem .7rem', borderRadius: 'var(--radius-full)', border: '1px solid #fca5a5' }}>Out of Stock</span>
             )}
             {isComingSoon && (
@@ -164,14 +189,9 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
           {/* Pre-Order disclaimer */}
           {isPreOrder && (
             <div style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 'var(--space-3)',
-              background: '#fff1f2',
-              border: '1.5px solid #fca5a5',
-              borderRadius: 'var(--radius-lg)',
-              padding: 'var(--space-4) var(--space-5)',
-              marginBottom: 'var(--space-5)',
+              display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)',
+              background: '#fff1f2', border: '1.5px solid #fca5a5',
+              borderRadius: 'var(--radius-lg)', padding: 'var(--space-4) var(--space-5)', marginBottom: 'var(--space-5)',
             }}>
               <span style={{ fontSize: '1.25rem', flexShrink: 0, marginTop: '.05rem' }}>⚠️</span>
               <div>
@@ -196,7 +216,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
           )}
 
           {/* OOS banner */}
-          {stockChecked && globalOOS && !isComingSoon && (
+          {stockChecked && globalOOS === true && !isComingSoon && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4) var(--space-5)', marginBottom: 'var(--space-5)' }}>
               <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>🚫</span>
               <div>
@@ -208,7 +228,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
 
           {/* Variant selector + inline ATC */}
           <div ref={atcRef} className="pdp-atc">
-            {!isComingSoon && !globalOOS && (
+            {!isComingSoon && globalOOS !== true && stockChecked && (
               <>
                 <SizeSelector productId={product.id} onSizeChange={handleSizeChange} />
                 {error && !size && (
@@ -234,25 +254,20 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
             <button
               className={`btn btn-primary pdp-atc-btn${added ? ' pdp-atc-btn--added' : ''}`}
               onClick={() => doAdd(false)}
-              disabled={isComingSoon || outOfStock}
-              aria-disabled={isComingSoon || outOfStock}
+              disabled={atcDisabled}
+              aria-disabled={atcDisabled}
               style={{
                 width: '100%', justifyContent: 'center',
                 marginTop: 'var(--space-4)',
-                opacity: (isComingSoon || outOfStock) ? 0.5 : 1,
-                cursor: (isComingSoon || outOfStock) ? 'not-allowed' : 'pointer',
-                ...((isComingSoon || globalOOS) ? { background: '#9ca3af', boxShadow: 'none' } : {}),
+                opacity: atcDisabled ? 0.55 : 1,
+                cursor: atcDisabled ? 'not-allowed' : 'pointer',
+                ...((isComingSoon || globalOOS === true) ? { background: '#9ca3af', boxShadow: 'none' } : {}),
               }}
             >
-              {isComingSoon     ? '⏳ Coming Soon'
-                : added         ? '✓ Added to Bag'
-                : globalOOS     ? '🚫 Out of Stock'
-                : outOfStock    ? 'Out of Stock'
-                : isPreOrder    ? '🛒 Pre-Order Now'
-                : 'Add to Bag'}
+              {atcLabel()}
             </button>
 
-            {!isComingSoon && !globalOOS && (
+            {!isComingSoon && globalOOS !== true && stockChecked && (
               <a
                 href="#"
                 className="btn btn-secondary pdp-buynow-btn"
@@ -263,7 +278,6 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
               </a>
             )}
 
-            {/* Like button — below ATC */}
             <div style={{ marginTop: 'var(--space-4)', display: 'flex', alignItems: 'center' }}>
               <LikeButton productId={product.id} />
             </div>
@@ -271,7 +285,6 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
         </div>
       </div>
 
-      {/* Reviews — full width below the two-column layout */}
       <div className="pdp-reviews-wrap" style={{ maxWidth: 'var(--content-default)', margin: '0 auto', padding: '0 var(--space-4)' }}>
         <ReviewSection productId={product.id} />
       </div>
