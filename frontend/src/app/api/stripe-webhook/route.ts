@@ -57,6 +57,8 @@ export async function POST(req: NextRequest) {
       customer_name:            m.customer_name  || null,
       customer_email:           m.customer_email || null,
       customer_phone:           m.customer_phone || null,
+      coupon_code:              m.coupon_code    || null,
+      discount_amount:          m.discount_amount ? Number(m.discount_amount) : null,
       shipping_address: {
         line1:    m.shipping_line1    || null,
         line2:    m.shipping_line2    || null,
@@ -109,9 +111,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── 3. Fetch first variant image per item from product_images ───────────
-    // Uses product_id + colour (from order item) to get the correct variant image.
-    // Falls back to products.image if no variant image is found.
+    // ── 3. Increment coupon used_count ──────────────────────────────────────
+    const couponCode = (m.coupon_code ?? '').trim().toUpperCase();
+    if (couponCode) {
+      const { error: couponErr } = await sb.rpc('increment_coupon_usage', { p_code: couponCode });
+      if (couponErr) {
+        // Non-fatal — log and continue
+        console.error('[stripe-webhook] Coupon usage increment failed:', couponErr.message);
+      } else {
+        console.log(`[stripe-webhook] ✓ Coupon used_count incremented for: ${couponCode}`);
+      }
+    }
+
+    // ── 4. Fetch first variant image per item from product_images ───────────
     const seen: Record<string, boolean> = {};
     const productIds: string[] = [];
     for (const i of items) {
@@ -143,13 +155,12 @@ export async function POST(req: NextRequest) {
         .order('sort_order')
         .limit(1);
 
-      // Filter by colour only if we have one (prevents empty-string mismatch)
       const finalQuery = colour ? query.eq('colour', colour) : query;
       const { data: imgRows } = await finalQuery;
       if (imgRows?.[0]?.url) variantImageMap[key] = imgRows[0].url;
     }
 
-    // ── 4. Send order confirmation email ────────────────────────────────────
+    // ── 5. Send order confirmation email ────────────────────────────────────
     if (m.customer_email) {
       try {
         const emailPayload = buildOrderConfirmationEmail({
@@ -158,7 +169,6 @@ export async function POST(req: NextRequest) {
           orderId,
           items: items.map(i => ({
             ...i,
-            // Use variant image (colour-matched), fall back to product image
             image: variantImageMap[`${i.id}:${i.colour ?? ''}`] ?? fallbackImageMap[i.id],
           })),
           subtotalAud:     itemsTotal,
