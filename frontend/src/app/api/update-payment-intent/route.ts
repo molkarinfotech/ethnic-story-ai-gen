@@ -6,10 +6,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10
 
 export async function POST(req: NextRequest) {
   try {
-    const { paymentIntentId, metadata, token: accessToken } = await req.json();
+    const { paymentIntentId, metadata, token: accessToken, amount, couponCode, discountAmount } = await req.json();
     if (!paymentIntentId) return NextResponse.json({ error: 'Missing paymentIntentId' }, { status: 400 });
 
-    // Verify user server-side using the token sent from the client
     let user_id: string | null = null;
     if (accessToken) {
       try {
@@ -19,13 +18,21 @@ export async function POST(req: NextRequest) {
       } catch { /* guest */ }
     }
 
-    await stripe.paymentIntents.update(paymentIntentId, {
+    const updatePayload: Stripe.PaymentIntentUpdateParams = {
       metadata: {
         ...metadata,
-        ...(user_id ? { user_id } : {}),
+        ...(user_id       ? { user_id }                                  : {}),
+        ...(couponCode    ? { coupon_code: String(couponCode) }          : {}),
+        ...(discountAmount > 0 ? { discount_amount: String(discountAmount) } : {}),
       },
-    });
+    };
 
+    // Update amount if provided (coupon applied after intent created)
+    if (amount && Number(amount) >= 0.5) {
+      updatePayload.amount = Math.round(Number(amount) * 100);
+    }
+
+    await stripe.paymentIntents.update(paymentIntentId, updatePayload);
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     console.error('[update-payment-intent]', err.message);

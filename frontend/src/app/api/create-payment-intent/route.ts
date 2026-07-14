@@ -4,14 +4,12 @@ import { getServiceSupabase } from '../../../lib/supabase';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
 
-// Minimum charge enforced by Stripe for AUD is $0.50
 const MIN_AMOUNT_AUD = 0.5;
-// Sanity cap — no single online order should exceed $10,000 AUD
 const MAX_AMOUNT_AUD = 10000;
 
 export async function POST(req: NextRequest) {
   try {
-    const { amount, currency = 'aud', token: accessToken } = await req.json();
+    const { amount, currency = 'aud', token: accessToken, discountAmount = 0, couponCode } = await req.json();
 
     const parsedAmount = Number(amount);
     if (!parsedAmount || parsedAmount < MIN_AMOUNT_AUD) {
@@ -21,7 +19,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Amount exceeds the maximum allowed per transaction` }, { status: 400 });
     }
 
-    // Verify user server-side using the token sent from the client
     let user_id: string | null = null;
     if (accessToken) {
       try {
@@ -36,7 +33,9 @@ export async function POST(req: NextRequest) {
       currency,
       automatic_payment_methods: { enabled: true },
       metadata: {
-        ...(user_id ? { user_id } : {}),
+        ...(user_id    ? { user_id }                                 : {}),
+        ...(couponCode ? { coupon_code: String(couponCode) }         : {}),
+        ...(discountAmount > 0 ? { discount_amount: String(discountAmount) } : {}),
       },
     });
 

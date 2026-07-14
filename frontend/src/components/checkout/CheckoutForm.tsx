@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -20,8 +20,18 @@ export type ShippingAddress = {
   line1: string; line2: string; suburb: string; state: string; postcode: string;
 };
 
-type Variant = { id: string; size: string; stock_count: number };
+type Variant  = { id: string; size: string; stock_count: number };
 type StockMap = Record<string, number>;
+
+type CouponResult = {
+  valid: true;
+  coupon_id: string;
+  code: string;
+  description: string | null;
+  discount_type: 'percentage' | 'fixed';
+  discount_value: number;
+  discount_amount: number;
+} | { valid: false; error: string };
 
 async function fetchStockForItems(items: CartItem[]): Promise<StockMap> {
   const uniqueIds = Array.from(new Set(items.map(i => i.id)));
@@ -43,10 +53,125 @@ async function fetchStockForItems(items: CartItem[]): Promise<StockMap> {
   return map;
 }
 
+// ─── Coupon input widget ──────────────────────────────────────────────────────
+function CouponInput({
+  subtotal,
+  appliedCoupon,
+  onApply,
+  onRemove,
+}: {
+  subtotal: number;
+  appliedCoupon: (CouponResult & { valid: true }) | null;
+  onApply: (c: CouponResult & { valid: true }) => void;
+  onRemove: () => void;
+}) {
+  const [code, setCode]   = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleApply() {
+    if (!code.trim()) { setError('Enter a coupon code.'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      const res  = await fetch('/api/validate-coupon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code.trim(), subtotal }),
+      });
+      const data: CouponResult = await res.json();
+      if (data.valid) {
+        onApply(data);
+        setCode('');
+      } else {
+        setError(data.error);
+      }
+    } catch {
+      setError('Could not validate coupon. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (appliedCoupon) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        background: '#f0fdf4', border: '1.5px solid #bbf7d0',
+        borderRadius: 'var(--radius-md)', padding: 'var(--space-3) var(--space-4)',
+        marginBottom: 'var(--space-2)',
+      }}>
+        <div>
+          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: '#15803d' }}>
+            🏷️ {appliedCoupon.code}
+          </div>
+          {appliedCoupon.description && (
+            <div style={{ fontSize: 'var(--text-xs)', color: '#166534', marginTop: '2px' }}>
+              {appliedCoupon.description}
+            </div>
+          )}
+        </div>
+        <button
+          onClick={onRemove}
+          style={{ fontSize: 'var(--text-xs)', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, padding: '0 var(--space-1)' }}
+        >
+          ✕ Remove
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <input
+          type="text"
+          placeholder="Coupon code"
+          value={code}
+          onChange={e => { setCode(e.target.value.toUpperCase()); setError(''); }}
+          onKeyDown={e => e.key === 'Enter' && handleApply()}
+          style={{
+            flex: 1,
+            padding: 'var(--space-2) var(--space-3)',
+            border: `1.5px solid ${error ? '#fca5a5' : 'var(--color-border)'}`,
+            borderRadius: 'var(--radius-md)',
+            fontSize: 'var(--text-sm)',
+            fontFamily: 'inherit',
+            outline: 'none',
+            letterSpacing: '.05em',
+          }}
+        />
+        <button
+          onClick={handleApply}
+          disabled={loading}
+          style={{
+            padding: 'var(--space-2) var(--space-4)',
+            background: loading ? 'var(--color-border)' : 'var(--color-text)',
+            color: 'var(--color-bg)',
+            border: 'none',
+            borderRadius: 'var(--radius-md)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 700,
+            cursor: loading ? 'default' : 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {loading ? '…' : 'Apply'}
+        </button>
+      </div>
+      {error && (
+        <p style={{ fontSize: 'var(--text-xs)', color: '#dc2626', marginTop: 'var(--space-1)', margin: 'var(--space-1) 0 0' }}>
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Inner payment form ───────────────────────────────────────────────────────
 function PaymentForm({
   grandTotal, selectedItems, paymentIntentId, accessToken, isLoggedIn,
-  addr, setAddr, stockMap,
+  addr, setAddr, stockMap, discountAmount, appliedCoupon,
 }: {
   grandTotal: number;
   selectedItems: CartItem[];
@@ -56,10 +181,12 @@ function PaymentForm({
   addr: ShippingAddress;
   setAddr: React.Dispatch<React.SetStateAction<ShippingAddress>>;
   stockMap: StockMap;
+  discountAmount: number;
+  appliedCoupon: (CouponResult & { valid: true }) | null;
 }) {
   const stripe = useStripe();
   const elements = useElements();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]   = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   function field(key: keyof ShippingAddress) {
@@ -94,15 +221,10 @@ function PaymentForm({
     setLoading(true);
     setErrorMsg('');
 
-    // Include slug and image so account order history can display them
     const orderItems = selectedItems.map(i => ({
-      id: i.id,
-      slug: i.slug,
-      name: i.name,
-      quantity: i.quantity,
-      price: i.price,
-      size: i.selectedSize,
-      image: i.image,
+      id: i.id, slug: i.slug, name: i.name,
+      quantity: i.quantity, price: i.price,
+      size: i.selectedSize, image: i.image,
     }));
 
     try {
@@ -111,7 +233,10 @@ function PaymentForm({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           paymentIntentId,
-          token: accessToken,
+          amount:         grandTotal,
+          token:          accessToken,
+          couponCode:     appliedCoupon?.code    ?? null,
+          discountAmount: discountAmount         ?? 0,
           metadata: {
             customer_name:     name,
             customer_email:    email,
@@ -252,11 +377,11 @@ function ItemSelector({
       </p>
       <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
         {items.map(item => {
-          const key = itemKey(item.id, item.selectedSize);
-          const stock = stockMap[key] ?? stockMap[item.id] ?? 99;
+          const key       = itemKey(item.id, item.selectedSize);
+          const stock     = stockMap[key] ?? stockMap[item.id] ?? 99;
           const outOfStock = stock === 0;
-          const overStock = !outOfStock && item.quantity > stock;
-          const checked = selectedKeys.has(key) && !outOfStock;
+          const overStock  = !outOfStock && item.quantity > stock;
+          const checked    = selectedKeys.has(key) && !outOfStock;
           return (
             <li key={key} style={{
               display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
@@ -299,16 +424,15 @@ export function CheckoutForm() {
   const { items, totalItems, clearCart, hydrated } = useCart();
   const { user, session } = useAuth();
 
-  const [clientSecret, setClientSecret] = useState('');
+  const [clientSecret, setClientSecret]     = useState('');
   const [paymentIntentId, setPaymentIntentId] = useState('');
-  const [intentError, setIntentError] = useState('');
-  const [prefillLoaded, setPrefillLoaded] = useState(false);
-  const [stockMap, setStockMap] = useState<StockMap>({});
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [intentError, setIntentError]       = useState('');
+  const [prefillLoaded, setPrefillLoaded]   = useState(false);
+  const [stockMap, setStockMap]             = useState<StockMap>({});
+  const [selectedKeys, setSelectedKeys]     = useState<Set<string>>(new Set());
+  const [appliedCoupon, setAppliedCoupon]   = useState<(CouponResult & { valid: true }) | null>(null);
   const initialSelectionDone = useRef(false);
-  // Track whether we have already created the payment intent so we don't
-  // recreate it every time grandTotal changes (ticking/unticking items).
-  const intentCreated = useRef(false);
+  const intentCreated        = useRef(false);
 
   const [addr, setAddr] = useState<ShippingAddress>({
     name: '', email: '', phone: '',
@@ -339,8 +463,31 @@ export function CheckoutForm() {
   );
 
   const selectedPrice = selectedItems.reduce((s, i) => s + i.price * i.quantity, 0);
-  const shipping = selectedPrice >= 150 ? 0 : selectedPrice > 0 ? 12.95 : 0;
-  const grandTotal = selectedPrice + shipping;
+  const shipping      = selectedPrice >= 150 ? 0 : selectedPrice > 0 ? 12.95 : 0;
+
+  // Coupon discount is capped at subtotal (never go below 0)
+  const discountAmount = appliedCoupon
+    ? Math.min(selectedPrice, appliedCoupon.discount_amount)
+    : 0;
+  const grandTotal = Math.max(0, selectedPrice + shipping - discountAmount);
+
+  // If coupon is removed or items change, re-validate cached discount
+  useEffect(() => {
+    if (!appliedCoupon) return;
+    // If selected items changed, discount amount may have changed — re-validate silently
+    fetch('/api/validate-coupon', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: appliedCoupon.code, subtotal: selectedPrice }),
+    })
+      .then(r => r.json())
+      .then((data: CouponResult) => {
+        if (data.valid) setAppliedCoupon(data);
+        else setAppliedCoupon(null);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPrice]);
 
   useEffect(() => {
     if (!hydrated || items.length === 0) return;
@@ -373,20 +520,20 @@ export function CheckoutForm() {
       .catch(() => {});
   }, [user, session, prefillLoaded]);
 
-  // Create the payment intent ONCE when the cart is hydrated and there is
-  // something to pay for. We intentionally do NOT re-run this when grandTotal
-  // changes — the amount is updated via update-payment-intent just before
-  // stripe.confirmPayment() is called, so the Stripe PaymentElement never
-  // needs to be remounted.
   useEffect(() => {
     if (!hydrated || grandTotal < 0.5) return;
-    if (intentCreated.current) return;   // already created — skip
+    if (intentCreated.current) return;
     intentCreated.current = true;
 
     fetch('/api/create-payment-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: grandTotal, token: session?.access_token ?? null }),
+      body: JSON.stringify({
+        amount:         grandTotal,
+        token:          session?.access_token ?? null,
+        couponCode:     appliedCoupon?.code    ?? null,
+        discountAmount: discountAmount,
+      }),
     })
       .then(r => r.json())
       .then(data => {
@@ -396,13 +543,14 @@ export function CheckoutForm() {
           setIntentError('');
         } else {
           setIntentError(data.error ?? 'Could not initialise payment.');
-          intentCreated.current = false;  // allow retry
+          intentCreated.current = false;
         }
       })
       .catch(() => {
         setIntentError('Network error — please refresh and try again.');
-        intentCreated.current = false;    // allow retry
+        intentCreated.current = false;
       });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, grandTotal, session]);
 
   if (!hydrated) return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Loading your bag…</div>;
@@ -447,6 +595,8 @@ export function CheckoutForm() {
             addr={addr}
             setAddr={setAddr}
             stockMap={stockMap}
+            discountAmount={discountAmount}
+            appliedCoupon={appliedCoupon}
           />
         </div>
         <aside className="order-summary">
@@ -471,6 +621,22 @@ export function CheckoutForm() {
               ))}
             </ul>
           )}
+
+          {/* Coupon input */}
+          {selectedItems.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-4)', marginTop: 'var(--space-3)' }}>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)', fontWeight: 600 }}>
+                🏷️ Have a coupon?
+              </p>
+              <CouponInput
+                subtotal={selectedPrice}
+                appliedCoupon={appliedCoupon}
+                onApply={setAppliedCoupon}
+                onRemove={() => setAppliedCoupon(null)}
+              />
+            </div>
+          )}
+
           <div className="order-totals">
             <div className="order-total-row"><span>Subtotal</span><span>{formatAUD(selectedPrice)}</span></div>
             <div className="order-total-row">
@@ -481,6 +647,16 @@ export function CheckoutForm() {
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '-.5rem' }}>
                 Add {formatAUD(150 - selectedPrice)} more for free shipping
               </p>
+            )}
+            {discountAmount > 0 && (
+              <div className="order-total-row" style={{ color: '#15803d' }}>
+                <span>
+                  🏷️ Coupon ({appliedCoupon?.discount_type === 'percentage'
+                    ? `${appliedCoupon.discount_value}% off`
+                    : `${appliedCoupon?.code}`})
+                </span>
+                <span style={{ fontWeight: 700 }}>−{formatAUD(discountAmount)}</span>
+              </div>
             )}
             <div className="order-total-row order-total-row--grand">
               <strong>Total (AUD)</strong><strong>{formatAUD(grandTotal)}</strong>

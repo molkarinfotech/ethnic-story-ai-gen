@@ -25,21 +25,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/chatbot-kb', label: 'Chatbot KB', icon: '🤖' },
   ];
   const settingsNav = [
-    { href: '/admin/categories', label: 'Categories', icon: '🏷️' },
+    { href: '/admin/coupons',    label: 'Coupons',    icon: '🏷️' },
+    { href: '/admin/categories', label: 'Categories', icon: '📁' },
     { href: '/admin/appearance', label: 'Appearance', icon: '🎨' },
   ];
 
   const mobileNav = [
-    { href: '/admin/dashboard',     label: 'Home',          icon: '📊' },
-    { href: '/admin/products',      label: 'Products',      icon: '👗' },
-    { href: '/admin/orders',        label: 'Orders',        icon: '📦' },
-    { href: '/admin/notifications', label: 'Alerts',        icon: '🔔' },
-    { href: '/admin/checkout',      label: 'Checkout',      icon: '🛒' },
-    { href: '/admin/scan',          label: 'Scan',          icon: '📷' },
-    { href: '/admin/import',        label: 'Import',        icon: '📥' },
-    { href: '/admin/chatbot-kb',    label: 'KB',            icon: '🤖' },
-    { href: '/admin/categories',    label: 'Categories',    icon: '🏷️' },
-    { href: '/admin/appearance',    label: 'Appearance',    icon: '🎨' },
+    { href: '/admin/dashboard',     label: 'Home',       icon: '📊' },
+    { href: '/admin/products',      label: 'Products',   icon: '👗' },
+    { href: '/admin/orders',        label: 'Orders',     icon: '📦' },
+    { href: '/admin/notifications', label: 'Alerts',     icon: '🔔' },
+    { href: '/admin/coupons',       label: 'Coupons',    icon: '🏷️' },
+    { href: '/admin/checkout',      label: 'Checkout',   icon: '🛒' },
+    { href: '/admin/scan',          label: 'Scan',       icon: '📷' },
+    { href: '/admin/import',        label: 'Import',     icon: '📥' },
+    { href: '/admin/chatbot-kb',    label: 'KB',         icon: '🤖' },
+    { href: '/admin/categories',    label: 'Categories', icon: '📁' },
+    { href: '/admin/appearance',    label: 'Appearance', icon: '🎨' },
   ];
 
   function isActive(href: string) {
