@@ -42,6 +42,43 @@ function uniqueColours(variants: Variant[], images: ProductImage[]): string[] {
   return out.sort();
 }
 
+// ── pill helper ──────────────────────────────────────────────
+function Pill({ label, active, count, onClick }: { label: string; active: boolean; count?: number; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: '.3rem',
+        padding: '.28rem .75rem',
+        borderRadius: '2rem',
+        border: active ? '1.5px solid #9d174d' : '1.5px solid #e5e7eb',
+        background: active ? '#9d174d' : 'white',
+        color: active ? 'white' : '#374151',
+        fontSize: '.76rem',
+        fontWeight: active ? 700 : 500,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+        transition: 'all .12s',
+        boxShadow: active ? '0 2px 8px rgba(157,23,77,.18)' : 'none',
+      }}
+    >
+      {label}
+      {count !== undefined && (
+        <span style={{
+          background: active ? 'rgba(255,255,255,.22)' : '#f3f4f6',
+          color: active ? 'white' : '#6b7280',
+          borderRadius: '2rem',
+          padding: '0 .38rem',
+          fontSize: '.66rem',
+          fontWeight: 700,
+          minWidth: '1.1rem',
+          textAlign: 'center',
+        }}>{count}</span>
+      )}
+    </button>
+  );
+}
+
 export default function AdminProductsPage() {
   const [products,      setProducts]     = useState<Product[]>([]);
   const [categories,    setCategories]   = useState<Category[]>([]);
@@ -74,7 +111,6 @@ export default function AdminProductsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Load categories for filter dropdowns
   useEffect(() => {
     fetch('/api/admin/categories', { credentials: 'include' })
       .then(r => r.ok ? r.json() : [])
@@ -103,8 +139,13 @@ export default function AdminProductsPage() {
     }
   }
 
-  // Derive all unique genders from loaded products
+  // Derive unique genders from loaded products
   const allGenders = Array.from(new Set(products.map(p => p.gender).filter(Boolean) as string[])).sort();
+
+  // Derive unique categories from loaded products (not from API — reflects actual inventory)
+  const allCategories = Array.from(
+    new Set(products.map(p => p.category).filter(Boolean))
+  ).sort();
 
   const filtered = products
     .filter(p => {
@@ -112,10 +153,10 @@ export default function AdminProductsPage() {
       const matchSearch = !search ||
         p.name.toLowerCase().includes(q) ||
         (p.category ?? '').toLowerCase().includes(q);
-      const matchCat = !filterCat || p.category === filterCat;
-      const matchGender = !filterGender || p.gender === filterGender;
+      const matchCat    = !filterCat    || p.category === filterCat;
+      const matchGender = !filterGender || p.gender   === filterGender;
       const stock = totalStock(p.variants);
-      const matchStock = !filterStock ||
+      const matchStock  = !filterStock ||
         (filterStock === 'out' && stock === 0) ||
         (filterStock === 'low' && stock > 0 && stock <= 5) ||
         (filterStock === 'in'  && stock > 5);
@@ -280,20 +321,40 @@ export default function AdminProductsPage() {
   const someSelected = selectedIds.size > 0 && !allSelected;
   const hasFilters = !!(search || filterCat || filterGender || filterStock);
 
-  const selectStyle: React.CSSProperties = {
-    padding: '.45rem .65rem',
-    borderRadius: '.45rem',
-    border: '1px solid #e5e7eb',
-    fontSize: '.8rem',
-    background: 'white',
-    color: '#374151',
-    cursor: 'pointer',
-    outline: 'none',
-    minWidth: 0,
-  };
+  // Count helpers for pills
+  function countByGender(g: string)  { return products.filter(p => p.gender === g).length; }
+  function countByCat(c: string)     { return products.filter(p => p.category === c).length; }
+  function countByStock(s: string)   {
+    return products.filter(p => {
+      const st = totalStock(p.variants);
+      if (s === 'out') return st === 0;
+      if (s === 'low') return st > 0 && st <= 5;
+      if (s === 'in')  return st > 5;
+      return false;
+    }).length;
+  }
+
+  const outCount = countByStock('out');
+  const lowCount = countByStock('low');
 
   return (
     <div>
+      <style>{`
+        .pill-row { display: flex; gap: .35rem; flex-wrap: wrap; align-items: center; }
+        .pill-section-label {
+          font-size: .67rem; font-weight: 700; color: #9ca3af;
+          text-transform: uppercase; letter-spacing: .07em;
+          white-space: nowrap; margin-right: .1rem;
+        }
+        .pill-divider {
+          width: 1px; height: 20px; background: #e5e7eb;
+          margin: 0 .35rem; flex-shrink: 0;
+        }
+        @media (max-width: 640px) {
+          .pill-divider { display: none; }
+        }
+      `}</style>
+
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '.75rem' }}>
         <div>
@@ -306,55 +367,89 @@ export default function AdminProductsPage() {
         >+ New product</a>
       </div>
 
-      {/* ── Filter bar ── */}
-      <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', marginBottom: '.75rem', alignItems: 'center' }}>
-        <input
-          type="search" placeholder="Search name or category…"
-          value={search} onChange={e => { setSearch(e.target.value); setSelectedIds(new Set()); }}
-          style={{ ...selectStyle, flex: '1 1 180px', padding: '.45rem .75rem' }}
-        />
+      {/* ── Search bar ── */}
+      <div style={{ marginBottom: '.9rem' }}>
+        <div style={{ position: 'relative', maxWidth: 400 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ position: 'absolute', left: '.75rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            type="search"
+            placeholder="Search products…"
+            value={search}
+            onChange={e => { setSearch(e.target.value); setSelectedIds(new Set()); }}
+            style={{
+              width: '100%',
+              padding: '.45rem .75rem .45rem 2.2rem',
+              border: '1.5px solid #e5e7eb',
+              borderRadius: '.55rem',
+              fontSize: '.85rem',
+              background: 'white',
+              outline: 'none',
+              color: '#111827',
+            }}
+          />
+        </div>
+      </div>
 
-        {/* Category dropdown */}
-        <select
-          value={filterCat}
-          onChange={e => { setFilterCat(e.target.value); setSelectedIds(new Set()); }}
-          style={{ ...selectStyle, flex: '0 1 160px' }}
-        >
-          <option value="">All categories</option>
-          {categories.map(c => (
-            <option key={c.id} value={c.slug}>{c.label}</option>
-          ))}
-        </select>
+      {/* ── Filter pills ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '.55rem', marginBottom: '1rem', padding: '.7rem .85rem', background: '#fafafa', border: '1px solid #f3f4f6', borderRadius: '.7rem' }}>
 
-        {/* Gender dropdown */}
-        <select
-          value={filterGender}
-          onChange={e => { setFilterGender(e.target.value); setSelectedIds(new Set()); }}
-          style={{ ...selectStyle, flex: '0 1 130px' }}
-        >
-          <option value="">All genders</option>
-          {allGenders.map(g => (
-            <option key={g} value={g}>{g.charAt(0).toUpperCase() + g.slice(1)}</option>
-          ))}
-        </select>
+        {/* Group / Gender pills */}
+        {allGenders.length > 0 && (
+          <div className="pill-row">
+            <span className="pill-section-label">Group</span>
+            <Pill label="All" active={!filterGender} count={products.length} onClick={() => { setFilterGender(''); setSelectedIds(new Set()); }} />
+            {allGenders.map(g => (
+              <Pill
+                key={g}
+                label={g.charAt(0).toUpperCase() + g.slice(1)}
+                active={filterGender === g}
+                count={countByGender(g)}
+                onClick={() => { setFilterGender(filterGender === g ? '' : g); setSelectedIds(new Set()); }}
+              />
+            ))}
+          </div>
+        )}
 
-        {/* Stock status */}
-        <select
-          value={filterStock}
-          onChange={e => { setFilterStock(e.target.value); setSelectedIds(new Set()); }}
-          style={{ ...selectStyle, flex: '0 1 130px' }}
-        >
-          <option value="">All stock</option>
-          <option value="out">Out of stock</option>
-          <option value="low">Low (≤5)</option>
-          <option value="in">In stock</option>
-        </select>
+        {/* Category pills — dynamically from actual products */}
+        {allCategories.length > 0 && (
+          <div className="pill-row">
+            <span className="pill-section-label">Category</span>
+            <Pill label="All" active={!filterCat} onClick={() => { setFilterCat(''); setSelectedIds(new Set()); }} />
+            {allCategories.map(c => (
+              <Pill
+                key={c}
+                label={c}
+                active={filterCat === c}
+                count={countByCat(c)}
+                onClick={() => { setFilterCat(filterCat === c ? '' : c); setSelectedIds(new Set()); }}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Stock status pills */}
+        <div className="pill-row">
+          <span className="pill-section-label">Stock</span>
+          <Pill label="All" active={!filterStock} onClick={() => { setFilterStock(''); setSelectedIds(new Set()); }} />
+          <Pill label="In stock" active={filterStock === 'in'}  count={countByStock('in')}  onClick={() => { setFilterStock(filterStock === 'in'  ? '' : 'in');  setSelectedIds(new Set()); }} />
+          {lowCount > 0 && (
+            <Pill label="⚠ Low (≤5)" active={filterStock === 'low'} count={lowCount} onClick={() => { setFilterStock(filterStock === 'low' ? '' : 'low'); setSelectedIds(new Set()); }} />
+          )}
+          {outCount > 0 && (
+            <Pill label="⛔ Out of stock" active={filterStock === 'out'} count={outCount} onClick={() => { setFilterStock(filterStock === 'out' ? '' : 'out'); setSelectedIds(new Set()); }} />
+          )}
+        </div>
 
         {hasFilters && (
-          <button
-            onClick={resetFilters}
-            style={{ padding: '.45rem .7rem', borderRadius: '.45rem', border: '1px solid #e5e7eb', background: '#f9fafb', color: '#6b7280', fontSize: '.78rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
-          >✕ Clear</button>
+          <div>
+            <button
+              onClick={resetFilters}
+              style={{ fontSize: '.73rem', color: '#9d174d', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600, textDecoration: 'underline' }}
+            >✕ Clear all filters</button>
+          </div>
         )}
       </div>
 

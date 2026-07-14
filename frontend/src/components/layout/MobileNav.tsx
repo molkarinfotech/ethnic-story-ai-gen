@@ -10,6 +10,8 @@ type NavGroup = {
   categories: { id: string; slug: string; label: string; sort_order: number }[];
 };
 
+// Fixed display order — Accessories is its own top-level group
+const GROUP_ORDER = ['women', 'men', 'kids', 'accessories'] as const;
 const GENDER_LABELS: Record<string, string> = {
   women: 'Women',
   men: 'Men',
@@ -31,8 +33,17 @@ type Section = {
 };
 
 function buildSections(groups: NavGroup[]): Section[] {
-  const sections: Section[] = groups.map(g => ({
-    label: GENDER_LABELS[g.gender] ?? g.gender,
+  const sorted = [...groups].sort((a, b) => {
+    const ai = GROUP_ORDER.indexOf(a.gender as typeof GROUP_ORDER[number]);
+    const bi = GROUP_ORDER.indexOf(b.gender as typeof GROUP_ORDER[number]);
+    if (ai === -1 && bi === -1) return 0;
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+
+  const sections: Section[] = sorted.map(g => ({
+    label: GENDER_LABELS[g.gender] ?? g.gender.charAt(0).toUpperCase() + g.gender.slice(1),
     href: `/collections/${g.gender}`,
     emoji: GENDER_EMOJI[g.gender] ?? '🛍️',
     children: g.categories.map(c => ({
@@ -87,7 +98,6 @@ function Drawer({ open, onClose, sections }: { open: boolean; onClose: () => voi
         style={{ background: '#fff9f5', zIndex: 1001 }}
       >
         <div className="mobile-nav-drawer__header" style={{ background: '#fff9f5', borderBottom: '1px solid #fce7f3' }}>
-          {/* Logo — transparent bg + multiply blend removes any white fill baked into the PNG */}
           <a
             className="site-header__logo"
             href="/"
@@ -135,6 +145,13 @@ function Drawer({ open, onClose, sections }: { open: boolean; onClose: () => voi
                   </div>
                   {expanded === item.href && (
                     <ul style={{ listStyle: 'none', padding: '0 0 .5rem 0', margin: 0, background: '#fdf2f8' }}>
+                      {/* "All [group]" entry at top of expanded list */}
+                      <li>
+                        <a href={item.href} onClick={close}
+                          style={{ display: 'block', padding: '.55rem 2.5rem', fontSize: '.85rem', color: '#9d174d', textDecoration: 'none', fontWeight: 700 }}>
+                          All {item.label}
+                        </a>
+                      </li>
                       {item.children.map(child => (
                         <li key={child.href}>
                           <a href={child.href} onClick={close}

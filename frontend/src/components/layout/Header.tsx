@@ -10,7 +10,8 @@ type NavGroup = {
   categories: { id: string; slug: string; label: string; sort_order: number }[];
 };
 
-// Fixed display labels for each group key
+// Fixed display order and labels
+const GROUP_ORDER = ['women', 'men', 'kids', 'accessories'] as const;
 const GENDER_LABELS: Record<string, string> = {
   women: 'Women',
   men: 'Men',
@@ -21,8 +22,18 @@ const GENDER_LABELS: Record<string, string> = {
 type NavItemData = { label: string; href: string; children: { label: string; href: string }[] };
 
 function buildNav(groups: NavGroup[]): NavItemData[] {
-  return groups.map(g => ({
-    label: GENDER_LABELS[g.gender] ?? g.gender,
+  // Sort by fixed GROUP_ORDER, fall back to api order for unknown groups
+  const sorted = [...groups].sort((a, b) => {
+    const ai = GROUP_ORDER.indexOf(a.gender as typeof GROUP_ORDER[number]);
+    const bi = GROUP_ORDER.indexOf(b.gender as typeof GROUP_ORDER[number]);
+    if (ai === -1 && bi === -1) return 0;
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+
+  return sorted.map(g => ({
+    label: GENDER_LABELS[g.gender] ?? g.gender.charAt(0).toUpperCase() + g.gender.slice(1),
     href: `/collections/${g.gender}`,
     children: g.categories.map(c => ({
       label: c.label,
@@ -31,11 +42,22 @@ function buildNav(groups: NavGroup[]): NavItemData[] {
   }));
 }
 
+// ── Mega-panel nav item ──────────────────────────────────────
 function NavItem({ item }: { item: NavItemData }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const ref  = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasChildren = item.children.length > 0;
 
+  // Delayed close so moving cursor into the panel doesn't flicker
+  function scheduleClose() {
+    timerRef.current = setTimeout(() => setOpen(false), 180);
+  }
+  function cancelClose() {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }
+
+  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -45,12 +67,20 @@ function NavItem({ item }: { item: NavItemData }) {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  // Close on ESC
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open]);
+
   return (
     <div
       ref={ref}
       style={{ position: 'relative' }}
-      onMouseEnter={() => hasChildren && setOpen(true)}
-      onMouseLeave={() => hasChildren && setOpen(false)}
+      onMouseEnter={() => { cancelClose(); if (hasChildren) setOpen(true); }}
+      onMouseLeave={() => hasChildren && scheduleClose()}
     >
       <a
         href={item.href}
@@ -58,52 +88,81 @@ function NavItem({ item }: { item: NavItemData }) {
           fontFamily: 'system-ui, sans-serif',
           fontSize: '0.875rem',
           fontWeight: 500,
-          color: 'var(--color-text)',
+          color: open ? 'var(--color-primary)' : 'var(--color-text)',
           transition: 'color 0.15s',
           whiteSpace: 'nowrap',
           display: 'flex',
           alignItems: 'center',
           gap: '0.25rem',
-          padding: '0.25rem 0',
+          padding: '0.5rem 0.1rem',
           textDecoration: 'none',
+          borderBottom: open ? '2px solid var(--color-primary)' : '2px solid transparent',
         }}
-        onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-primary)')}
-        onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text)')}
         aria-haspopup={hasChildren || undefined}
         aria-expanded={hasChildren ? open : undefined}
       >
         {item.label}
         {hasChildren && (
           <svg
-            width="12" height="12" viewBox="0 0 24 24" fill="none"
+            width="11" height="11" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-            style={{ opacity: 0.55, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+            style={{ opacity: 0.6, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
           >
             <polyline points="6 9 12 15 18 9" />
           </svg>
         )}
       </a>
 
-      {hasChildren && open && (
+      {hasChildren && (
         <div
           role="menu"
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
           style={{
             position: 'absolute',
-            top: 'calc(100% + 6px)',
+            top: 'calc(100% + 2px)',
             left: '50%',
             transform: 'translateX(-50%)',
-            background: 'rgba(255,252,249,0.98)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
+            background: 'rgba(255,252,249,0.99)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
             border: '1px solid var(--color-border)',
-            borderRadius: '8px',
-            boxShadow: '0 8px 32px -4px rgba(0,0,0,0.14)',
-            minWidth: '160px',
-            padding: '0.5rem 0',
+            borderTop: '2px solid var(--color-primary)',
+            borderRadius: '0 0 10px 10px',
+            boxShadow: '0 16px 40px -8px rgba(0,0,0,0.16)',
+            minWidth: '180px',
+            padding: '0.5rem 0 0.75rem',
             zIndex: 200,
-            animation: 'dropdownIn 0.15s cubic-bezier(0.16,1,0.3,1)',
+            // Visibility driven by open state — no CSS hover dependency
+            opacity: open ? 1 : 0,
+            visibility: open ? 'visible' : 'hidden',
+            pointerEvents: open ? 'all' : 'none',
+            transition: 'opacity 0.15s cubic-bezier(0.16,1,0.3,1), visibility 0.15s',
+            transform: open
+              ? 'translateX(-50%) translateY(0)'
+              : 'translateX(-50%) translateY(-6px)',
           }}
         >
+          {/* "All [group]" link */}
+          <a
+            href={item.href}
+            role="menuitem"
+            style={{
+              display: 'block',
+              padding: '0.45rem 1.2rem',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              color: 'var(--color-primary)',
+              textDecoration: 'none',
+              letterSpacing: '.03em',
+              textTransform: 'uppercase',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface-offset)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            All {item.label}
+          </a>
+          <div style={{ height: 1, background: 'var(--color-border)', margin: '0.3rem 1.2rem 0.4rem' }} />
           {item.children.map(child => (
             <a
               key={child.href}
@@ -111,12 +170,12 @@ function NavItem({ item }: { item: NavItemData }) {
               role="menuitem"
               style={{
                 display: 'block',
-                padding: '0.5rem 1.1rem',
-                fontSize: '0.85rem',
+                padding: '0.45rem 1.2rem',
+                fontSize: '0.875rem',
                 fontWeight: 500,
                 color: 'var(--color-text)',
                 textDecoration: 'none',
-                transition: 'background 0.12s, color 0.12s',
+                transition: 'background 0.1s, color 0.1s',
                 whiteSpace: 'nowrap',
               }}
               onMouseEnter={e => {
@@ -169,10 +228,6 @@ export function Header() {
   return (
     <>
       <style>{`
-        @keyframes dropdownIn {
-          from { opacity: 0; transform: translateX(-50%) translateY(-6px); }
-          to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-        }
         .site-announcement {
           background: var(--color-primary);
           color: white;
@@ -221,7 +276,6 @@ export function Header() {
           minWidth: 0,
         }}>
 
-          {/* Logo — transparent background, mix-blend-mode removes any white fill baked into the PNG */}
           <a
             href="/"
             style={{
