@@ -43,7 +43,6 @@ function NavItem({ item }: { item: typeof NAV_ITEMS[number] }) {
   const ref = useRef<HTMLDivElement>(null);
   const hasChildren = item.children.length > 0;
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -73,11 +72,12 @@ function NavItem({ item }: { item: typeof NAV_ITEMS[number] }) {
           alignItems: 'center',
           gap: '0.25rem',
           padding: '0.25rem 0',
+          textDecoration: 'none',
         }}
         onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-primary)')}
         onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text)')}
-        aria-haspopup={hasChildren ? 'true' : undefined}
-        aria-expanded={hasChildren ? String(open) : undefined}
+        aria-haspopup={hasChildren || undefined}
+        aria-expanded={hasChildren ? open : undefined}
       >
         {item.label}
         {hasChildren && (
@@ -246,18 +246,16 @@ export function Header() {
           {/* Right side actions */}
           <div style={{ display: 'flex', gap: '.65rem', alignItems: 'center', flexShrink: 0 }}>
 
-            {/* Account — desktop only */}
             <a
               href="/account"
               className="header-desktop-account"
-              style={{ fontSize: '0.875rem', fontFamily: 'system-ui', color: 'var(--color-text)', transition: 'color 0.15s', whiteSpace: 'nowrap' }}
+              style={{ fontSize: '0.875rem', fontFamily: 'system-ui', color: 'var(--color-text)', transition: 'color 0.15s', whiteSpace: 'nowrap', textDecoration: 'none' }}
               onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-primary)')}
               onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text)')}
             >
               Account
             </a>
 
-            {/* Bag — always visible */}
             <button
               onClick={openCart}
               aria-label="Open bag"
