@@ -21,6 +21,7 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
     likes:        'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z',
     reviews:      'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
     sourcing:     'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9l2 2 4-4',
+    shipping:     'M1 3h15v13H1zM16 8h4l3 3v5h-7V8zM5.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM18.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z',
     add:          'M12 5v14M5 12h14',
     arrow_right:  'M5 12h14M12 5l7 7-7 7',
     warning:      'M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01',
@@ -54,27 +55,29 @@ const toolsNav = [
   { href: '/admin/chatbot-kb', label: 'Chatbot KB', icon: 'chatbot' },
 ];
 const settingsNav = [
-  { href: '/admin/coupons',    label: 'Coupons',    icon: 'coupons' },
-  { href: '/admin/categories', label: 'Categories', icon: 'categories' },
-  { href: '/admin/appearance', label: 'Appearance', icon: 'appearance' },
+  { href: '/admin/coupons',             label: 'Coupons',    icon: 'coupons' },
+  { href: '/admin/categories',          label: 'Categories', icon: 'categories' },
+  { href: '/admin/shipping-providers',  label: 'Shipping',   icon: 'shipping' },
+  { href: '/admin/appearance',          label: 'Appearance', icon: 'appearance' },
 ];
 
 // Mobile nav — scrollable row with ALL routes so nothing is hidden
 const mobileNav = [
-  { href: '/admin/dashboard',     label: 'Home',     icon: 'dashboard' },
-  { href: '/admin/products',      label: 'Products', icon: 'products' },
-  { href: '/admin/orders',        label: 'Orders',   icon: 'orders' },
-  { href: '/admin/notifications', label: 'Alerts',   icon: 'notifications' },
-  { href: '/admin/likes',         label: 'Likes',    icon: 'likes' },
-  { href: '/admin/reviews',       label: 'Reviews',  icon: 'reviews' },
-  { href: '/admin/sourcing',      label: 'Sourcing', icon: 'sourcing' },
-  { href: '/admin/scan',          label: 'Scan',     icon: 'scan' },
-  { href: '/admin/import',        label: 'Import',   icon: 'import' },
-  { href: '/admin/checkout',      label: 'In-store', icon: 'checkout' },
-  { href: '/admin/chatbot-kb',    label: 'Chatbot',  icon: 'chatbot' },
-  { href: '/admin/coupons',       label: 'Coupons',  icon: 'coupons' },
-  { href: '/admin/categories',    label: 'Categ.',   icon: 'categories' },
-  { href: '/admin/appearance',    label: 'Theme',    icon: 'appearance' },
+  { href: '/admin/dashboard',            label: 'Home',     icon: 'dashboard' },
+  { href: '/admin/products',             label: 'Products', icon: 'products' },
+  { href: '/admin/orders',               label: 'Orders',   icon: 'orders' },
+  { href: '/admin/notifications',        label: 'Alerts',   icon: 'notifications' },
+  { href: '/admin/likes',                label: 'Likes',    icon: 'likes' },
+  { href: '/admin/reviews',              label: 'Reviews',  icon: 'reviews' },
+  { href: '/admin/sourcing',             label: 'Sourcing', icon: 'sourcing' },
+  { href: '/admin/scan',                 label: 'Scan',     icon: 'scan' },
+  { href: '/admin/import',               label: 'Import',   icon: 'import' },
+  { href: '/admin/checkout',             label: 'In-store', icon: 'checkout' },
+  { href: '/admin/chatbot-kb',           label: 'Chatbot',  icon: 'chatbot' },
+  { href: '/admin/coupons',              label: 'Coupons',  icon: 'coupons' },
+  { href: '/admin/categories',           label: 'Categ.',   icon: 'categories' },
+  { href: '/admin/shipping-providers',   label: 'Shipping', icon: 'shipping' },
+  { href: '/admin/appearance',           label: 'Theme',    icon: 'appearance' },
 ];
 
 /* ── Layout ──────────────────────────────────────────────────────── */
