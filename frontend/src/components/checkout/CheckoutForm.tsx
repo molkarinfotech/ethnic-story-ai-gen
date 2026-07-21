@@ -46,16 +46,11 @@ async function fetchStockForItems(items: CartItem[]): Promise<StockMap> {
   const map: StockMap = {};
   for (const { pid, variants } of results) {
     for (const v of variants) {
-      // Always coerce to number — DB may return string
       const count = Number(v.stock_count);
       map[itemKey(pid, v.size)] = count;
-      // product-level key: max stock across all variants (for products without a selected size)
       map[pid] = Math.max(map[pid] ?? 0, count);
     }
-    // If no variants exist for this product, mark it explicitly as 0
-    if (!variants || variants.length === 0) {
-      map[pid] = 0;
-    }
+    if (!variants || variants.length === 0) map[pid] = 0;
   }
   return map;
 }
@@ -114,7 +109,7 @@ function CouponInput({
         />
         <button onClick={handleApply} disabled={loading}
           style={{ padding: 'var(--space-2) var(--space-4)', background: loading ? 'var(--color-border)' : 'var(--color-text)', color: 'var(--color-bg)', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', fontWeight: 700, cursor: loading ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
-          {loading ? '…' : 'Apply'}
+          {loading ? '\u2026' : 'Apply'}
         </button>
       </div>
       {error && <p style={{ fontSize: 'var(--text-xs)', color: '#dc2626', margin: 'var(--space-1) 0 0' }}>{error}</p>}
@@ -125,7 +120,7 @@ function CouponInput({
 // ─── Inner payment form ───────────────────────────────────────────────────────
 function PaymentForm({
   grandTotal, selectedItems, paymentIntentId, accessToken, isLoggedIn,
-  addr, setAddr, stockMap, discountAmount, appliedCoupon,
+  addr, setAddr, stockMap, discountAmount, appliedCoupon, subtotal, shippingCost,
 }: {
   grandTotal: number;
   selectedItems: CartItem[];
@@ -137,6 +132,8 @@ function PaymentForm({
   stockMap: StockMap;
   discountAmount: number;
   appliedCoupon: (CouponResult & { valid: true }) | null;
+  subtotal: number;
+  shippingCost: number;
 }) {
   const stripe   = useStripe();
   const elements = useElements();
@@ -168,7 +165,6 @@ function PaymentForm({
     // ── Stock guard: re-check every selected item before charging ──────────
     for (const item of selectedItems) {
       const key        = itemKey(item.id, item.selectedSize);
-      // Use size-specific stock first; fall back to product-level; default 0 (not 99)
       const stock      = stockMap[key] ?? stockMap[item.id] ?? 0;
       if (stock <= 0) {
         setErrorMsg(`"${item.name}"${item.selectedSize ? ` (${item.selectedSize})` : ''} is out of stock and cannot be purchased.`);
@@ -214,7 +210,16 @@ function PaymentForm({
       });
     } catch { /* non-fatal */ }
 
-    const snap = { name, email, phone, line1, line2, suburb, state, postcode, total: grandTotal, items: orderItems };
+    // Include subtotal, shippingCost, discountAmount in snap so success page can render correctly
+    const snap = {
+      name, email, phone, line1, line2, suburb, state, postcode,
+      total: grandTotal,
+      subtotal,
+      shippingCost,
+      discountAmount,
+      couponCode: appliedCoupon?.code ?? null,
+      items: orderItems,
+    };
     const snapParam = btoa(encodeURIComponent(JSON.stringify(snap)));
 
     const { error } = await stripe.confirmPayment({
@@ -240,7 +245,7 @@ function PaymentForm({
     <form className="checkout-form" onSubmit={handleSubmit}>
       <h2 className="checkout-section-title">Contact information</h2>
       {isLoggedIn && (
-        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)', marginTop: '-2px' }}>✓ Signed in — your details have been pre-filled.</p>
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)', marginTop: '-2px' }}>\u2713 Signed in \u2014 your details have been pre-filled.</p>
       )}
       <div className="checkout-fields">
         <div className="checkout-field">
@@ -284,7 +289,7 @@ function PaymentForm({
           <label htmlFor="co-state" className="checkout-label">State / Territory *</label>
           <select id="co-state" className="checkout-input" required value={addr.state}
             onChange={e => setAddr(prev => ({ ...prev, state: e.target.value }))}>
-            <option value="">Select state…</option>
+            <option value="">Select state\u2026</option>
             {AU_STATES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
@@ -308,9 +313,9 @@ function PaymentForm({
       <button type="submit" className="btn btn-primary"
         disabled={!stripe || loading || selectedItems.length === 0}
         style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-6)', minHeight: '52px', fontSize: 'var(--text-base)' }}>
-        {loading ? 'Processing…' : `Pay ${formatAUD(grandTotal)}`}
+        {loading ? 'Processing\u2026' : `Pay ${formatAUD(grandTotal)}`}
       </button>
-      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textAlign: 'center', marginTop: 'var(--space-3)' }}>🔒 Secured by Stripe · 256-bit SSL encryption</p>
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textAlign: 'center', marginTop: 'var(--space-3)' }}>\uD83D\uDD12 Secured by Stripe \u00B7 256-bit SSL encryption</p>
     </form>
   );
 }
@@ -334,7 +339,6 @@ function ItemSelector({
       <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
         {items.map(item => {
           const key = itemKey(item.id, item.selectedSize);
-          // Default to 0 (not 99) — unknown stock = treat as OOS until confirmed
           const stock      = stockLoaded ? (stockMap[key] ?? stockMap[item.id] ?? 0) : null;
           const outOfStock = stock !== null && stock <= 0;
           const overStock  = stock !== null && !outOfStock && item.quantity > stock;
@@ -353,14 +357,12 @@ function ItemSelector({
                 type="checkbox"
                 id={`item-sel-${key}`}
                 checked={checked}
-                // Disable checkbox if OOS or stock not yet loaded
                 disabled={outOfStock || !stockLoaded}
                 onChange={() => { if (!outOfStock && stockLoaded) onToggle(key); }}
                 style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary)', cursor: (outOfStock || !stockLoaded) ? 'not-allowed' : 'pointer', flexShrink: 0 }}
               />
               <label
                 htmlFor={`item-sel-${key}`}
-                // Also block the label click for OOS items
                 onClick={e => { if (outOfStock || !stockLoaded) e.preventDefault(); }}
                 style={{ flex: 1, cursor: (outOfStock || !stockLoaded) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}
               >
@@ -368,11 +370,11 @@ function ItemSelector({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                    {item.selectedSize && <span>Size: {item.selectedSize} · </span>}
+                    {item.selectedSize && <span>Size: {item.selectedSize} \u00B7 </span>}
                     Qty: {item.quantity}
-                    {!stockLoaded && <span style={{ color: 'var(--color-text-faint)', marginLeft: '0.5rem' }}>· Checking stock…</span>}
-                    {outOfStock && <span style={{ color: '#dc2626', fontWeight: 700, marginLeft: '0.5rem' }}>· Out of stock</span>}
-                    {overStock && !outOfStock && <span style={{ color: '#d97706', fontWeight: 600, marginLeft: '0.5rem' }}>· Only {stock} left</span>}
+                    {!stockLoaded && <span style={{ color: 'var(--color-text-faint)', marginLeft: '0.5rem' }}>\u00B7 Checking stock\u2026</span>}
+                    {outOfStock && <span style={{ color: '#dc2626', fontWeight: 700, marginLeft: '0.5rem' }}>\u00B7 Out of stock</span>}
+                    {overStock && !outOfStock && <span style={{ color: '#d97706', fontWeight: 600, marginLeft: '0.5rem' }}>\u00B7 Only {stock} left</span>}
                   </div>
                 </div>
                 <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', flexShrink: 0, color: outOfStock ? 'var(--color-text-muted)' : 'var(--color-text)' }}>
@@ -392,7 +394,7 @@ export function CheckoutForm() {
   const { items, totalItems, clearCart, hydrated } = useCart();
   const { user, session } = useAuth();
 
-  const [clientSecret, setClientSecret]       = useState('');
+  const [clientSecret, setClientSecret]         = useState('');
   const [paymentIntentId, setPaymentIntentId]   = useState('');
   const [intentError, setIntentError]           = useState('');
   const [prefillLoaded, setPrefillLoaded]       = useState(false);
@@ -436,14 +438,15 @@ export function CheckoutForm() {
     [items, selectedKeys]
   );
 
-  const selectedPrice = selectedItems.reduce((s, i) => s + i.price * i.quantity, 0);
-  const shipping      = selectedPrice >= 150 ? 0 : selectedPrice > 0 ? 12.95 : 0;
+  const selectedPrice  = selectedItems.reduce((s, i) => s + i.price * i.quantity, 0);
+  const shippingCost   = selectedPrice >= 150 ? 0 : selectedPrice > 0 ? 12.95 : 0;
 
   const discountAmount = appliedCoupon
-    ? Math.min(selectedPrice, appliedCoupon.discount_amount)
+    ? Math.round(Math.min(selectedPrice, appliedCoupon.discount_amount) * 100) / 100
     : 0;
-  const grandTotal = Math.max(0, selectedPrice + shipping - discountAmount);
+  const grandTotal = Math.max(0, selectedPrice + shippingCost - discountAmount);
 
+  // Re-validate coupon whenever selectedPrice changes
   useEffect(() => {
     if (!appliedCoupon) return;
     fetch('/api/validate-coupon', {
@@ -494,8 +497,9 @@ export function CheckoutForm() {
       .catch(() => {});
   }, [user, session, prefillLoaded]);
 
+  // Create PI only after stock is loaded and there are selected items
   useEffect(() => {
-    if (!hydrated || grandTotal < 0.5) return;
+    if (!hydrated || !stockLoaded || grandTotal < 0.5) return;
     if (intentCreated.current) return;
     intentCreated.current = true;
     fetch('/api/create-payment-intent', {
@@ -520,16 +524,16 @@ export function CheckoutForm() {
         }
       })
       .catch(() => {
-        setIntentError('Network error — please refresh and try again.');
+        setIntentError('Network error \u2014 please refresh and try again.');
         intentCreated.current = false;
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, grandTotal, session]);
+  }, [hydrated, stockLoaded, grandTotal, session]);
 
-  if (!hydrated) return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Loading your bag…</div>;
+  if (!hydrated) return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Loading your bag\u2026</div>;
   if (totalItems === 0) return (
     <div className="order-success">
-      <div className="order-success__icon">🛍️</div>
+      <div className="order-success__icon">\uD83D\uDED1</div>
       <h2>Your bag is empty</h2>
       <p>Add some beautiful pieces before checking out.</p>
       <a href="/collections" className="btn btn-primary" style={{ marginTop: 'var(--space-6)' }}>Shop collections</a>
@@ -537,13 +541,13 @@ export function CheckoutForm() {
   );
   if (intentError) return (
     <div className="order-success">
-      <div className="order-success__icon">⚠️</div>
+      <div className="order-success__icon">\u26A0\uFE0F</div>
       <h2>Payment setup failed</h2>
       <p>{intentError}</p>
       <button className="btn btn-primary" style={{ marginTop: 'var(--space-6)' }} onClick={() => { intentCreated.current = false; window.location.reload(); }}>Try again</button>
     </div>
   );
-  if (!clientSecret) return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Preparing payment…</div>;
+  if (!clientSecret) return <div style={{ textAlign: 'center', padding: 'var(--space-16) 0', color: 'var(--color-text-muted)' }}>Preparing payment\u2026</div>;
 
   const stripeAppearance = {
     theme: 'stripe' as const,
@@ -570,18 +574,20 @@ export function CheckoutForm() {
             stockMap={stockMap}
             discountAmount={discountAmount}
             appliedCoupon={appliedCoupon}
+            subtotal={selectedPrice}
+            shippingCost={shippingCost}
           />
         </div>
         <aside className="order-summary">
           <h2 className="checkout-section-title">Order summary</h2>
           {selectedItems.length === 0 ? (
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', padding: 'var(--space-4) 0' }}>No items selected — tick items above to see your total.</p>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', padding: 'var(--space-4) 0' }}>No items selected \u2014 tick items above to see your total.</p>
           ) : (
             <ul className="order-items">
               {selectedItems.map(item => (
                 <li key={itemKey(item.id, item.selectedSize)} className="order-item">
                   <div className="order-item__image">
-                    {item.image ? <img src={item.image} alt={item.name} /> : <span>🧵</span>}
+                    {item.image ? <img src={item.image} alt={item.name} /> : <span>\uD83E\uDDF5</span>}
                     <span className="order-item__qty">{item.quantity}</span>
                   </div>
                   <div className="order-item__details">
@@ -597,7 +603,7 @@ export function CheckoutForm() {
 
           {selectedItems.length > 0 && (
             <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-4)', marginTop: 'var(--space-3)' }}>
-              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)', fontWeight: 600 }}>🏷️ Have a coupon?</p>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)', fontWeight: 600 }}>\uD83C\uDFF7\uFE0F Have a coupon?</p>
               <CouponInput subtotal={selectedPrice} appliedCoupon={appliedCoupon} onApply={setAppliedCoupon} onRemove={() => setAppliedCoupon(null)} />
             </div>
           )}
@@ -606,15 +612,15 @@ export function CheckoutForm() {
             <div className="order-total-row"><span>Subtotal</span><span>{formatAUD(selectedPrice)}</span></div>
             <div className="order-total-row">
               <span>Shipping</span>
-              <span>{shipping === 0 && selectedPrice > 0 ? <span style={{ color: '#16a34a', fontWeight: 700 }}>Free</span> : selectedPrice > 0 ? formatAUD(shipping) : '—'}</span>
+              <span>{shippingCost === 0 && selectedPrice > 0 ? <span style={{ color: '#16a34a', fontWeight: 700 }}>Free</span> : selectedPrice > 0 ? formatAUD(shippingCost) : '\u2014'}</span>
             </div>
-            {shipping > 0 && selectedPrice > 0 && (
+            {shippingCost > 0 && selectedPrice > 0 && (
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '-.5rem' }}>Add {formatAUD(150 - selectedPrice)} more for free shipping</p>
             )}
             {discountAmount > 0 && (
               <div className="order-total-row" style={{ color: '#15803d' }}>
-                <span>🏷️ Coupon ({appliedCoupon?.discount_type === 'percentage' ? `${appliedCoupon.discount_value}% off` : `${appliedCoupon?.code}`})</span>
-                <span style={{ fontWeight: 700 }}>−{formatAUD(discountAmount)}</span>
+                <span>\uD83C\uDFF7\uFE0F Coupon ({appliedCoupon?.discount_type === 'percentage' ? `${appliedCoupon.discount_value}% off` : `${appliedCoupon?.code}`})</span>
+                <span style={{ fontWeight: 700 }}>\u2212{formatAUD(discountAmount)}</span>
               </div>
             )}
             <div className="order-total-row order-total-row--grand">
@@ -622,7 +628,7 @@ export function CheckoutForm() {
             </div>
           </div>
           <div className="order-trust">
-            {['🔒 Secure checkout', '↩️ 15-day returns', '🚚 Australia-wide delivery', '✅ Authentic products'].map(t => (
+            {['\uD83D\uDD12 Secure checkout', '\u21A9\uFE0F 15-day returns', '\uD83D\uDE9A Australia-wide delivery', '\u2705 Authentic products'].map(t => (
               <span key={t} className="order-trust-item">{t}</span>
             ))}
           </div>

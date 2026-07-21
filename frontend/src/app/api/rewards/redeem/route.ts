@@ -16,13 +16,14 @@ function getTokenFromRequest(req: NextRequest): string | null {
   const legacy = req.cookies.get('sb-access-token')?.value;
   if (legacy) return legacy;
 
+  // Chunked cookie: sb-<ref>-auth-token, sb-<ref>-auth-token.1, .2, ...
   const chunks: string[] = [];
   let i = 0;
   while (true) {
-    const chunk = req.cookies.get(
-      i === 0 ? 'sb-jcqywnbawpwtuaujqyyt-auth-token'
-              : `sb-jcqywnbawpwtuaujqyyt-auth-token.${i - 1}`,
-    )?.value;
+    const key = i === 0
+      ? 'sb-jcqywnbawpwtuaujqyyt-auth-token'
+      : `sb-jcqywnbawpwtuaujqyyt-auth-token.${i}`; // fix: was ${i-1}, off-by-one
+    const chunk = req.cookies.get(key)?.value;
     if (!chunk) break;
     chunks.push(chunk);
     i++;

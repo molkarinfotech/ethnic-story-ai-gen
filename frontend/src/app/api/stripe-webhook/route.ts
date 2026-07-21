@@ -42,8 +42,8 @@ export async function POST(req: NextRequest) {
 
     const sb = getServiceSupabase();
 
-    const itemsTotal  = items.reduce((s, i) => s + i.price * i.quantity, 0);
-    const totalAud    = pi.amount / 100;
+    const itemsTotal   = items.reduce((s, i) => s + i.price * i.quantity, 0);
+    const totalAud     = pi.amount / 100;
     const shippingCost = Math.max(0, Math.round((totalAud - itemsTotal) * 100) / 100);
 
     // ── 1. Save order ───────────────────────────────────────────────────────
@@ -116,21 +116,38 @@ export async function POST(req: NextRequest) {
     if (couponCode) {
       const { error: couponErr } = await sb.rpc('increment_coupon_usage', { p_code: couponCode });
       if (couponErr) {
-        // Non-fatal — log and continue
         console.error('[stripe-webhook] Coupon usage increment failed:', couponErr.message);
       } else {
         console.log(`[stripe-webhook] ✓ Coupon used_count incremented for: ${couponCode}`);
       }
     }
 
-    // ── 4. Fetch first variant image per item from product_images ───────────
+    // ── 4. Award purchase points (logged-in users only, 1 pt per $1 AUD) ───
+    if (m.user_id) {
+      const ptsEarned = Math.floor(totalAud);
+      if (ptsEarned > 0) {
+        const { error: ptsErr } = await sb.rpc('award_points', {
+          p_user_id:  m.user_id,
+          p_action:   'purchase',
+          p_points:   ptsEarned,
+          p_ref_id:   orderId,
+          p_idem_key: `purchase:${orderId}`,
+        });
+        if (ptsErr) {
+          console.error('[stripe-webhook] award_points failed:', ptsErr.message);
+        } else {
+          console.log(`[stripe-webhook] ✓ Awarded ${ptsEarned} pts to user ${m.user_id} for order ${orderId}`);
+        }
+      }
+    }
+
+    // ── 5. Fetch first variant image per item from product_images ────────────
     const seen: Record<string, boolean> = {};
     const productIds: string[] = [];
     for (const i of items) {
       if (i.id && !seen[i.id]) { seen[i.id] = true; productIds.push(i.id); }
     }
 
-    // Fetch fallback product-level images
     const { data: productRows } = await sb
       .from('products')
       .select('id, image')
@@ -140,7 +157,6 @@ export async function POST(req: NextRequest) {
       if (row.image) fallbackImageMap[row.id] = row.image;
     }
 
-    // Build a per-item variant image map: key = `${productId}:${colour}`
     const variantImageMap: Record<string, string> = {};
     for (const item of items) {
       if (!item.id) continue;
@@ -160,7 +176,7 @@ export async function POST(req: NextRequest) {
       if (imgRows?.[0]?.url) variantImageMap[key] = imgRows[0].url;
     }
 
-    // ── 5. Send order confirmation email ────────────────────────────────────
+    // ── 6. Send order confirmation email ─────────────────────────────────────
     if (m.customer_email) {
       try {
         const emailPayload = buildOrderConfirmationEmail({

@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '../../../../lib/supabase';
 
-// Never cache this route — always return fresh data from Supabase
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+const ORDER_SELECT = [
+  'id', 'created_at', 'amount_aud', 'status', 'fulfillment_status',
+  'items', 'customer_name', 'customer_email', 'customer_phone',
+  'shipping_address', 'stripe_payment_intent_id',
+  'tracking_number', 'shipping_carrier', 'notes',
+  'coupon_code', 'discount_amount', 'shipping_cost',
+].join(', ');
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization') ?? '';
@@ -17,19 +24,19 @@ export async function GET(req: NextRequest) {
   // 1. Orders directly linked by user_id
   const { data: byId } = await sb
     .from('orders')
-    .select('id, created_at, amount_aud, status, items, customer_name, customer_email, customer_phone, shipping_address, stripe_payment_intent_id')
+    .select(ORDER_SELECT)
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
-  // 2. Orders with no user_id but matching the auth email (pre-user_id-stamp legacy / guest orders)
+  // 2. Orders with no user_id but matching auth email (guest / pre-stamp legacy)
   const { data: byEmail } = await sb
     .from('orders')
-    .select('id, created_at, amount_aud, status, items, customer_name, customer_email, customer_phone, shipping_address, stripe_payment_intent_id')
+    .select(ORDER_SELECT)
     .is('user_id', null)
     .ilike('customer_email', user.email ?? '')
     .order('created_at', { ascending: false });
 
-  // 3. Merge + deduplicate (user_id rows take priority)
+  // 3. Merge + deduplicate
   const seen = new Set<string>();
   const orders = [...(byId ?? []), ...(byEmail ?? [])].filter(o => {
     if (seen.has(o.id)) return false;
@@ -37,7 +44,7 @@ export async function GET(req: NextRequest) {
     return true;
   });
 
-  // 4. Back-fill user_id on any email-matched orders so future queries find them by user_id
+  // 4. Back-fill user_id on legacy email-matched orders
   const legacyIds = (byEmail ?? []).map(o => o.id);
   if (legacyIds.length > 0) {
     sb.from('orders').update({ user_id: user.id }).in('id', legacyIds).then(() => {});
@@ -45,8 +52,6 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(orders, {
     headers: {
-      // Belt-and-suspenders: also set Cache-Control headers so CDN / browser
-      // doesn't serve a stale response even if Next.js caching is bypassed.
       'Cache-Control': 'no-store, no-cache, must-revalidate',
       'Pragma': 'no-cache',
     },
