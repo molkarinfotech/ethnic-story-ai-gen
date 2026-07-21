@@ -22,8 +22,6 @@ interface Props {
   origPrice?: number | null;
 }
 
-const TAB_BAR_HEIGHT = 'calc(64px + env(safe-area-inset-bottom))';
-
 export function ProductPageClient({ product, colourImages, badge, discount, origPrice }: Props) {
   const { addItem, openCart } = useCart();
 
@@ -34,6 +32,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     Object.keys(colourImages)[0] ?? ''
   );
   const [size, setSize]               = useState<string | null>(null);
+  const [variantId, setVariantId]     = useState<string | undefined>(undefined);
   const [sizeInStock, setSizeInStock] = useState(true);
   const [maxQty, setMaxQty]           = useState<number>(99);
   const [qty, setQty]                 = useState(1);
@@ -46,7 +45,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
   const [notifyStatus, setNotifyStatus]   = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [notifyMessage, setNotifyMessage] = useState('');
 
-  const atcRef          = useRef<HTMLDivElement>(null);
+  const atcRef = useRef<HTMLDivElement>(null);
   const [showSticky, setShowSticky] = useState(false);
 
   useEffect(() => {
@@ -67,8 +66,6 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     });
   }, []);
 
-  // null = not yet fetched; true = product has NO variants at all (globally OOS); false = has at least one variant
-  // Per-colour+size OOS is handled entirely by sizeInStock from handleSizeChange.
   const [globalOOS,    setGlobalOOS]    = useState<boolean | null>(null);
   const [stockChecked, setStockChecked] = useState(false);
 
@@ -77,15 +74,9 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     fetch(`/api/variants/${product.id}?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
       .then((data: { stock_count: number }[]) => {
-        if (!Array.isArray(data) || data.length === 0) {
-          setGlobalOOS(true);
-        } else {
-          setGlobalOOS(false);
-        }
+        setGlobalOOS(!Array.isArray(data) || data.length === 0);
       })
-      .catch(() => {
-        setGlobalOOS(false);
-      })
+      .catch(() => setGlobalOOS(false))
       .finally(() => setStockChecked(true));
   }, [product.id, isComingSoon]);
 
@@ -100,14 +91,16 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     inStock: boolean,
     stockCount: number,
     colour: string,
+    vid?: string,
   ) => {
     setSize(sel);
+    setVariantId(vid);
     setSelectedColour(colour || selectedColour);
     setSizeInStock(inStock);
     setMaxQty(stockCount > 0 ? stockCount : 0);
     setQty(1);
     setError(false);
-    // Reset notify state when selection changes
+    // Reset notify panel when variant changes
     setNotifyStatus('idle');
     setNotifyMessage('');
   }, [selectedColour]);
@@ -144,6 +137,9 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
           productId: product.id,
           productName: product.name,
           productSlug: product.slug,
+          variantId: variantId ?? null,
+          size: size ?? null,
+          colour: selectedColour || null,
         }),
       });
       const json = await res.json();
@@ -165,23 +161,27 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     (size !== null && !sizeInStock)
   );
   const atMax = size !== null && qty >= maxQty && maxQty > 0;
-
   const atcDisabled = !stockChecked || isComingSoon || outOfStock;
 
   const atcLabel = () => {
-    if (isComingSoon)               return '⏳ Coming Soon';
-    if (!stockChecked)              return 'Checking stock…';
-    if (added)                      return '✓ Added to Bag';
-    if (globalOOS === true)         return '🚫 Out of Stock';
-    if (size !== null && !sizeInStock) return 'Out of Stock — Select another size';
-    if (isPreOrder)                 return '🛒 Pre-Order Now';
+    if (isComingSoon)                    return '⏳ Coming Soon';
+    if (!stockChecked)                   return 'Checking stock…';
+    if (added)                           return '✓ Added to Bag';
+    if (globalOOS === true)              return '🚫 Out of Stock';
+    if (size !== null && !sizeInStock)   return '🚫 Out of Stock';
+    if (isPreOrder)                      return '🛒 Pre-Order Now';
     return 'Add to Bag';
   };
 
-  // Show notify panel when globally OOS OR when a specific size is selected and OOS
+  // Show notify panel when globally OOS OR a specific OOS size is selected
   const showNotifyPanel = !isComingSoon && stockChecked && (
     globalOOS === true || (size !== null && !sizeInStock)
   );
+
+  // Label for notify panel — be specific when a variant is selected
+  const notifyVariantLabel = size
+    ? `${product.name}${selectedColour ? ` — ${selectedColour}` : ''} (${size})`
+    : product.name;
 
   return (
     <>
@@ -259,50 +259,50 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
               <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>⏳</span>
               <div>
                 <div style={{ fontWeight: 700, color: '#1d4ed8', fontSize: 'var(--text-sm)' }}>Coming Soon</div>
-                <div style={{ color: '#6b7280', fontSize: 'var(--text-xs)', marginTop: '.2rem' }}>This piece is not yet available for purchase. Check back soon or sign up below to be notified.</div>
+                <div style={{ color: '#6b7280', fontSize: 'var(--text-xs)', marginTop: '.2rem' }}>This piece is not yet available for purchase. Check back soon.</div>
               </div>
             </div>
           )}
 
-          {/* Global OOS banner — only shown when product has NO variants at all */}
+          {/* Global OOS banner */}
           {stockChecked && globalOOS === true && !isComingSoon && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4) var(--space-5)', marginBottom: 'var(--space-5)' }}>
               <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>🚫</span>
               <div>
                 <div style={{ fontWeight: 700, color: '#b91c1c', fontSize: 'var(--text-sm)' }}>Currently Out of Stock</div>
-                <div style={{ color: '#6b7280', fontSize: 'var(--text-xs)', marginTop: '.2rem' }}>This item is unavailable right now. Enter your email below and we'll notify you the moment it's back.</div>
+                <div style={{ color: '#6b7280', fontSize: 'var(--text-xs)', marginTop: '.2rem' }}>Enter your email below and we'll notify you the moment it's back.</div>
               </div>
             </div>
           )}
 
           {/* Variant selector + inline ATC */}
           <div ref={atcRef} className="pdp-atc">
-            {!isComingSoon && globalOOS !== true && stockChecked && (
+            {/* Always show SizeSelector so OOS variants are visible & clickable */}
+            {!isComingSoon && stockChecked && (
               <>
                 <SizeSelector productId={product.id} onSizeChange={handleSizeChange} />
                 {error && !size && (
                   <p style={{ color: '#dc2626', fontSize: 'var(--text-xs)', marginTop: 'var(--space-2)' }}>Please select a size</p>
                 )}
-                <div className="pdp-qty-row" style={{ marginTop: 'var(--space-5)' }}>
-                  <span className="pdp-qty-label">Quantity</span>
-                  <div className="qty-control">
-                    <button className="qty-btn" onClick={() => setQty(q => Math.max(1, q - 1))} aria-label="Decrease">−</button>
-                    <span className="qty-value">{qty}</span>
-                    <button
-                      className="qty-btn"
-                      onClick={() => { if (!atMax) setQty(q => Math.min(maxQty, q + 1)); }}
-                      disabled={atMax || !size || !sizeInStock}
-                      style={{ opacity: (atMax || !size || !sizeInStock) ? 0.35 : 1, cursor: (atMax || !size || !sizeInStock) ? 'not-allowed' : 'pointer' }}
-                    >+</button>
-                  </div>
-                  {atMax && <span style={{ fontSize: 'var(--text-xs)', color: '#dc2626', fontWeight: 600 }}>Max {maxQty} available</span>}
-                </div>
               </>
             )}
 
-            {/* Size selector is still shown even if globalOOS so user can see what sizes exist */}
-            {!isComingSoon && globalOOS === true && stockChecked && (
-              <SizeSelector productId={product.id} onSizeChange={handleSizeChange} />
+            {/* Qty row — only when in-stock variant selected */}
+            {!isComingSoon && globalOOS !== true && stockChecked && size !== null && sizeInStock && (
+              <div className="pdp-qty-row" style={{ marginTop: 'var(--space-5)' }}>
+                <span className="pdp-qty-label">Quantity</span>
+                <div className="qty-control">
+                  <button className="qty-btn" onClick={() => setQty(q => Math.max(1, q - 1))} aria-label="Decrease">−</button>
+                  <span className="qty-value">{qty}</span>
+                  <button
+                    className="qty-btn"
+                    onClick={() => { if (!atMax) setQty(q => Math.min(maxQty, q + 1)); }}
+                    disabled={atMax}
+                    style={{ opacity: atMax ? 0.35 : 1, cursor: atMax ? 'not-allowed' : 'pointer' }}
+                  >+</button>
+                </div>
+                {atMax && <span style={{ fontSize: 'var(--text-xs)', color: '#dc2626', fontWeight: 600 }}>Max {maxQty} available</span>}
+              </div>
             )}
 
             <button
@@ -321,7 +321,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
               {atcLabel()}
             </button>
 
-            {!isComingSoon && globalOOS !== true && stockChecked && !(size !== null && !sizeInStock) && (
+            {!isComingSoon && globalOOS !== true && stockChecked && size !== null && sizeInStock && (
               <a
                 href="#"
                 className="btn btn-secondary pdp-buynow-btn"
@@ -351,10 +351,13 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
                   </div>
                 ) : (
                   <>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-1)' }}>
                       <span style={{ fontSize: '1.1rem' }}>🔔</span>
                       <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>Notify me when back in stock</span>
                     </div>
+                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)', lineHeight: 1.5 }}>
+                      {notifyVariantLabel}
+                    </p>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'stretch' }}>
                       <input
                         type="email"

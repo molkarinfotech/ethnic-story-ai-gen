@@ -18,7 +18,6 @@ function uniqueColours(variants: Variant[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const v of variants) {
-    // Only add colours that are real non-empty strings
     if (v.colour && v.colour.trim() && !seen.has(v.colour)) {
       seen.add(v.colour);
       out.push(v.colour);
@@ -33,7 +32,7 @@ export function SizeSelector({
   onColourChange,
 }: {
   productId: string;
-  onSizeChange?: (size: string | null, inStock: boolean, stockCount: number, colour: string) => void;
+  onSizeChange?: (size: string | null, inStock: boolean, stockCount: number, colour: string, variantId?: string) => void;
   onColourChange?: (colour: string) => void;
 }) {
   const [variants, setVariants]     = useState<Variant[]>([]);
@@ -48,13 +47,11 @@ export function SizeSelector({
         if (Array.isArray(data) && data.length > 0) {
           const norm: Variant[] = data.map((v: Variant) => ({
             ...v,
-            // Normalise: treat null/undefined/whitespace-only colour as empty string
             colour: (v.colour ?? '').trim(),
             stock_count: Number(v.stock_count),
           }));
           const sorted = sortSizes(norm);
           setVariants(sorted);
-          // Only set a default colour if there are real colour values
           const firstColour = sorted.find(v => v.colour !== '')?.colour ?? '';
           setColour(firstColour);
           if (firstColour) onColourChange?.(firstColour);
@@ -69,8 +66,6 @@ export function SizeSelector({
 
   const colours = uniqueColours(variants);
   const hasColours = colours.length > 0;
-  // When there are colours, only show sizes for the selected colour.
-  // When there are no colours (single-colour or colour-agnostic product), show all variants.
   const filteredVariants = hasColours
     ? variants.filter(v => v.colour === selectedColour)
     : variants;
@@ -79,13 +74,13 @@ export function SizeSelector({
     setColour(c);
     setSelected(null);
     onColourChange?.(c);
-    onSizeChange?.(null, false, 0, c);
+    onSizeChange?.(null, false, 0, c, undefined);
   }
 
   function selectSize(v: Variant) {
     const inStock = v.stock_count > 0;
     setSelected(v.size);
-    onSizeChange?.(v.size, inStock, v.stock_count, v.colour);
+    onSizeChange?.(v.size, inStock, v.stock_count, v.colour, v.id);
   }
 
   if (!loading && variants.length === 0) return null;
@@ -98,11 +93,10 @@ export function SizeSelector({
 
   return (
     <div>
-      {/* Colour swatches — only rendered when the product genuinely has colour variants */}
+      {/* Colour swatches */}
       {hasColours && (
         <div style={{ marginBottom: 'var(--space-5)' }}>
           <label style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 'var(--space-2)' }}>
-            {/* Only show the selected colour name when one is actually selected */}
             Colour{selectedColour ? <span style={{ color: 'var(--color-text)', fontWeight: 700 }}> — {selectedColour}</span> : null}
           </label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
@@ -113,22 +107,29 @@ export function SizeSelector({
               return (
                 <button
                   key={c}
-                  onClick={() => !allOOS && selectColour(c)}
-                  disabled={allOOS}
+                  onClick={() => selectColour(c)}
                   title={allOOS ? `${c} — Out of stock` : c}
                   style={{
                     padding: '.4rem 1rem',
                     borderRadius: 'var(--radius-full)',
-                    border: isSelected ? '2px solid var(--color-primary)' : '1.5px solid var(--color-border)',
-                    background: isSelected ? 'var(--color-primary-highlight)' : allOOS ? 'var(--color-surface-offset)' : 'white',
-                    color: isSelected ? 'var(--color-primary)' : allOOS ? 'var(--color-text-faint)' : 'var(--color-text)',
+                    border: isSelected
+                      ? allOOS ? '2px solid #fca5a5' : '2px solid var(--color-primary)'
+                      : allOOS ? '1px dashed var(--color-border)' : '1.5px solid var(--color-border)',
+                    background: isSelected
+                      ? allOOS ? '#fef2f2' : 'var(--color-primary-highlight)'
+                      : allOOS ? 'var(--color-surface-offset)' : 'white',
+                    color: isSelected
+                      ? allOOS ? '#b91c1c' : 'var(--color-primary)'
+                      : allOOS ? 'var(--color-text-faint)' : 'var(--color-text)',
                     fontWeight: isSelected ? 700 : 500,
                     fontSize: 'var(--text-sm)',
-                    cursor: allOOS ? 'not-allowed' : 'pointer',
-                    textDecoration: allOOS ? 'line-through' : 'none',
+                    cursor: 'pointer',
+                    textDecoration: 'none',
                     transition: 'all .15s',
                   }}
-                >{c}</button>
+                >
+                  {c}{allOOS ? ' — OOS' : ''}
+                </button>
               );
             })}
           </div>
@@ -138,7 +139,6 @@ export function SizeSelector({
       {/* Size pills */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
         <label style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-          {/* Only show the selected size name when one is actually selected */}
           Size{selected ? <span style={{ color: 'var(--color-text)', fontWeight: 700 }}> — {selected}</span> : null}
         </label>
         <a href="#" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-primary)' }}>Size guide</a>
@@ -153,7 +153,7 @@ export function SizeSelector({
             <button
               key={`${v.colour}-${v.size}`}
               onClick={() => selectSize(v)}
-              title={outOfStock ? 'Out of stock' : lowStock ? `Only ${v.stock_count} left` : ''}
+              title={outOfStock ? 'Out of stock — click to register for restock notification' : lowStock ? `Only ${v.stock_count} left` : ''}
               style={{
                 minWidth: '52px', padding: '.5rem .9rem',
                 borderRadius: 'var(--radius-md)',
@@ -168,15 +168,18 @@ export function SizeSelector({
                   : outOfStock ? 'var(--color-text-faint)' : 'var(--color-text)',
                 fontWeight: isSelected ? 700 : 500,
                 fontSize: 'var(--text-sm)',
-                cursor: outOfStock ? 'not-allowed' : 'pointer',
+                cursor: 'pointer',
                 position: 'relative',
-                textDecoration: outOfStock ? 'line-through' : 'none',
+                opacity: outOfStock ? 0.7 : 1,
                 transition: 'all .15s',
               }}
             >
               {v.size}
-              {lowStock && (
+              {lowStock && !outOfStock && (
                 <span style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#f59e0b', color: 'white', borderRadius: '2rem', fontSize: '0.6rem', padding: '1px 4px', fontWeight: 700, lineHeight: 1.4 }}>{v.stock_count}</span>
+              )}
+              {outOfStock && (
+                <span style={{ position: 'absolute', top: '-7px', right: '-7px', background: '#dc2626', color: 'white', borderRadius: '2rem', fontSize: '0.55rem', padding: '1px 4px', fontWeight: 700, lineHeight: 1.4, whiteSpace: 'nowrap' }}>OOS</span>
               )}
             </button>
           );
@@ -185,7 +188,8 @@ export function SizeSelector({
 
       {selectedVariant && (
         <p style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)', color: selectedVariant.stock_count === 0 ? '#b91c1c' : selectedVariant.stock_count <= 5 ? '#ca8a04' : 'var(--color-text-muted)' }}>
-          {selectedVariant.stock_count === 0 ? '❌ Out of stock'
+          {selectedVariant.stock_count === 0
+            ? '❌ Out of stock — register below to be notified when it's back'
             : selectedVariant.stock_count <= 5 ? `⚠️ Only ${selectedVariant.stock_count} left in this size`
             : '✅ In stock'}
         </p>

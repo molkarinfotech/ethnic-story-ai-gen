@@ -24,33 +24,43 @@ function checkRateLimit(ip: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
-  // Rate limit by IP
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   if (!checkRateLimit(ip)) {
     return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });
   }
 
-  const { email, productId, productName, productSlug } = await req.json();
+  const { email, productId, productName, productSlug, variantId, size, colour } = await req.json();
 
   if (!email || !productId || !productName) {
     return NextResponse.json({ error: 'email, productId, productName required' }, { status: 400 });
   }
-
-  // Validate email format
   if (!EMAIL_RE.test(String(email))) {
     return NextResponse.json({ error: 'Invalid email address' }, { status: 400 });
   }
-
-  // Enforce max field lengths
   if (String(email).length > 254 || String(productName).length > 200) {
     return NextResponse.json({ error: 'Input too long' }, { status: 400 });
   }
 
   const sb = getServiceSupabase();
 
+  // Conflict key: if variant_id is known, deduplicate on email+variant_id;
+  // otherwise fall back to email+product_id (global OOS case)
+  const record: Record<string, unknown> = {
+    email,
+    product_id:   productId,
+    product_name: productName,
+    product_slug: productSlug ?? null,
+    notified:     false,
+    variant_id:   variantId  ?? null,
+    size:         size       ?? null,
+    colour:       colour     ?? null,
+  };
+
+  const conflictCol = variantId ? 'email,variant_id' : 'email,product_id';
+
   const { error } = await sb.from('restock_notifications').upsert(
-    { email, product_id: productId, product_name: productName, product_slug: productSlug ?? null, notified: false },
-    { onConflict: 'email,product_id', ignoreDuplicates: true }
+    record,
+    { onConflict: conflictCol, ignoreDuplicates: true }
   );
 
   if (error) {
@@ -58,7 +68,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const emailPayload = buildRestockSubscribedEmail(productName, email);
+  // Build a label that mentions the specific variant if known
+  const variantLabel = [colour, size].filter(Boolean).join(' / ');
+  const displayName  = variantLabel ? `${productName} (${variantLabel})` : productName;
+
+  const emailPayload = buildRestockSubscribedEmail(displayName, email);
   sendEmail(emailPayload).catch(err => console.error('[notify-restock] Confirmation email failed:', err));
 
   return NextResponse.json({ subscribed: true });
