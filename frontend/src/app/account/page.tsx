@@ -84,7 +84,7 @@ export default function AccountPage() {
       if (Array.isArray(data)) setOrders(data);
       else setError(data.error ?? 'Failed to load orders');
     } catch {
-      setError('Network error \u2014 please try again.');
+      setError('Network error — please try again.');
     } finally {
       setOrdersLoading(false);
       setRefreshing(false);
@@ -104,7 +104,7 @@ export default function AccountPage() {
   }, []);
 
   if (authLoading || ordersLoading) return (
-    <main style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)' }}>Loading your account\u2026</main>
+    <main style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)' }}>Loading your account…</main>
   );
 
   return (
@@ -122,8 +122,8 @@ export default function AccountPage() {
         {/* Tab strip */}
         <div style={{ display: 'flex', gap: '.5rem', marginBottom: '1.75rem', borderBottom: '2px solid var(--color-border)', paddingBottom: '.75rem' }}>
           {([
-            { key: 'orders',  label: '\uD83D\uDCE6 My Orders' },
-            { key: 'rewards', label: '\uD83C\uDF1F My Rewards' },
+            { key: 'orders',  label: '📦 My Orders' },
+            { key: 'rewards', label: '🌟 My Rewards' },
           ] as { key: Tab; label: string }[]).map(({ key, label }) => (
             <button key={key} onClick={() => setTab(key)} style={{ padding: '.45rem 1.1rem', borderRadius: '2rem', border: 'none', background: tab === key ? 'var(--color-primary)' : 'transparent', color: tab === key ? '#fff' : 'var(--color-text-muted)', fontWeight: tab === key ? 700 : 500, fontSize: '.9rem', cursor: 'pointer', transition: 'all .15s' }}>
               {label}
@@ -140,8 +140,8 @@ export default function AccountPage() {
                 onClick={() => session && fetchOrders(session.access_token, true)}
                 disabled={refreshing}
                 style={{ fontSize: '0.8rem', fontWeight: 600, padding: '0.4rem 0.9rem', border: '1px solid var(--color-border)', borderRadius: '2rem', background: 'white', color: 'var(--color-text-muted)', cursor: refreshing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem', opacity: refreshing ? 0.6 : 1, transition: 'opacity 180ms' }}>
-                <span style={{ display: 'inline-block', animation: refreshing ? 'spin 0.7s linear infinite' : 'none' }}>\u21BB</span>
-                {refreshing ? 'Refreshing\u2026' : 'Refresh'}
+                <span style={{ display: 'inline-block', animation: refreshing ? 'spin 0.7s linear infinite' : 'none' }}>↻</span>
+                {refreshing ? 'Refreshing…' : 'Refresh'}
               </button>
             </div>
 
@@ -151,7 +151,7 @@ export default function AccountPage() {
 
             {orders.length === 0 && !error ? (
               <div style={{ background: 'white', borderRadius: '.75rem', padding: '3rem', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,.06)' }}>
-                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>\uD83D\uDED1</div>
+                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🛑</div>
                 <h2 style={{ fontWeight: 700, marginBottom: '.5rem' }}>No orders yet</h2>
                 <p style={{ color: 'var(--color-text-muted)', marginBottom: '1.5rem' }}>When you place an order, it will appear here.</p>
                 <a href="/collections" className="btn btn-primary">Shop now</a>
@@ -195,7 +195,7 @@ export default function AccountPage() {
                           {order.tracking_number && (
                             <span style={{ background: '#eff6ff', color: '#2563eb', borderRadius: '2rem', padding: '.2rem .75rem', fontSize: '0.72rem', fontWeight: 700 }}>🚚 Tracked</span>
                           )}
-                          <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{isOpen ? '\u25B2' : '\u25BC'}</span>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{isOpen ? '▲' : '▼'}</span>
                         </div>
                       </button>
 
@@ -206,7 +206,7 @@ export default function AccountPage() {
                           {(order.tracking_number || order.shipping_carrier) && (
                             <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '.65rem', padding: '.75rem 1rem' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '1.25rem' }}>\uD83D\uDE9A</span>
+                                <span style={{ fontSize: '1.25rem' }}>🚚</span>
                                 <div style={{ flex: 1, fontSize: '.875rem' }}>
                                   {order.shipping_carrier && <span style={{ fontWeight: 700 }}>{order.shipping_carrier} </span>}
                                   {order.tracking_number && (
@@ -244,7 +244,7 @@ export default function AccountPage() {
                                     <div style={{ width: '48px', height: '48px', borderRadius: '.4rem', background: 'var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
                                       {item.image
                                         ? <img src={item.image} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                        : <span style={{ fontSize: '1.5rem' }}>\uD83E\uDDF5</span>}
+                                        : <span style={{ fontSize: '1.5rem' }}>🧵</span>}
                                     </div>
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                       {productHref ? (
@@ -257,7 +257,7 @@ export default function AccountPage() {
                                         <span style={{ fontWeight: 600, fontSize: '0.875rem', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
                                       )}
                                       <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                        {item.size && <span>Size: {item.size} \u00B7 </span>}Qty: {item.quantity} \u00B7 {formatAUD(item.price)} each
+                                        {item.size && <span>Size: {item.size} · </span>}Qty: {item.quantity} · {formatAUD(item.price)} each
                                       </div>
                                     </div>
                                     <div style={{ fontWeight: 700, fontSize: '0.875rem', flexShrink: 0 }}>{formatAUD(item.price * item.quantity)}</div>
@@ -283,8 +283,8 @@ export default function AccountPage() {
                               )}
                               {discount > 0 && order.coupon_code && (
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#16a34a', fontWeight: 600 }}>
-                                  <span>\uD83C\uDFF7\uFE0F Coupon ({order.coupon_code})</span>
-                                  <span>\u2212{formatAUD(discount)}</span>
+                                  <span>🏷️ Coupon ({order.coupon_code})</span>
+                                  <span>−{formatAUD(discount)}</span>
                                 </div>
                               )}
                               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '0.9rem', color: 'var(--color-primary)', marginTop: '.25rem' }}>
@@ -309,8 +309,8 @@ export default function AccountPage() {
                               <div>
                                 <SectionLabel>Contact</SectionLabel>
                                 <div style={{ fontSize: '0.875rem', lineHeight: 1.9 }}>
-                                  {order.customer_email && <div>\uD83D\uDCE7 {order.customer_email}</div>}
-                                  {order.customer_phone && <div>\uD83D\uDCDE {order.customer_phone}</div>}
+                                  {order.customer_email && <div>📧 {order.customer_email}</div>}
+                                  {order.customer_phone && <div>📞 {order.customer_phone}</div>}
                                 </div>
                               </div>
                             )}
@@ -335,7 +335,7 @@ export default function AccountPage() {
         {tab === 'rewards' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
             <div style={{ width: '100%', maxWidth: 480 }}>
-              <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0 0 .25rem' }}>\uD83C\uDF1F My Rewards</h1>
+              <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0 0 .25rem' }}>🌟 My Rewards</h1>
               <p style={{ color: 'var(--color-text-muted)', fontSize: '.9rem', margin: '0 0 1.25rem' }}>
                 Earn points for every interaction. Redeem for discounts at checkout.
               </p>
@@ -347,11 +347,11 @@ export default function AccountPage() {
               <table style={{ width: '100%', fontSize: '.875rem', borderCollapse: 'collapse' }}>
                 <tbody>
                   {[
-                    ['\uD83C\uDD95 Sign up',           '50 pts',       'One-time welcome bonus'],
-                    ['\uD83D\uDED2 Place an order',    '1 pt / AU$1',  'Automatically on payment'],
-                    ['\u2764\uFE0F Like a product',    '10 pts',       'Per product, once each'],
-                    ['\u2B50 Write a review',           '10\u201325 pts', '25 pts if you bought the item'],
-                    ['\uD83C\uDF81 Redeem',             '200+ pts',     '80 pts = $1.00 AU \u00B7 valid 30 days'],
+                    ['🆕 Sign up',           '50 pts',       'One-time welcome bonus'],
+                    ['🛒 Place an order',    '1 pt / AU$1',  'Automatically on payment'],
+                    ['❤️ Like a product',    '10 pts',       'Per product, once each'],
+                    ['⭐ Write a review',     '10–25 pts', '25 pts if you bought the item'],
+                    ['🎁 Redeem',             '200+ pts',     '80 pts = $1.00 AU · valid 30 days'],
                   ].map(([action, pts, desc], i) => (
                     <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
                       <td style={{ padding: '.5rem 0', fontWeight: 600 }}>{action}</td>
