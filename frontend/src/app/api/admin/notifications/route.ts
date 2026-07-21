@@ -4,16 +4,16 @@ import { isAdminAuthed } from '../../../../lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
+const COLS = 'id, email, product_id, product_name, product_slug, variant_id, size, colour, notified, created_at';
+
 // ── GET  /api/admin/notifications ──────────────────────────────────────────────
-// Returns all restock notification requests.
-// Table schema: id, email, product_id, product_name, product_slug, notified (bool), created_at
 export async function GET(req: NextRequest) {
   if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const sb = getServiceSupabase();
   const { data, error } = await sb
     .from('restock_notifications')
-    .select('id, email, product_id, product_name, product_slug, notified, created_at')
+    .select(COLS)
     .order('created_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -22,8 +22,6 @@ export async function GET(req: NextRequest) {
 }
 
 // ── POST /api/admin/notifications ──────────────────────────────────────────────
-// action: 'send_one'          — send a single notification by id
-// action: 'send_all_pending'  — send all un-notified entries
 export async function POST(req: NextRequest) {
   if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -36,7 +34,7 @@ export async function POST(req: NextRequest) {
 
     const { data: entry, error: fetchErr } = await sb
       .from('restock_notifications')
-      .select('id, email, product_id, product_name, product_slug')
+      .select(COLS)
       .eq('id', id)
       .single();
 
@@ -57,7 +55,7 @@ export async function POST(req: NextRequest) {
   if (action === 'send_all_pending') {
     const { data: pending, error: fetchErr } = await sb
       .from('restock_notifications')
-      .select('id, email, product_id, product_name, product_slug')
+      .select(COLS)
       .eq('notified', false);
 
     if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
@@ -97,18 +95,29 @@ export async function DELETE(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-// ── Helper: trigger the existing restock confirmation email ────────────────────
-async function sendRestockEmail(entry: { email: string; product_id: string; product_name: string; product_slug?: string | null }) {
+// ── Helper ─────────────────────────────────────────────────────────────────────
+async function sendRestockEmail(entry: {
+  email: string;
+  product_id: string;
+  product_name: string;
+  product_slug?: string | null;
+  size?: string | null;
+  colour?: string | null;
+  variant_id?: string | null;
+}) {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://ethnicstory.com.au';
 
   const res = await fetch(`${baseUrl}/api/notify-restock`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      email:        entry.email,
-      productId:    entry.product_id,
-      productName:  entry.product_name,
-      productSlug:  entry.product_slug ?? null,
+      email:       entry.email,
+      productId:   entry.product_id,
+      productName: entry.product_name,
+      productSlug: entry.product_slug ?? null,
+      size:        entry.size ?? null,
+      colour:      entry.colour ?? null,
+      variantId:   entry.variant_id ?? null,
     }),
   });
 

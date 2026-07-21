@@ -7,6 +7,9 @@ interface NotificationEntry {
   product_id: string;
   product_name: string;
   product_slug?: string | null;
+  variant_id?: string | null;
+  size?: string | null;
+  colour?: string | null;
   notified: boolean;
   created_at: string;
 }
@@ -51,7 +54,7 @@ export default function AdminNotificationsPage() {
         body: JSON.stringify({ action: 'send_one', id }),
       });
       const json = await res.json();
-      if (res.ok) { showToast('Email sent ✔'); load(); }
+      if (res.ok) { showToast('Email sent \u2714'); load(); }
       else showToast(json.error ?? 'Failed to send', false);
     } catch {
       showToast('Network error', false);
@@ -72,7 +75,7 @@ export default function AdminNotificationsPage() {
         body: JSON.stringify({ action: 'send_all_pending' }),
       });
       const json = await res.json();
-      if (res.ok) { showToast(`Sent ${json.sent} email(s) ✔`); load(); }
+      if (res.ok) { showToast(`Sent ${json.sent} email(s) \u2714`); load(); }
       else showToast(json.error ?? 'Failed', false);
     } catch {
       showToast('Network error', false);
@@ -102,7 +105,11 @@ export default function AdminNotificationsPage() {
       filter === 'all' ? true : filter === 'pending' ? !e.notified : e.notified
     )
     .filter(e =>
-      !q || e.email.toLowerCase().includes(q) || e.product_name.toLowerCase().includes(q)
+      !q ||
+      e.email.toLowerCase().includes(q) ||
+      e.product_name.toLowerCase().includes(q) ||
+      (e.size   ?? '').toLowerCase().includes(q) ||
+      (e.colour ?? '').toLowerCase().includes(q)
     );
 
   const pendingCount  = entries.filter(e => !e.notified).length;
@@ -116,8 +123,14 @@ export default function AdminNotificationsPage() {
     marginBottom: '1.25rem',
   };
 
+  const pill = (text: string, bg: string, color: string) => (
+    <span style={{ background: bg, color, borderRadius: '2rem', padding: '.2rem .6rem', fontSize: '.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+      {text}
+    </span>
+  );
+
   return (
-    <div style={{ maxWidth: 900 }}>
+    <div style={{ maxWidth: 960 }}>
 
       {/* Toast */}
       {toast && (
@@ -136,7 +149,7 @@ export default function AdminNotificationsPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '.75rem', marginBottom: '1.5rem' }}>
         <div>
           <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1f2937', margin: 0 }}>
-            🔔 Restock Notifications
+            \uD83D\uDD14 Restock Notifications
           </h1>
           <p style={{ margin: '.25rem 0 0', fontSize: '.83rem', color: '#6b7280' }}>
             Customers waiting to be notified when products come back in stock
@@ -147,7 +160,7 @@ export default function AdminNotificationsPage() {
             onClick={load}
             style={{ padding: '.45rem .9rem', borderRadius: '.5rem', border: '1.5px solid #fce7f3', background: 'white', fontSize: '.82rem', cursor: 'pointer', color: '#6b7280', fontWeight: 600 }}
           >
-            ↻ Refresh
+            \u21BB Refresh
           </button>
           {pendingCount > 0 && (
             <button
@@ -155,7 +168,7 @@ export default function AdminNotificationsPage() {
               disabled={sendingAll}
               style={{ padding: '.45rem .9rem', borderRadius: '.5rem', border: 'none', background: sendingAll ? '#d1d5db' : '#9d174d', color: 'white', fontSize: '.82rem', cursor: sendingAll ? 'default' : 'pointer', fontWeight: 700 }}
             >
-              {sendingAll ? 'Sending…' : `📧 Notify All Pending (${pendingCount})`}
+              {sendingAll ? 'Sending\u2026' : `\uD83D\uDCE7 Notify All Pending (${pendingCount})`}
             </button>
           )}
         </div>
@@ -197,7 +210,7 @@ export default function AdminNotificationsPage() {
         </div>
         <input
           type="text"
-          placeholder="Search email or product…"
+          placeholder="Search email, product, size or colour\u2026"
           value={search}
           onChange={e => setSearch(e.target.value)}
           style={{
@@ -212,17 +225,17 @@ export default function AdminNotificationsPage() {
       {/* Table */}
       <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
         {loading ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: '#9ca3af', fontSize: '.9rem' }}>Loading…</div>
+          <div style={{ padding: '3rem', textAlign: 'center', color: '#9ca3af', fontSize: '.9rem' }}>Loading\u2026</div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: '3rem', textAlign: 'center', color: '#9ca3af', fontSize: '.9rem' }}>
-            {filter === 'pending' ? '✔️ No pending notifications' : 'No results found'}
+            {filter === 'pending' ? '\u2714\uFE0F No pending notifications' : 'No results found'}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.83rem' }}>
               <thead>
                 <tr style={{ background: '#fdf2f8', borderBottom: '1.5px solid #fce7f3' }}>
-                  {['Email', 'Product', 'Requested', 'Status', 'Actions'].map(h => (
+                  {['Email', 'Product', 'Colour', 'Size', 'Requested', 'Status', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '.75rem 1rem', textAlign: 'left', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -240,13 +253,23 @@ export default function AdminNotificationsPage() {
                         <span style={{ fontWeight: 600 }}>{e.product_name}</span>
                       )}
                     </td>
+                    <td style={{ padding: '.7rem 1rem' }}>
+                      {e.colour
+                        ? pill(e.colour, '#fce7f3', '#9d174d')
+                        : <span style={{ color: '#d1d5db', fontSize: '.75rem' }}>\u2014</span>}
+                    </td>
+                    <td style={{ padding: '.7rem 1rem' }}>
+                      {e.size
+                        ? pill(e.size, '#ede9fe', '#5b21b6')
+                        : <span style={{ color: '#d1d5db', fontSize: '.75rem' }}>\u2014</span>}
+                    </td>
                     <td style={{ padding: '.7rem 1rem', color: '#6b7280', whiteSpace: 'nowrap' }}>
                       {new Date(e.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: '2-digit' })}
                     </td>
                     <td style={{ padding: '.7rem 1rem' }}>
                       {e.notified ? (
                         <span style={{ background: '#d1fae5', color: '#065f46', borderRadius: '2rem', padding: '.2rem .65rem', fontSize: '.75rem', fontWeight: 700 }}>
-                          ✔ Notified
+                          \u2714 Notified
                         </span>
                       ) : (
                         <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: '2rem', padding: '.2rem .65rem', fontSize: '.75rem', fontWeight: 700 }}>
@@ -262,14 +285,14 @@ export default function AdminNotificationsPage() {
                             disabled={sending === e.id}
                             style={{ padding: '.3rem .65rem', borderRadius: '.4rem', border: 'none', background: sending === e.id ? '#d1d5db' : '#9d174d', color: 'white', fontSize: '.75rem', fontWeight: 700, cursor: sending === e.id ? 'default' : 'pointer' }}
                           >
-                            {sending === e.id ? '…' : '📧 Send'}
+                            {sending === e.id ? '\u2026' : '\uD83D\uDCE7 Send'}
                           </button>
                         )}
                         <button
                           onClick={() => deleteEntry(e.id)}
                           style={{ padding: '.3rem .65rem', borderRadius: '.4rem', border: '1.5px solid #fce7f3', background: 'white', color: '#ef4444', fontSize: '.75rem', fontWeight: 700, cursor: 'pointer' }}
                         >
-                          🗑️
+                          \uD83D\uDDD1\uFE0F
                         </button>
                       </div>
                     </td>
