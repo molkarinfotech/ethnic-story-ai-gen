@@ -1,7 +1,12 @@
 /**
  * POST /api/rewards/redeem  { points: number }
- * Converts points into a single-use coupon code.
+ * Converts points into a single-use coupon code valid for 30 days.
  * Minimum 200 pts = $2.50 AUD (80 pts = $1 AUD).
+ * The generated coupon is inserted into the `coupons` table so
+ * validate-coupon accepts it at checkout.
+ *
+ * GET /api/rewards/redeem
+ * Returns the user's redemption history (active + used).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '../../../../lib/supabase';
@@ -10,8 +15,9 @@ export const dynamic = 'force-dynamic';
 
 const RATE_PTS_PER_DOLLAR = 80;
 const MIN_REDEEM_PTS      = 200;
+const COUPON_VALIDITY_DAYS = 30;
 
-/** Extract the Supabase JWT from the chunked or legacy session cookie. */
+/** Extract the Supabase JWT from chunked or legacy session cookie. */
 function getTokenFromRequest(req: NextRequest): string | null {
   const legacy = req.cookies.get('sb-access-token')?.value;
   if (legacy) return legacy;
@@ -22,7 +28,7 @@ function getTokenFromRequest(req: NextRequest): string | null {
   while (true) {
     const key = i === 0
       ? 'sb-jcqywnbawpwtuaujqyyt-auth-token'
-      : `sb-jcqywnbawpwtuaujqyyt-auth-token.${i}`; // fix: was ${i-1}, off-by-one
+      : `sb-jcqywnbawpwtuaujqyyt-auth-token.${i}`;
     const chunk = req.cookies.get(key)?.value;
     if (!chunk) break;
     chunks.push(chunk);
@@ -36,11 +42,10 @@ function getTokenFromRequest(req: NextRequest): string | null {
       return chunks[0];
     }
   }
-
   return req.headers.get('authorization')?.replace('Bearer ', '') ?? null;
 }
 
-function generateCoupon(): string {
+function generateCouponCode(): string {
   const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
   return `ES-${rand}`;
 }
@@ -58,12 +63,12 @@ export async function POST(req: NextRequest) {
 
   if (!points || typeof points !== 'number' || points < MIN_REDEEM_PTS) {
     return NextResponse.json(
-      { error: `Minimum redemption is ${MIN_REDEEM_PTS} points` },
+      { error: `Minimum redemption is ${MIN_REDEEM_PTS} points.` },
       { status: 400 },
     );
   }
 
-  // Check balance
+  // ── Check balance ────────────────────────────────────────────────────────
   const { data: summary } = await svc
     .from('user_points_summary')
     .select('total_points')
@@ -78,11 +83,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const discount    = parseFloat((points / RATE_PTS_PER_DOLLAR).toFixed(2));
-  const coupon_code = generateCoupon();
-  const idem_key    = `redeem:${user.id}:${coupon_code}`;
+  const discount_aud = parseFloat((points / RATE_PTS_PER_DOLLAR).toFixed(2));
+  const coupon_code  = generateCouponCode();
+  const idem_key     = `redeem:${user.id}:${coupon_code}`;
 
-  // Deduct points
+  // expires 30 days from now (ISO string)
+  const expires_at = new Date(
+    Date.now() + COUPON_VALIDITY_DAYS * 24 * 60 * 60 * 1000
+  ).toISOString();
+
+  // ── 1. Deduct points (idempotent via award_points RPC) ───────────────────
   const { error: deductErr } = await svc.rpc('award_points', {
     p_user_id:  user.id,
     p_action:   'redeem',
@@ -92,16 +102,48 @@ export async function POST(req: NextRequest) {
   });
   if (deductErr) return NextResponse.json({ error: deductErr.message }, { status: 500 });
 
-  // Record redemption
+  // ── 2. Insert coupon into `coupons` table so validate-coupon accepts it ──
+  const { error: couponInsertErr } = await svc.from('coupons').insert({
+    code:             coupon_code,
+    description:      `Rewards redemption — ${points} pts by ${user.email ?? user.id}`,
+    discount_type:    'fixed',
+    discount_value:   discount_aud,
+    min_order_amount: null,
+    max_uses:         1,         // single-use
+    used_count:       0,
+    active:           true,
+    expires_at,
+  });
+  if (couponInsertErr) {
+    // Rollback: re-award the deducted points so balance stays consistent
+    await svc.rpc('award_points', {
+      p_user_id:  user.id,
+      p_action:   'redeem_rollback',
+      p_points:   points,
+      p_ref_id:   coupon_code,
+      p_idem_key: `${idem_key}:rollback`,
+    });
+    return NextResponse.json({ error: 'Failed to create coupon. Points have been refunded.' }, { status: 500 });
+  }
+
+  // ── 3. Record redemption in reward_redemptions for account history ────────
   const { error: redeemErr } = await svc.from('reward_redemptions').insert({
     user_id:      user.id,
     points_spent: points,
     coupon_code,
-    discount_aud: discount,
+    discount_aud,
+    expires_at,
   });
-  if (redeemErr) return NextResponse.json({ error: redeemErr.message }, { status: 500 });
+  // Non-fatal — coupon is usable even if this row fails
+  if (redeemErr) console.error('[rewards/redeem] reward_redemptions insert:', redeemErr.message);
 
-  return NextResponse.json({ ok: true, coupon_code, discount_aud: discount, points_spent: points });
+  return NextResponse.json({
+    ok:           true,
+    coupon_code,
+    discount_aud,
+    points_spent: points,
+    expires_at,
+  });
 }
 
 export async function GET(req: NextRequest) {
@@ -114,7 +156,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await svc
     .from('reward_redemptions')
-    .select('coupon_code, points_spent, discount_aud, redeemed_at, used_at')
+    .select('coupon_code, points_spent, discount_aud, redeemed_at, used_at, expires_at')
     .eq('user_id', user.id)
     .order('redeemed_at', { ascending: false });
 

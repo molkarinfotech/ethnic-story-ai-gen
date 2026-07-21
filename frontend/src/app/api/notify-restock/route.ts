@@ -9,27 +9,41 @@ import {
 export const dynamic = 'force-dynamic';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const RATE_LIMIT    = 5;
+const WINDOW_MINS   = 10;
 
-// Simple in-memory rate limiter: max 5 subscriptions per IP per 10 minutes
-const ipMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT = 5;
-const WINDOW_MS  = 10 * 60 * 1000;
+/**
+ * Rate-limit by persisting subscriber attempts in Supabase (restock_rate_limits table).
+ * Falls back to allowing the request if the table doesn't exist yet.
+ */
+async function checkRateLimit(ip: string): Promise<boolean> {
+  try {
+    const sb  = getServiceSupabase();
+    const now = new Date();
+    const windowStart = new Date(now.getTime() - WINDOW_MINS * 60 * 1000).toISOString();
 
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = ipMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    ipMap.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+    const { count } = await sb
+      .from('restock_rate_limits')
+      .select('*', { count: 'exact', head: true })
+      .eq('ip', ip)
+      .gte('created_at', windowStart);
+
+    if ((count ?? 0) >= RATE_LIMIT) return false;
+
+    // Record this attempt
+    await sb.from('restock_rate_limits').insert({ ip });
+    return true;
+  } catch {
+    // If table doesn't exist or any error, allow the request (fail open)
     return true;
   }
-  if (entry.count >= RATE_LIMIT) return false;
-  entry.count++;
-  return true;
 }
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  if (!checkRateLimit(ip)) {
+
+  const allowed = await checkRateLimit(ip);
+  if (!allowed) {
     return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });
   }
 
@@ -37,7 +51,7 @@ export async function POST(req: NextRequest) {
   const {
     email, productId, productName, productSlug,
     variantId, size, colour,
-    notifyType = 'restock',   // 'restock' | 'coming_soon'
+    notifyType = 'restock',
   } = body;
 
   if (!email || !productId || !productName) {
@@ -51,9 +65,6 @@ export async function POST(req: NextRequest) {
   }
 
   const sb = getServiceSupabase();
-
-  // For coming_soon notifications there is no specific variant;
-  // deduplicate on email + product_id.
   const isComingSoon = notifyType === 'coming_soon';
 
   const record: Record<string, unknown> = {
@@ -65,14 +76,10 @@ export async function POST(req: NextRequest) {
     variant_id:   isComingSoon ? null : (variantId  ?? null),
     size:         isComingSoon ? null : (size       ?? null),
     colour:       isComingSoon ? null : (colour     ?? null),
-    notify_type:  notifyType,   // stored in DB for admin filtering
+    notify_type:  notifyType,
   };
 
-  // Always deduplicate on email + product_id so a Coming Soon
-  // product doesn't produce duplicate rows across multiple clicks.
-  const conflictCol = (!isComingSoon && variantId)
-    ? 'email,variant_id'
-    : 'email,product_id';
+  const conflictCol = (!isComingSoon && variantId) ? 'email,variant_id' : 'email,product_id';
 
   const { error } = await sb.from('restock_notifications').upsert(
     record,
@@ -84,7 +91,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Send appropriate confirmation email
   const variantLabel = [colour, size].filter(Boolean).join(' / ');
   const displayName  = variantLabel ? `${productName} (${variantLabel})` : productName;
 
