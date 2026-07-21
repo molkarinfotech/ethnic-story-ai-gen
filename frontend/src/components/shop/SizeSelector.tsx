@@ -97,7 +97,7 @@ export function SizeSelector({
       {hasColours && (
         <div style={{ marginBottom: 'var(--space-5)' }}>
           <label style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 'var(--space-2)' }}>
-            Colour{selectedColour ? <span style={{ color: 'var(--color-text)', fontWeight: 700 }}> — {selectedColour}</span> : null}
+            Colour{selectedColour ? <span style={{ color: 'var(--color-text)', fontWeight: 700 }}> &mdash; {selectedColour}</span> : null}
           </label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
             {colours.map(c => {
@@ -139,7 +139,7 @@ export function SizeSelector({
       {/* Size pills */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
         <label style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-          Size{selected ? <span style={{ color: 'var(--color-text)', fontWeight: 700 }}> — {selected}</span> : null}
+          Size{selected ? <span style={{ color: 'var(--color-text)', fontWeight: 700 }}> &mdash; {selected}</span> : null}
         </label>
         <a href="#" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-primary)' }}>Size guide</a>
       </div>
@@ -153,7 +153,7 @@ export function SizeSelector({
             <button
               key={`${v.colour}-${v.size}`}
               onClick={() => selectSize(v)}
-              title={outOfStock ? 'Out of stock — click to register for restock notification' : lowStock ? `Only ${v.stock_count} left` : ''}
+              title={outOfStock ? 'Out of stock — click to register for a restock notification' : lowStock ? `Only ${v.stock_count} left` : ''}
               style={{
                 minWidth: '52px', padding: '.5rem .9rem',
                 borderRadius: 'var(--radius-md)',
@@ -189,9 +189,10 @@ export function SizeSelector({
       {selectedVariant && (
         <p style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)', color: selectedVariant.stock_count === 0 ? '#b91c1c' : selectedVariant.stock_count <= 5 ? '#ca8a04' : 'var(--color-text-muted)' }}>
           {selectedVariant.stock_count === 0
-            ? '❌ Out of stock — register below to be notified when it's back'
-            : selectedVariant.stock_count <= 5 ? `⚠️ Only ${selectedVariant.stock_count} left in this size`
-            : '✅ In stock'}
+            ? <>❌ Out of stock &mdash; register below to be notified when it is back</>
+            : selectedVariant.stock_count <= 5
+              ? `⚠️ Only ${selectedVariant.stock_count} left in this size`
+              : '✅ In stock'}
         </p>
       )}
     </div>
