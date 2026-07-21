@@ -38,6 +38,10 @@ export function generateStaticParams() {
   ];
 }
 
+function titleCase(s: string) {
+  return s.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function uniqueSubcats(products: Product[]): string[] {
   const seen: Record<string, true> = {};
@@ -48,6 +52,20 @@ function uniqueSubcats(products: Product[]): string[] {
   }
   return out;
 }
+
+const breadcrumbBar: React.CSSProperties = {
+  background: 'var(--color-surface)',
+  borderBottom: '1px solid var(--color-divider)',
+  padding: '.65rem 0',
+};
+const breadcrumbNav: React.CSSProperties = {
+  display: 'flex', gap: '.5rem', alignItems: 'center',
+  fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', flexWrap: 'wrap',
+};
+const bcLink: React.CSSProperties = {
+  color: 'var(--color-text-muted)', textDecoration: 'none',
+};
+const bcSep: React.CSSProperties = { color: 'var(--color-gold)' };
 
 export default async function CollectionSlugPage({ params }: { params: { category: string } }) {
   const { category } = params;
@@ -62,6 +80,19 @@ export default async function CollectionSlugPage({ params }: { params: { categor
 
     return (
       <main>
+        {/* Breadcrumb */}
+        <div style={breadcrumbBar}>
+          <div className="container">
+            <nav style={breadcrumbNav}>
+              <a href="/" style={bcLink}>Home</a>
+              <span style={bcSep}>/</span>
+              <a href="/collections" style={bcLink}>Collections</a>
+              <span style={bcSep}>/</span>
+              <span style={{ color: 'var(--color-text)', fontWeight: 500 }}>{genderMeta.label}</span>
+            </nav>
+          </div>
+        </div>
+
         <div className="page-header">
           <p className="page-header__eyebrow">Collections</p>
           <h1>{genderMeta.label}</h1>
@@ -93,21 +124,34 @@ export default async function CollectionSlugPage({ params }: { params: { categor
   }
 
   // -- Category page (sarees / lehengas / kurtas / sherwanis / accessories) --
-  // No gender filter -- shows ALL products matching the category.
-  const catMeta = CATEGORY_META[category];
-  if (!catMeta) notFound();
-
+  const catMeta = CATEGORY_META[category] ?? { label: titleCase(category), desc: '' };
   const products = allProducts.filter(p => p.category === category);
+
+  // If still totally unknown and no products, 404
+  if (!CATEGORY_META[category] && products.length === 0) notFound();
 
   const isAccessories = category === 'accessories';
   const accessorySubcats = isAccessories ? uniqueSubcats(products) : [];
 
   return (
     <main>
+      {/* Breadcrumb */}
+      <div style={breadcrumbBar}>
+        <div className="container">
+          <nav style={breadcrumbNav}>
+            <a href="/" style={bcLink}>Home</a>
+            <span style={bcSep}>/</span>
+            <a href="/collections" style={bcLink}>Collections</a>
+            <span style={bcSep}>/</span>
+            <span style={{ color: 'var(--color-text)', fontWeight: 500 }}>{catMeta.label}</span>
+          </nav>
+        </div>
+      </div>
+
       <div className="page-header">
         <p className="page-header__eyebrow">Collection</p>
         <h1>{catMeta.label}</h1>
-        <p>{catMeta.desc}</p>
+        {catMeta.desc && <p>{catMeta.desc}</p>}
       </div>
 
       {isAccessories && accessorySubcats.length > 0 && (

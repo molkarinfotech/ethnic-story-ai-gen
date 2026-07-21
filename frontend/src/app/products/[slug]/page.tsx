@@ -7,8 +7,15 @@ import { ProductPageClient, ColourImages } from '../../../components/shop/Produc
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const categoryLabel: Record<string, string> = {
+/** Capitalise each word — used as fallback when slug not in CATEGORY_LABEL */
+function titleCase(s: string) {
+  return s.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+const CATEGORY_LABEL: Record<string, string> = {
   sarees: 'Sarees', lehengas: 'Lehengas', kurtas: 'Kurtas', kids: 'Kids Wear',
+  sherwanis: 'Sherwanis', accessories: 'Accessories', anarkalis: 'Anarkalis',
+  dupattas: 'Dupattas', salwar: 'Salwar Suits', suits: 'Suits',
 };
 
 export default async function ProductPage({ params }: { params: { slug: string } }) {
@@ -17,7 +24,6 @@ export default async function ProductPage({ params }: { params: { slug: string }
 
   const sb = getServiceSupabase();
 
-  // Fetch all per-colour images for this product
   const { data: imgRows } = await sb
     .from('product_images')
     .select('colour, url, sort_order')
@@ -25,7 +31,6 @@ export default async function ProductPage({ params }: { params: { slug: string }
     .order('colour')
     .order('sort_order');
 
-  // Build ColourImages map.  '' key = ungrouped (no colour assigned)
   const colourImages: ColourImages = {};
   for (const row of imgRows ?? []) {
     const key = row.colour ?? '';
@@ -33,7 +38,6 @@ export default async function ProductPage({ params }: { params: { slug: string }
     colourImages[key].push(row.url);
   }
 
-  // If no rows in product_images yet, fall back to the legacy images[] column
   if (Object.keys(colourImages).length === 0) {
     const { data: prodData } = await sb
       .from('products')
@@ -45,7 +49,6 @@ export default async function ProductPage({ params }: { params: { slug: string }
     if (all.length > 0) colourImages[''] = all;
   }
 
-  // Final fallback: primary image only
   if (Object.keys(colourImages).length === 0 && product.image) {
     colourImages[''] = [product.image];
   }
@@ -58,30 +61,40 @@ export default async function ProductPage({ params }: { params: { slug: string }
   const origPrice = product.original_price ?? product.originalPrice;
   const discount  = origPrice ? Math.round((1 - product.price / origPrice) * 100) : null;
 
+  // Dynamic label — works for any DB category, not just hardcoded four
+  const catLabel = CATEGORY_LABEL[product.category] ?? titleCase(product.category);
+  // Optional subcategory support
+  const subcat = (product as Product & { subcategory?: string }).subcategory;
+
   return (
     <main style={{ background: 'var(--color-bg)' }}>
 
       {/* Breadcrumb */}
       <div style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-divider)', padding: '.75rem 0' }}>
         <div className="container">
-          <nav style={{ display: 'flex', gap: '.5rem', alignItems: 'center', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+          <nav style={{ display: 'flex', gap: '.5rem', alignItems: 'center', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', flexWrap: 'wrap' }}>
             <a href="/" style={{ color: 'var(--color-text-muted)', textDecoration: 'none' }}>Home</a>
             <span style={{ color: 'var(--color-gold)' }}>/</span>
             <a href="/collections" style={{ color: 'var(--color-text-muted)', textDecoration: 'none' }}>Collections</a>
             <span style={{ color: 'var(--color-gold)' }}>/</span>
-            <a href={`/collections/${product.category}`} style={{ color: 'var(--color-text-muted)', textDecoration: 'none' }}>{categoryLabel[product.category]}</a>
+            <a href={`/collections/${product.category}`} style={{ color: 'var(--color-text-muted)', textDecoration: 'none' }}>{catLabel}</a>
+            {subcat && (
+              <>
+                <span style={{ color: 'var(--color-gold)' }}>/</span>
+                <a href={`/collections/${product.category}/${subcat}`} style={{ color: 'var(--color-text-muted)', textDecoration: 'none', textTransform: 'capitalize' }}>{subcat}</a>
+              </>
+            )}
             <span style={{ color: 'var(--color-gold)' }}>/</span>
             <span style={{ color: 'var(--color-text)', fontWeight: 500 }}>{product.name}</span>
           </nav>
         </div>
       </div>
 
-      {/* Main PDP — client component owns carousel + variant selector state */}
       <section style={{ padding: 'var(--space-16) 0 var(--space-20)' }}>
         <div className="container">
           <div style={{ marginBottom: 'var(--space-4)' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.4rem', background: 'var(--color-primary-highlight)', color: 'var(--color-primary)', fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', padding: '.35rem .9rem', borderRadius: 'var(--radius-full)' }}>
-              {categoryLabel[product.category] ?? product.category}
+              {catLabel}
             </span>
           </div>
           <ProductPageClient
@@ -115,7 +128,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
           <div className="container">
             <div style={{ textAlign: 'center', marginBottom: 'var(--space-10)' }}>
               <span className="pill">You may also like</span>
-              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.5rem, 1rem + 1.5vw, 2.25rem)', marginTop: 'var(--space-4)', color: 'var(--color-text)' }}>More from {categoryLabel[product.category]}</h2>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.5rem, 1rem + 1.5vw, 2.25rem)', marginTop: 'var(--space-4)', color: 'var(--color-text)' }}>More from {catLabel}</h2>
             </div>
             <div className="grid-4">
               {related.map(p => (

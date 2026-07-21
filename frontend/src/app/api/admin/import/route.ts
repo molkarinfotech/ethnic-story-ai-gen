@@ -137,6 +137,21 @@ export async function POST(req: NextRequest) {
         }
         variantsUpserted++;
       }
+
+      // ── Sync in_stock flag: true only when at least one variant has stock ──
+      const { data: variantStocks } = await sb
+        .from('product_variants')
+        .select('stock_count')
+        .eq('product_id', productId);
+
+      const totalStock = (variantStocks ?? []).reduce(
+        (sum, r) => sum + (Number(r.stock_count) || 0), 0
+      );
+      await sb
+        .from('products')
+        .update({ in_stock: totalStock > 0 })
+        .eq('id', productId);
+
     } catch (e: unknown) {
       errors.push(`${meta.name}: ${e instanceof Error ? e.message : String(e)}`);
     }

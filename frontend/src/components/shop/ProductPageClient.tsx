@@ -70,11 +70,11 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
   const [stockChecked, setStockChecked] = useState(false);
 
   useEffect(() => {
+    // For Coming Soon: skip stock check but still mark stockChecked so UI renders
     if (isComingSoon) { setGlobalOOS(false); setStockChecked(true); return; }
     fetch(`/api/variants/${product.id}?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
       .then((data: { stock_count: number }[]) => {
-        // OOS only if NO variants exist OR none have stock_count > 0
         const hasStock = Array.isArray(data) && data.some(v => Number(v.stock_count) > 0);
         setGlobalOOS(!hasStock);
       })
@@ -102,7 +102,6 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     setMaxQty(stockCount > 0 ? stockCount : 0);
     setQty(1);
     setError(false);
-    // Reset notify panel when variant changes
     setNotifyStatus('idle');
     setNotifyMessage('');
   }, [selectedColour]);
@@ -135,19 +134,25 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: notifyEmail,
-          productId: product.id,
+          email:       notifyEmail,
+          productId:   product.id,
           productName: product.name,
           productSlug: product.slug,
-          variantId: variantId ?? null,
-          size: size ?? null,
-          colour: selectedColour || null,
+          // For Coming Soon: no specific variant
+          variantId:   isComingSoon ? null : (variantId ?? null),
+          size:        isComingSoon ? null : (size ?? null),
+          colour:      isComingSoon ? null : (selectedColour || null),
+          notifyType:  isComingSoon ? 'coming_soon' : 'restock',
         }),
       });
       const json = await res.json();
       if (res.ok && json.subscribed) {
         setNotifyStatus('done');
-        setNotifyMessage("You're on the list! We'll email you when it's back in stock.");
+        setNotifyMessage(
+          isComingSoon
+            ? "You're on the list! We'll email you as soon as this item launches."
+            : "You're on the list! We'll email you when it's back in stock."
+        );
       } else {
         setNotifyStatus('error');
         setNotifyMessage(json.error ?? 'Something went wrong. Please try again.');
@@ -175,15 +180,28 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     return 'Add to Bag';
   };
 
-  // Show notify panel when globally OOS OR a specific OOS size is selected
-  const showNotifyPanel = !isComingSoon && stockChecked && (
-    globalOOS === true || (size !== null && !sizeInStock)
+  // Show notify panel:
+  //   • Coming Soon — always (no size needed; notifies at launch)
+  //   • OOS — globally OOS, or a specific OOS size is selected
+  const showNotifyPanel = stockChecked && (
+    isComingSoon ||
+    globalOOS === true ||
+    (size !== null && !sizeInStock)
   );
 
-  // Label for notify panel — be specific when a variant is selected
-  const notifyVariantLabel = size
-    ? `${product.name}${selectedColour ? ` \u2014 ${selectedColour}` : ''} (${size})`
-    : product.name;
+  const notifyVariantLabel = isComingSoon
+    ? product.name
+    : size
+      ? `${product.name}${selectedColour ? ` \u2014 ${selectedColour}` : ''} (${size})`
+      : product.name;
+
+  const notifyPanelTitle = isComingSoon
+    ? 'Notify me when this launches'
+    : 'Notify me when back in stock';
+
+  const notifyPanelSubtitle = isComingSoon
+    ? "We'll email you the moment this item is available to purchase."
+    : undefined;
 
   return (
     <>
@@ -261,7 +279,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
               <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>&#9203;</span>
               <div>
                 <div style={{ fontWeight: 700, color: '#1d4ed8', fontSize: 'var(--text-sm)' }}>Coming Soon</div>
-                <div style={{ color: '#6b7280', fontSize: 'var(--text-xs)', marginTop: '.2rem' }}>This piece is not yet available for purchase. Check back soon.</div>
+                <div style={{ color: '#6b7280', fontSize: 'var(--text-xs)', marginTop: '.2rem' }}>This piece is not yet available for purchase. Get notified below when it launches.</div>
               </div>
             </div>
           )}
@@ -279,7 +297,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
 
           {/* Variant selector + inline ATC */}
           <div ref={atcRef} className="pdp-atc">
-            {/* Always show SizeSelector so OOS variants are visible & clickable */}
+            {/* Size selector — hidden for Coming Soon (no variants to pick) */}
             {!isComingSoon && stockChecked && (
               <>
                 <SizeSelector productId={product.id} onSizeChange={handleSizeChange} />
@@ -334,12 +352,12 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
               </a>
             )}
 
-            {/* Notify Me When In Stock */}
+            {/* Notify Me — Coming Soon OR Out of Stock */}
             {showNotifyPanel && (
               <div style={{
                 marginTop: 'var(--space-5)',
                 background: 'var(--color-surface)',
-                border: '1.5px solid var(--color-border)',
+                border: `1.5px solid ${isComingSoon ? '#bfdbfe' : 'var(--color-border)'}`,
                 borderRadius: 'var(--radius-lg)',
                 padding: 'var(--space-5)',
               }}>
@@ -354,11 +372,11 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
                 ) : (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-1)' }}>
-                      <span style={{ fontSize: '1.1rem' }}>&#128276;</span>
-                      <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>Notify me when back in stock</span>
+                      <span style={{ fontSize: '1.1rem' }}>{isComingSoon ? '🚀' : '🔔'}</span>
+                      <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>{notifyPanelTitle}</span>
                     </div>
                     <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)', lineHeight: 1.5 }}>
-                      {notifyVariantLabel}
+                      {notifyPanelSubtitle ?? notifyVariantLabel}
                     </p>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'stretch' }}>
                       <input
@@ -366,7 +384,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
                         value={notifyEmail}
                         onChange={e => { setNotifyEmail(e.target.value); setNotifyStatus('idle'); setNotifyMessage(''); }}
                         placeholder="your@email.com"
-                        aria-label="Email address for restock notification"
+                        aria-label="Email address for notification"
                         style={{
                           flex: 1,
                           padding: '.55rem var(--space-3)',
@@ -388,7 +406,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
                           padding: '.55rem var(--space-4)',
                           fontSize: 'var(--text-sm)',
                           fontWeight: 600,
-                          background: 'var(--color-primary)',
+                          background: isComingSoon ? '#1d4ed8' : 'var(--color-primary)',
                           color: '#fff',
                           border: 'none',
                           borderRadius: 'var(--radius-md)',
@@ -405,7 +423,9 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
                       <p style={{ color: '#dc2626', fontSize: 'var(--text-xs)', marginTop: 'var(--space-2)' }}>{notifyMessage}</p>
                     )}
                     <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
-                      We&apos;ll send one email when this item is restocked. No spam.
+                      {isComingSoon
+                        ? "One email when this item launches. No spam."
+                        : "We'll send one email when this item is restocked. No spam."}
                     </p>
                   </>
                 )}

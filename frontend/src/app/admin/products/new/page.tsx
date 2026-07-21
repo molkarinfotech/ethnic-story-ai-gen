@@ -74,7 +74,9 @@ export default function NewProductPage() {
         return;
       }
 
-      router.replace('/admin/products');
+      // Redirect to products list with manage panel open for the new product
+      const newId = (created?.id as string) ?? '';
+      router.replace(newId ? `/admin/products?manage=${newId}` : '/admin/products');
     } catch (err: unknown) {
       setSaving(false);
       setError(err instanceof Error ? err.message : 'Failed to save product.');
