@@ -2,23 +2,44 @@
 import { useEffect, useState } from 'react';
 
 const LETTER_SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
+// Sentinel values that should never appear as purchasable sizes
+const HIDDEN_SIZES = new Set(['__colour__', 'TBA']);
 
 export type Variant = { id: string; size: string; colour: string; stock_count: number };
 
+/**
+ * Sort order: standard letter sizes first (XS→Free Size), then numeric
+ * ascending, then any other text alphabetically.
+ * Works correctly for a colour group that mixes e.g. "M", "L" with "8", "10".
+ */
 function sortSizes(variants: Variant[]): Variant[] {
-  const letter  = variants.filter(v => LETTER_SIZE_ORDER.includes(v.size))
+  const letter  = variants
+    .filter(v => LETTER_SIZE_ORDER.includes(v.size))
     .sort((a, b) => LETTER_SIZE_ORDER.indexOf(a.size) - LETTER_SIZE_ORDER.indexOf(b.size));
-  const numeric = variants.filter(v => /^\d/.test(v.size))
+  const numeric = variants
+    .filter(v => !LETTER_SIZE_ORDER.includes(v.size) && /^\d/.test(v.size))
     .sort((a, b) => parseFloat(a.size) - parseFloat(b.size));
-  const other   = variants.filter(v => !LETTER_SIZE_ORDER.includes(v.size) && !/^\d/.test(v.size));
+  const other   = variants
+    .filter(v => !LETTER_SIZE_ORDER.includes(v.size) && !/^\d/.test(v.size))
+    .sort((a, b) => a.size.localeCompare(b.size));
   return [...letter, ...numeric, ...other];
+}
+
+/** Normalise a colour string: trim whitespace, collapse multiple spaces,
+ *  title-case each word. This ensures variants added with slight casing/spacing
+ *  differences are grouped together. */
+function normaliseColour(raw: string | null | undefined): string {
+  return (raw ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function uniqueColours(variants: Variant[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const v of variants) {
-    if (v.colour && v.colour.trim() && !seen.has(v.colour)) {
+    if (v.colour && !seen.has(v.colour)) {
       seen.add(v.colour);
       out.push(v.colour);
     }
@@ -45,11 +66,16 @@ export function SizeSelector({
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
-          const norm: Variant[] = data.map((v: Variant) => ({
-            ...v,
-            colour: (v.colour ?? '').trim(),
-            stock_count: Number(v.stock_count),
-          }));
+          const norm: Variant[] = data
+            // Filter out sentinel/placeholder sizes
+            .filter((v: Variant) => !HIDDEN_SIZES.has(v.size))
+            .map((v: Variant) => ({
+              ...v,
+              // Normalise colour so slight differences never split a group
+              colour: normaliseColour(v.colour),
+              stock_count: Number(v.stock_count),
+            }));
+          // Sort within each colour group correctly (letter → numeric → other)
           const sorted = sortSizes(norm);
           setVariants(sorted);
           const firstColour = sorted.find(v => v.colour !== '')?.colour ?? '';
@@ -66,9 +92,12 @@ export function SizeSelector({
 
   const colours = uniqueColours(variants);
   const hasColours = colours.length > 0;
+
+  // When the product has colour groups: show only sizes for the selected colour.
+  // When there are no colours (no colour column), show all sizes.
   const filteredVariants = hasColours
-    ? variants.filter(v => v.colour === selectedColour)
-    : variants;
+    ? sortSizes(variants.filter(v => v.colour === selectedColour))
+    : sortSizes(variants);
 
   function selectColour(c: string) {
     setColour(c);
@@ -103,7 +132,7 @@ export function SizeSelector({
             {colours.map(c => {
               const isSelected = c === selectedColour;
               const colourVariants = variants.filter(v => v.colour === c);
-              const allOOS = colourVariants.every(v => v.stock_count === 0);
+              const allOOS = colourVariants.length > 0 && colourVariants.every(v => v.stock_count === 0);
               return (
                 <button
                   key={c}
@@ -124,7 +153,6 @@ export function SizeSelector({
                     fontWeight: isSelected ? 700 : 500,
                     fontSize: 'var(--text-sm)',
                     cursor: 'pointer',
-                    textDecoration: 'none',
                     transition: 'all .15s',
                   }}
                 >
@@ -189,7 +217,7 @@ export function SizeSelector({
       {selectedVariant && (
         <p style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)', color: selectedVariant.stock_count === 0 ? '#b91c1c' : selectedVariant.stock_count <= 5 ? '#ca8a04' : 'var(--color-text-muted)' }}>
           {selectedVariant.stock_count === 0
-            ? <>❌ Out of stock &mdash; register below to be notified when it is back</>
+            ? <>❌ Out of stock — register below to be notified when it is back</>
             : selectedVariant.stock_count <= 5
               ? `⚠️ Only ${selectedVariant.stock_count} left in this size`
               : '✅ In stock'}
