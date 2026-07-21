@@ -15,9 +15,9 @@ export default async function HomePage() {
       <section className="hero" id="top">
         <div className="container hero-grid">
           <div className="hero-copy" data-reveal>
-            <span className="pill">Indian Ethnic Wear · Women &amp; Festive Edit</span>
+            <span className="pill">Indian Ethnic Wear &middot; Women &amp; Festive Edit</span>
             <h1>Draped in tradition, styled for today.</h1>
-            <p>A curated collection of sarees, lehengas, kurtas, and festive sets — rooted in Indian craft, designed for modern celebrations.</p>
+            <p>A curated collection of sarees, lehengas, kurtas, and festive sets &mdash; rooted in Indian craft, designed for modern celebrations.</p>
             <div className="hero-actions">
               <a className="btn btn-primary" href="/collections">Explore collections</a>
               <a className="btn btn-secondary" href="#craft">Our signature look</a>
@@ -36,7 +36,7 @@ export default async function HomePage() {
             <div className="mini-stack">
               <article className="mini-card" data-reveal>
                 <h3>Colour story</h3>
-                <p>Plum, sindoor, antique gold, ivory, and rose clay — rooted in Indian festive cues, refined for modern luxury.</p>
+                <p>Plum, sindoor, antique gold, ivory, and rose clay &mdash; rooted in Indian festive cues, refined for modern luxury.</p>
                 <div className="swatch-row" aria-hidden="true">
                   <span className="swatch" style={{ background: '#6c2340' }}></span>
                   <span className="swatch" style={{ background: '#b88332' }}></span>
@@ -46,19 +46,19 @@ export default async function HomePage() {
               </article>
               <article className="mini-card" data-reveal>
                 <h3>New arrivals</h3>
-                <p>Handpicked styles for the season — ready to wear, easy to style, and crafted to be remembered.</p>
+                <p>Handpicked styles for the season &mdash; ready to wear, easy to style, and crafted to be remembered.</p>
               </article>
             </div>
           </div>
         </div>
       </section>
 
-      {/* USP Strip — text-only, no emoji */}
+      {/* USP Strip */}
       <div className="usp-strip">
         <div className="container">
           <div className="usp-strip__grid">
             {[
-              ['Free Shipping', 'On orders above ₹2,500'],
+              ['Free Shipping', 'On orders above \u20B92,500'],
               ['100% Authentic', 'Directly from artisans'],
               ['Easy Returns', '15-day hassle-free returns'],
               ['Secure Payment', 'Razorpay & Stripe secured'],
@@ -80,7 +80,7 @@ export default async function HomePage() {
               <span className="pill">Collections</span>
               <h2>Dressed for every occasion.</h2>
             </div>
-            <p>From grand celebrations to relaxed festivities — explore looks crafted to feel as beautiful as the moments they belong to.</p>
+            <p>From grand celebrations to relaxed festivities &mdash; explore looks crafted to feel as beautiful as the moments they belong to.</p>
           </div>
           <div className="collections-grid">
             <article className="collection-card" data-reveal>
@@ -133,7 +133,7 @@ export default async function HomePage() {
           <article className="story-card" data-reveal>
             <span className="pill">Our story</span>
             <h2 style={{ marginTop: 'var(--space-4)' }}>Heritage cloth, worn by those who live fully in the present.</h2>
-            <p style={{ marginTop: 'var(--space-4)' }}>Every piece carries a thread of tradition — block prints, hand embroidery, natural dyes — paired with silhouettes that breathe and move with you.</p>
+            <p style={{ marginTop: 'var(--space-4)' }}>Every piece carries a thread of tradition &mdash; block prints, hand embroidery, natural dyes &mdash; paired with silhouettes that breathe and move with you.</p>
             <div className="metrics">
               <div className="metric"><strong>200+</strong><span>Curated styles</span></div>
               <div className="metric"><strong>12</strong><span>Artisan regions</span></div>
@@ -144,12 +144,12 @@ export default async function HomePage() {
             <article className="feature-card" data-reveal>
               <small>Fabric first</small>
               <h3>Handloom, silk, and natural weaves</h3>
-              <p>We source directly from artisans — Banarasi, Chanderi, Kanjivaram — so every fabric has provenance.</p>
+              <p>We source directly from artisans &mdash; Banarasi, Chanderi, Kanjivaram &mdash; so every fabric has provenance.</p>
             </article>
             <article className="feature-card" data-reveal>
               <small>Styled for real life</small>
               <h3>Outfits curated for the full season</h3>
-              <p>Mehendi, sangeet, reception, puja, and gifting — we help you plan the look for each moment.</p>
+              <p>Mehendi, sangeet, reception, puja, and gifting &mdash; we help you plan the look for each moment.</p>
             </article>
             <article className="feature-card" data-reveal>
               <small>Personal service</small>
@@ -160,7 +160,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Services — asymmetric layout, not a uniform 4-col grid */}
+      {/* Services */}
       <section className="section" id="services" style={{ background: 'var(--color-surface)' }}>
         <div className="container">
           <div className="section-head" data-reveal>
@@ -174,7 +174,7 @@ export default async function HomePage() {
             <article className="service-tile service-tile--wide" data-reveal>
               <span className="service-tile__label">Virtual styling</span>
               <h3>Assisted shopping for bridal, festive, or gifting selections.</h3>
-              <a href="/contact" className="service-tile__link">Book a session →</a>
+              <a href="/contact" className="service-tile__link">Book a session &rarr;</a>
             </article>
             <article className="service-tile" data-reveal>
               <span className="service-tile__label">Custom tailoring</span>

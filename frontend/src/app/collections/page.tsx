@@ -7,7 +7,6 @@ const CATEGORIES = [
     slug: 'women',
     label: 'Women',
     desc: 'Sarees, lehengas, kurtas & more',
-    emoji: '\uD83E\uDD3B',
     subcategories: ['sarees', 'lehengas', 'kurtas'],
     bgClass: 'one',
     type: 'gender' as const,
@@ -16,7 +15,6 @@ const CATEGORIES = [
     slug: 'men',
     label: 'Men',
     desc: 'Kurtas, sherwanis & festive sets',
-    emoji: '\uD83E\uDDE3',
     subcategories: ['kurtas', 'sherwanis'],
     bgClass: 'two',
     type: 'gender' as const,
@@ -25,7 +23,6 @@ const CATEGORIES = [
     slug: 'kids',
     label: 'Kids',
     desc: 'Ethnic joy for little ones',
-    emoji: '\uD83C\uDFA0',
     subcategories: ['lehengas', 'kurtas', 'sherwanis'],
     bgClass: 'three',
     type: 'gender' as const,
@@ -34,7 +31,6 @@ const CATEGORIES = [
     slug: 'accessories',
     label: 'Accessories',
     desc: 'Jewellery, dupattas, footwear & more',
-    emoji: '\uD83D\uDC8E',
     subcategories: ['jewellery', 'dupattas', 'footwear'],
     bgClass: 'four',
     type: 'category' as const,
@@ -49,7 +45,7 @@ export default async function CollectionsPage() {
       <div className="page-header">
         <p className="page-header__eyebrow">Browse All</p>
         <h1>Our Collections</h1>
-        <p>{products.length} curated styles \u2014 handcrafted in India, delivered across Australia</p>
+        <p>{products.length} curated styles &mdash; handcrafted in India, delivered across Australia</p>
       </div>
 
       <section className="section">
@@ -62,7 +58,6 @@ export default async function CollectionsPage() {
                   p => p.category?.toLowerCase() === cat.slug
                 ).length;
               } else {
-                // Gender collections: only count products with an explicit gender match
                 count = products.filter(
                   p => p.gender === cat.slug || p.gender === 'unisex'
                 ).length;
@@ -74,7 +69,7 @@ export default async function CollectionsPage() {
                   <div className="ornament"></div>
                   <div className="collection-content">
                     <span>{count} styles</span>
-                    <h3>{cat.emoji} {cat.label}</h3>
+                    <h3>{cat.label}</h3>
                     <p style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,248,243,.7)', marginTop: '.25rem' }}>{cat.desc}</p>
                     <div style={{ display: 'flex', gap: '.4rem', flexWrap: 'wrap', marginTop: '.6rem' }}>
                       {cat.subcategories.map(s => (
