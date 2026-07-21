@@ -30,6 +30,12 @@ type Order = {
   shipping_address?: { line1?: string; line2?: string; suburb?: string; state?: string; postcode?: string };
 };
 
+type ShippingProvider = {
+  id: string;
+  name: string;
+  tracking_url_template: string | null;
+};
+
 const FULFILLMENT_STATUSES = ['pending','processing','shipped','delivered','cancelled'];
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
@@ -45,7 +51,6 @@ const PAYMENT_LABELS: Record<string, string> = {
   card: '💳 Card', cash: '💵 Cash', eftpos: '🏧 EFTPOS', payid: '📲 PayID',
 };
 
-// Next status in the approval flow
 const NEXT_STATUS: Record<string, string | null> = {
   pending:    'processing',
   processing: 'shipped',
@@ -59,6 +64,11 @@ const NEXT_LABEL: Record<string, string> = {
   processing: '📦 Mark shipped',
   shipped:    '✓ Delivered',
 };
+
+function buildTrackingUrl(template: string | null | undefined, trackingNumber: string): string | null {
+  if (!template || !trackingNumber) return null;
+  return template.replace('{tracking_number}', encodeURIComponent(trackingNumber));
+}
 
 function StatusBadge({ status }: { status: string }) {
   const c = STATUS_COLORS[status] ?? { bg: '#f3f4f6', text: '#374151' };
@@ -108,13 +118,22 @@ function productLink(item: OrderItem): { href: string; label: string } {
   return { href: '/admin/products', label: item.name };
 }
 
-function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => void; onSave: (updated: Order) => void }) {
+function OrderModal({ order, providers, onClose, onSave }: {
+  order: Order;
+  providers: ShippingProvider[];
+  onClose: () => void;
+  onSave: (updated: Order) => void;
+}) {
   const [status,   setStatus]   = useState(order.fulfillment_status ?? order.status ?? 'pending');
   const [tracking, setTracking] = useState(order.tracking_number ?? '');
   const [carrier,  setCarrier]  = useState(order.shipping_carrier ?? '');
   const [notes,    setNotes]    = useState(order.notes ?? '');
   const [saving,   setSaving]   = useState(false);
   const [err,      setErr]      = useState('');
+
+  // Derive the selected provider from the carrier name
+  const selectedProvider = providers.find(p => p.name === carrier) ?? null;
+  const trackingUrl = buildTrackingUrl(selectedProvider?.tracking_url_template, tracking);
 
   async function handleSave() {
     setSaving(true); setErr('');
@@ -224,16 +243,53 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
             })}
           </div>
 
+          {/* Carrier — dropdown from shipping providers */}
           <label style={labelStyle}>Carrier</label>
-          <input value={carrier} onChange={e => setCarrier(e.target.value)} placeholder="e.g. Australia Post, StarTrack" style={inputStyle} />
+          {providers.length > 0 ? (
+            <select
+              value={carrier}
+              onChange={e => setCarrier(e.target.value)}
+              style={{ ...inputStyle, appearance: 'auto' }}
+            >
+              <option value="">— Select carrier —</option>
+              {providers.map(p => (
+                <option key={p.id} value={p.name}>{p.name}</option>
+              ))}
+              <option value="__custom__">Other (type manually)</option>
+            </select>
+          ) : (
+            <input value={carrier} onChange={e => setCarrier(e.target.value)}
+              placeholder="e.g. Australia Post, StarTrack" style={inputStyle} />
+          )}
+          {carrier === '__custom__' && (
+            <input
+              value={""}
+              onChange={e => setCarrier(e.target.value)}
+              placeholder="Type carrier name…"
+              style={{ ...inputStyle, marginTop: 8 }}
+              autoFocus
+            />
+          )}
+
           <label style={{ ...labelStyle, marginTop: 12 }}>Tracking number</label>
           <input value={tracking} onChange={e => setTracking(e.target.value)} placeholder="e.g. 7X0000000000" style={inputStyle} />
-          {tracking && (
+
+          {/* Dynamic tracking link based on selected provider */}
+          {trackingUrl && (
             <div style={{ marginTop: 6, fontSize: '.75rem' }}>
-              <a href={`https://auspost.com.au/mypost/track/#/search?trackingId=${tracking}`} target="_blank" rel="noopener noreferrer"
-                style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 600 }}>🔍 Track with Australia Post ↗</a>
+              <a href={trackingUrl} target="_blank" rel="noopener noreferrer"
+                style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 600 }}>
+                🔍 Track with {selectedProvider?.name ?? carrier} ↗
+              </a>
             </div>
           )}
+          {tracking && !trackingUrl && carrier && carrier !== '__custom__' && (
+            <div style={{ marginTop: 6, fontSize: '.75rem', color: '#9ca3af' }}>
+              ℹ️ No tracking URL configured for this carrier.
+              <a href="/admin/shipping-providers" style={{ marginLeft: 4, color: '#9d174d', fontWeight: 600 }}>Configure →</a>
+            </div>
+          )}
+
           <label style={{ ...labelStyle, marginTop: 12 }}>Internal notes</label>
           <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes visible only to admin…" rows={3}
             style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
@@ -255,6 +311,7 @@ function OrderModal({ order, onClose, onSave }: { order: Order; onClose: () => v
 
 export default function AdminOrdersPage() {
   const [orders,        setOrders]   = useState<Order[]>([]);
+  const [providers,     setProviders] = useState<ShippingProvider[]>([]);
   const [loading,       setLoading]  = useState(true);
   const [error,         setError]    = useState('');
   const [search,        setSearch]   = useState('');
@@ -266,9 +323,13 @@ export default function AdminOrdersPage() {
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
-    const res = await fetch('/api/admin/orders');
-    if (res.ok) setOrders(await res.json());
+    const [ordersRes, providersRes] = await Promise.all([
+      fetch('/api/admin/orders'),
+      fetch('/api/admin/shipping-providers'),
+    ]);
+    if (ordersRes.ok) setOrders(await ordersRes.json());
     else setError('Failed to load orders');
+    if (providersRes.ok) setProviders(await providersRes.json());
     setLoading(false);
   }, []);
 
@@ -279,7 +340,6 @@ export default function AdminOrdersPage() {
     setSelectedIds(prev => { const n = new Set(prev); n.delete(updated.id); return n; });
   }
 
-  // Quick inline status advance (one-click approve/ship)
   async function quickAdvance(order: Order, e: React.MouseEvent) {
     e.stopPropagation();
     const fs = order.fulfillment_status ?? order.status ?? 'pending';
@@ -296,7 +356,6 @@ export default function AdminOrdersPage() {
     }
   }
 
-  // Bulk status change
   async function bulkSetStatus(newStatus: string) {
     if (selectedIds.size === 0) return;
     setBulkSaving(true);
@@ -363,9 +422,16 @@ export default function AdminOrdersPage() {
             {orders.length} total · {new Date().toLocaleTimeString('en-AU')}
           </p>
         </div>
-        <a href="/admin/checkout" style={{ padding: '9px 18px', background: '#9d174d', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700, fontSize: '.85rem' }}>
-          + In-store order
-        </a>
+        <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
+          <a href="/admin/shipping-providers"
+            style={{ padding: '9px 16px', background: '#f3f4f6', color: '#374151', borderRadius: 8, textDecoration: 'none', fontWeight: 600, fontSize: '.82rem', border: '1px solid #e5e7eb' }}>
+            🚚 Shipping providers
+          </a>
+          <a href="/admin/checkout"
+            style={{ padding: '9px 18px', background: '#9d174d', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700, fontSize: '.85rem' }}>
+            + In-store order
+          </a>
+        </div>
       </div>
 
       {/* Status filter cards */}
@@ -439,7 +505,6 @@ export default function AdminOrdersPage() {
         </div>
       ) : (
         <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)', overflow: 'hidden' }}>
-          {/* Table header */}
           <div className="orders-table-header" style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1.4fr .9fr .8fr .7fr auto auto', gap: '.75rem', padding: '10px 16px', background: '#fdf8f4', fontSize: '.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: '#9ca3af', borderBottom: '1px solid #f3f4f6', alignItems: 'center' }}>
             <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll}
               style={{ accentColor: '#9d174d', cursor: 'pointer' }} />
@@ -487,7 +552,6 @@ export default function AdminOrdersPage() {
 
                 <StatusBadge status={fs} />
 
-                {/* Quick-advance button */}
                 {nextS ? (
                   <button onClick={e => quickAdvance(order, e)}
                     style={{ padding: '5px 10px', background: STATUS_COLORS[nextS]?.bg ?? '#f3f4f6', color: STATUS_COLORS[nextS]?.text ?? '#374151', border: `1.5px solid ${STATUS_COLORS[nextS]?.text ?? '#e5e7eb'}`, borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '.72rem', whiteSpace: 'nowrap' }}>
@@ -507,7 +571,14 @@ export default function AdminOrdersPage() {
         </div>
       )}
 
-      {selected && <OrderModal order={selected} onClose={() => setSelected(null)} onSave={handleSave} />}
+      {selected && (
+        <OrderModal
+          order={selected}
+          providers={providers}
+          onClose={() => setSelected(null)}
+          onSave={handleSave}
+        />
+      )}
     </div>
   );
 }

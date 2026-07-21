@@ -14,6 +14,7 @@ type Order = {
   fulfillment_status?: string | null;
   tracking_number?: string | null;
   shipping_carrier?: string | null;
+  tracking_url?: string | null;
   notes?: string | null;
   coupon_code?: string | null;
   discount_amount?: number | null;
@@ -38,6 +39,12 @@ const FULFILLMENT_STYLE: Record<string, { label: string; color: string }> = {
   returned:    { label: 'Returned',      color: '#dc2626' },
 };
 
+/** Build a tracking URL from a template + tracking number, or return null. */
+function buildTrackingUrl(template: string | null | undefined, trackingNumber: string | null | undefined): string | null {
+  if (!template || !trackingNumber) return null;
+  return template.replace('{tracking_number}', encodeURIComponent(trackingNumber));
+}
+
 type Tab = 'orders' | 'rewards';
 
 export default function AccountPage() {
@@ -49,6 +56,20 @@ export default function AccountPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState('');
+  // Cache providers keyed by name for tracking URL lookup
+  const [providerMap, setProviderMap] = useState<Record<string, string | null>>({});
+
+  // Fetch shipping providers once (public endpoint — no auth needed)
+  useEffect(() => {
+    fetch('/api/admin/shipping-providers')
+      .then(r => r.ok ? r.json() : [])
+      .then((list: { name: string; tracking_url_template: string | null }[]) => {
+        const map: Record<string, string | null> = {};
+        list.forEach(p => { map[p.name] = p.tracking_url_template; });
+        setProviderMap(map);
+      })
+      .catch(() => {});
+  }, []);
 
   const fetchOrders = useCallback(async (token: string, isManual = false) => {
     if (isManual) setRefreshing(true);
@@ -144,6 +165,12 @@ export default function AccountPage() {
                   const fs = order.fulfillment_status ? (FULFILLMENT_STYLE[order.fulfillment_status] ?? { label: order.fulfillment_status, color: '#6b7280' }) : null;
                   const isOpen = expanded === order.id;
 
+                  // Build tracking URL: prefer stored template from provider, fall back to direct URL on order
+                  const carrierTemplate = order.shipping_carrier ? providerMap[order.shipping_carrier] : null;
+                  const trackingUrl =
+                    buildTrackingUrl(carrierTemplate, order.tracking_number) ??
+                    (order.tracking_url ?? null);
+
                   // Compute totals from fields if available
                   const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
                   const shipping = order.shipping_cost ?? 0;
@@ -164,6 +191,10 @@ export default function AccountPage() {
                           <strong style={{ fontSize: '0.95rem' }}>{formatAUD(order.amount_aud)}</strong>
                           <span style={{ background: st.bg, color: st.color, borderRadius: '2rem', padding: '.2rem .75rem', fontSize: '0.72rem', fontWeight: 700, textTransform: 'capitalize' }}>{st.label}</span>
                           {fs && <span style={{ background: '#f3f4f6', color: fs.color, borderRadius: '2rem', padding: '.2rem .75rem', fontSize: '0.72rem', fontWeight: 700 }}>{fs.label}</span>}
+                          {/* Tracking chip on collapsed card */}
+                          {order.tracking_number && (
+                            <span style={{ background: '#eff6ff', color: '#2563eb', borderRadius: '2rem', padding: '.2rem .75rem', fontSize: '0.72rem', fontWeight: 700 }}>🚚 Tracked</span>
+                          )}
                           <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{isOpen ? '\u25B2' : '\u25BC'}</span>
                         </div>
                       </button>
@@ -173,12 +204,31 @@ export default function AccountPage() {
 
                           {/* Tracking info */}
                           {(order.tracking_number || order.shipping_carrier) && (
-                            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '.65rem', padding: '.75rem 1rem', display: 'flex', alignItems: 'center', gap: '.75rem' }}>
-                              <span style={{ fontSize: '1.25rem' }}>\uD83D\uDE9A</span>
-                              <div style={{ fontSize: '.875rem' }}>
-                                {order.shipping_carrier && <span style={{ fontWeight: 700 }}>{order.shipping_carrier} </span>}
-                                {order.tracking_number && (
-                                  <span>Tracking: <strong style={{ fontFamily: 'monospace', letterSpacing: '.03em' }}>{order.tracking_number}</strong></span>
+                            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '.65rem', padding: '.75rem 1rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '1.25rem' }}>\uD83D\uDE9A</span>
+                                <div style={{ flex: 1, fontSize: '.875rem' }}>
+                                  {order.shipping_carrier && <span style={{ fontWeight: 700 }}>{order.shipping_carrier} </span>}
+                                  {order.tracking_number && (
+                                    <span>· Tracking: <strong style={{ fontFamily: 'monospace', letterSpacing: '.03em' }}>{order.tracking_number}</strong></span>
+                                  )}
+                                </div>
+                                {trackingUrl && (
+                                  <a
+                                    href={trackingUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      display: 'inline-flex', alignItems: 'center', gap: '.3rem',
+                                      padding: '.4rem .9rem', borderRadius: '2rem',
+                                      background: '#2563eb', color: '#fff',
+                                      fontWeight: 700, fontSize: '.78rem',
+                                      textDecoration: 'none', whiteSpace: 'nowrap',
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    Track order ↗
+                                  </a>
                                 )}
                               </div>
                             </div>
@@ -213,7 +263,7 @@ export default function AccountPage() {
                                     <div style={{ fontWeight: 700, fontSize: '0.875rem', flexShrink: 0 }}>{formatAUD(item.price * item.quantity)}</div>
                                   </li>
                                 );
-                              })}
+              })}
                             </ul>
 
                             {/* Order totals breakdown */}
