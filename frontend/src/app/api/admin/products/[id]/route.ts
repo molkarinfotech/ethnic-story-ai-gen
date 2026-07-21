@@ -19,8 +19,6 @@ async function isAdmin(req: NextRequest): Promise<boolean> {
 
 const LETTER_SIZE_ORDER = ['XS','S','M','L','XL','XXL','Free Size'];
 
-// Sizes that are internal bookkeeping anchors — never shown to shoppers
-// but kept in the DB so colour groups survive before any real size is added.
 const ANCHOR_SIZES = new Set(['__colour__', 'TBA']);
 
 function sortVariantsForShop(
@@ -35,13 +33,13 @@ function sortVariantsForShop(
   return [...letter, ...numeric, ...other];
 }
 
-// suppress unused warning — used by storefront routes that import this helper
 void sortVariantsForShop;
 
 const ALLOWED_UPDATE_FIELDS = new Set([
   'name', 'slug', 'category', 'subcategory', 'gender', 'price', 'original_price', 'badge',
   'image', 'in_stock', 'stock_count', 'subtitle', 'description',
   'genders', 'tags', 'sort_order', 'is_featured', 'meta_title', 'meta_description',
+  'cost_inr', 'landed_cost_aud',
 ]);
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -53,7 +51,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
   let query = sb
     .from('products')
-    .select('id, name, slug, category, subcategory, gender, price, original_price, badge, image, in_stock, stock_count, created_at');
+    .select('id, name, slug, category, subcategory, gender, price, original_price, badge, image, in_stock, stock_count, cost_inr, landed_cost_aud, created_at');
   query = isUuid ? query.eq('id', id) : query.eq('slug', id);
 
   const { data: product, error: prodErr } = await query.single();
@@ -112,17 +110,14 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   const sb = getServiceSupabase();
 
-  // 1. Fetch all images for this product so we can clean up storage
   const { data: imageRows } = await sb
     .from('product_images')
     .select('url')
     .eq('product_id', id);
 
-  // 2. Delete the product (cascades to product_variants and product_images via FK)
   const { error } = await sb.from('products').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // 3. Delete associated storage files grouped by bucket (best-effort)
   if (imageRows && imageRows.length > 0) {
     const byBucket: Record<string, string[]> = {};
     for (const row of imageRows) {

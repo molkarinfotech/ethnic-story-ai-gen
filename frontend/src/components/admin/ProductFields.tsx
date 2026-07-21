@@ -27,6 +27,18 @@ function slugify(str: string) {
     .replace(/(^-|-$)/g, '');
 }
 
+// Admin-only: INR → AUD conversion rate (update as needed)
+const INR_TO_AUD = 0.018;
+
+function PricingRow({ label, value, color = '#374151' }: { label: string; value: string; color?: string }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem', padding: '.15rem 0' }}>
+      <span style={{ color: '#6b7280' }}>{label}</span>
+      <span style={{ fontWeight: 700, color, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+    </div>
+  );
+}
+
 export function ProductFields({
   form,
   set,
@@ -81,7 +93,6 @@ export function ProductFields({
     }
   }
 
-  /* ── helpers ── */
   function cancelNewCat() {
     setShowNewCat(false);
     setNewCatLabel('');
@@ -89,11 +100,21 @@ export function ProductFields({
     setSlugTouched(false);
     setCatError('');
     if (!showNewCat) return;
-    // restore selection to first real category (or keep current)
     if (categories.length > 0 && !categories.find(c => c.slug === form.category)) {
       set('category', categories[0].slug);
     }
   }
+
+  // ── Pricing calculator (derived, never stored) ──
+  const costInrNum     = parseFloat(form.cost_inr        || '0') || 0;
+  const landedAudNum   = parseFloat(form.landed_cost_aud || '0') || 0;
+  const priceNum       = parseFloat(form.price           || '0') || 0;
+  const costAud        = costInrNum  ? +(costInrNum * INR_TO_AUD).toFixed(2) : null;
+  const landedEffective = landedAudNum || costAud || 0;
+  const x25            = landedEffective ? +(landedEffective * 2.5).toFixed(2) : null;
+  const x2             = landedEffective ? +(landedEffective * 2).toFixed(2)   : null;
+  const profit         = (priceNum && landedEffective) ? +(priceNum - landedEffective).toFixed(2) : null;
+  const showCalc       = costInrNum > 0 || landedAudNum > 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -119,6 +140,75 @@ export function ProductFields({
           />
         </div>
       ))}
+
+      {/* ── Admin-only cost fields ── */}
+      <div style={{
+        background: '#fafaf9',
+        border: '1px solid #e5e7eb',
+        borderRadius: '.65rem',
+        padding: '1rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '.75rem',
+      }}>
+        <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+          🔒 Cost &amp; Pricing (Admin only)
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.75rem' }}>
+          <div className="checkout-field" style={{ margin: 0 }}>
+            <label className="checkout-label">Cost in INR (₹)</label>
+            <input
+              type="number"
+              className="checkout-input"
+              placeholder="e.g. 1500"
+              value={form.cost_inr ?? ''}
+              onChange={e => set('cost_inr', e.target.value)}
+              step="1"
+              min="0"
+            />
+          </div>
+          <div className="checkout-field" style={{ margin: 0 }}>
+            <label className="checkout-label">Landed cost (AUD)</label>
+            <input
+              type="number"
+              className="checkout-input"
+              placeholder="e.g. 32"
+              value={form.landed_cost_aud ?? ''}
+              onChange={e => set('landed_cost_aud', e.target.value)}
+              step="0.01"
+              min="0"
+            />
+          </div>
+        </div>
+
+        {/* Live pricing calculator */}
+        {showCalc && (
+          <div style={{
+            background: '#fffbeb',
+            border: '1px solid #fde68a',
+            borderRadius: '.5rem',
+            padding: '.75rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '.1rem',
+          }}>
+            <div style={{ fontSize: '.72rem', fontWeight: 700, color: '#92400e', marginBottom: '.4rem' }}>📊 Pricing Calculator</div>
+            {costAud !== null && (
+              <PricingRow label={`Cost AUD (₹${costInrNum} × ${INR_TO_AUD})`} value={`A$${costAud}`} />
+            )}
+            {x25 !== null && <PricingRow label="2.5× landed cost" value={`A$${x25}`} />}
+            {x2  !== null && <PricingRow label="2× landed cost"   value={`A$${x2}`}  />}
+            {profit !== null && (
+              <PricingRow
+                label={`Profit (A$${priceNum} − A$${landedEffective})`}
+                value={`A$${profit}`}
+                color={profit >= 0 ? '#15803d' : '#b91c1c'}
+              />
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Gender + Category row */}
       <div style={{ display: 'grid', gridTemplateColumns: isAccessories ? '1fr' : '1fr 1fr', gap: '.75rem' }}>
@@ -154,14 +244,12 @@ export function ProductFields({
             }}
             required={!showNewCat}
           >
-            {/* Always show a placeholder when list is empty */}
             {categories.length === 0 && (
               <option value="" disabled>Loading categories…</option>
             )}
             {categories.map(c => (
               <option key={c.slug} value={c.slug}>{c.label}</option>
             ))}
-            {/* This option is ALWAYS present — never inside a conditional */}
             <option value="__new__">✚ New category…</option>
           </select>
         </div>

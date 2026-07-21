@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getServiceSupabase } from '../../../../lib/supabase';
 
-/**
- * Unified admin auth — same logic as stock/route.ts.
- * Accepts any truthy admin_session or admin_token cookie.
- */
 async function isAdmin(req: NextRequest): Promise<boolean> {
   const reqCookie = req.cookies.get('admin_session')?.value
     ?? req.cookies.get('admin_token')?.value;
@@ -36,7 +32,7 @@ export async function GET(req: NextRequest) {
   const sb = getServiceSupabase();
   let query = sb
     .from('products')
-    .select('id, name, slug, category, subcategory, gender, price, original_price, badge, image, in_stock, stock_count, created_at')
+    .select('id, name, slug, category, subcategory, gender, price, original_price, badge, image, in_stock, stock_count, cost_inr, landed_cost_aud, created_at')
     .order('created_at', { ascending: false });
 
   if (search) {
@@ -103,12 +99,14 @@ export async function POST(req: NextRequest) {
     in_stock: body.in_stock ?? true,
   };
 
-  if (body.subtitle?.trim())      row.subtitle       = body.subtitle.trim();
-  if (body.original_price)        row.original_price  = Number(body.original_price);
-  if (body.badge?.trim())         row.badge           = body.badge.trim();
-  if (body.description?.trim())   row.description     = body.description.trim();
-  if (body.subcategory?.trim())   row.subcategory     = body.subcategory.trim();
-  if (body.gender?.trim())        row.gender          = body.gender.trim();
+  if (body.subtitle?.trim())      row.subtitle        = body.subtitle.trim();
+  if (body.original_price)        row.original_price   = Number(body.original_price);
+  if (body.badge?.trim())         row.badge            = body.badge.trim();
+  if (body.description?.trim())   row.description      = body.description.trim();
+  if (body.subcategory?.trim())   row.subcategory      = body.subcategory.trim();
+  if (body.gender?.trim())        row.gender           = body.gender.trim();
+  if (body.cost_inr)              row.cost_inr         = Number(body.cost_inr);
+  if (body.landed_cost_aud)       row.landed_cost_aud  = Number(body.landed_cost_aud);
 
   const { data, error } = await sb.from('products').insert([row]).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

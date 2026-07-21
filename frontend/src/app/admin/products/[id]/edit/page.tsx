@@ -18,9 +18,9 @@ export default function EditProductPage({
   const [form,       setForm]       = useState<Record<string, string>>({
     slug: '', name: '', subtitle: '', price: '', original_price: '',
     category: '', subcategory: '', gender: 'women', badge: '', image: '',
+    cost_inr: '', landed_cost_aud: '',
   });
 
-  // Unwrap params safely for Next.js 14 and 15
   useEffect(() => {
     if (params && typeof (params as Promise<{ id: string }>).then === 'function') {
       (params as Promise<{ id: string }>).then(p => setProductId(p.id));
@@ -39,16 +39,18 @@ export default function EditProductPage({
       setCategories(safeCategories);
       if (p && !('error' in p)) {
         setForm({
-          slug:           String(p.slug           ?? ''),
-          name:           String(p.name           ?? ''),
-          subtitle:       String(p.subtitle       ?? ''),
-          price:          String(p.price          ?? ''),
-          original_price: String(p.original_price ?? ''),
-          category:       String(p.category       ?? (safeCategories[0]?.slug ?? '')),
-          subcategory:    String(p.subcategory    ?? ''),
-          gender:         String(p.gender         ?? 'women'),
-          badge:          String(p.badge          ?? ''),
-          image:          String(p.image          ?? ''),
+          slug:             String(p.slug             ?? ''),
+          name:             String(p.name             ?? ''),
+          subtitle:         String(p.subtitle         ?? ''),
+          price:            String(p.price            ?? ''),
+          original_price:   String(p.original_price   ?? ''),
+          category:         String(p.category         ?? (safeCategories[0]?.slug ?? '')),
+          subcategory:      String(p.subcategory      ?? ''),
+          gender:           String(p.gender           ?? 'women'),
+          badge:            String(p.badge            ?? ''),
+          image:            String(p.image            ?? ''),
+          cost_inr:         p.cost_inr        != null ? String(p.cost_inr)        : '',
+          landed_cost_aud:  p.landed_cost_aud != null ? String(p.landed_cost_aud) : '',
         });
       }
     }).catch(console.error);
@@ -65,13 +67,15 @@ export default function EditProductPage({
     setError('');
     const payload = {
       ...form,
-      price:          parseFloat(form.price),
-      original_price: form.original_price ? parseFloat(form.original_price) : null,
-      badge:          form.badge     || null,
-      subtitle:       form.subtitle  || null,
-      subcategory:    form.subcategory?.trim() || null,
-      image:          form.image     || null,
-      gender:         form.gender    || 'women',
+      price:           parseFloat(form.price),
+      original_price:  form.original_price  ? parseFloat(form.original_price)  : null,
+      badge:           form.badge           || null,
+      subtitle:        form.subtitle        || null,
+      subcategory:     form.subcategory?.trim() || null,
+      image:           form.image           || null,
+      gender:          form.gender          || 'women',
+      cost_inr:        form.cost_inr        ? parseFloat(form.cost_inr)        : null,
+      landed_cost_aud: form.landed_cost_aud ? parseFloat(form.landed_cost_aud) : null,
     };
     try {
       const res = await fetch(`/api/admin/products/${productId}`, {
