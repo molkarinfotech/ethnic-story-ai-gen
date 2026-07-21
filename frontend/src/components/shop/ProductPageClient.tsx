@@ -6,6 +6,7 @@ import { LikeButton } from './LikeButton';
 import { ReviewSection } from './ReviewSection';
 import { useCart } from '../../context/CartContext';
 import { formatAUD } from '../../lib/products';
+import { supabase } from '../../lib/supabase';
 
 export type ColourImages = Record<string, string[]>;
 
@@ -40,6 +41,11 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
   const [added, setAdded]             = useState(false);
   const [stickyAdded, setStickyAdded] = useState(false);
 
+  // Notify me state
+  const [notifyEmail, setNotifyEmail]     = useState('');
+  const [notifyStatus, setNotifyStatus]   = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [notifyMessage, setNotifyMessage] = useState('');
+
   const atcRef          = useRef<HTMLDivElement>(null);
   const [showSticky, setShowSticky] = useState(false);
 
@@ -54,6 +60,13 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     return () => obs.disconnect();
   }, []);
 
+  // Pre-fill notify email from logged-in user
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user?.email) setNotifyEmail(data.user.email);
+    });
+  }, []);
+
   // null = not yet fetched; true = product has NO variants at all (globally OOS); false = has at least one variant
   // Per-colour+size OOS is handled entirely by sizeInStock from handleSizeChange.
   const [globalOOS,    setGlobalOOS]    = useState<boolean | null>(null);
@@ -65,15 +78,12 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
       .then(r => r.json())
       .then((data: { stock_count: number }[]) => {
         if (!Array.isArray(data) || data.length === 0) {
-          // No variant rows at all — product is globally OOS
           setGlobalOOS(true);
         } else {
-          // Product has variants; per-variant OOS is handled by the size selector
           setGlobalOOS(false);
         }
       })
       .catch(() => {
-        // Network error — fail open (don't block purchase)
         setGlobalOOS(false);
       })
       .finally(() => setStockChecked(true));
@@ -97,13 +107,15 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     setMaxQty(stockCount > 0 ? stockCount : 0);
     setQty(1);
     setError(false);
+    // Reset notify state when selection changes
+    setNotifyStatus('idle');
+    setNotifyMessage('');
   }, [selectedColour]);
 
   function doAdd(sticky = false) {
     if (isComingSoon || globalOOS === true) return;
     if (!stockChecked) return;
     if (!size) { setError(true); return; }
-    // Block add if the selected colour+size combo is out of stock
     if (!sizeInStock) return;
     const safeQty = Math.min(qty, maxQty);
     if (safeQty <= 0) return;
@@ -115,16 +127,45 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     openCart();
   }
 
-  // outOfStock is true when:
-  //   - product has no variants at all (globalOOS)
-  //   - OR a colour+size has been selected and that specific combo is OOS (sizeInStock = false)
+  async function doNotify() {
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!notifyEmail || !EMAIL_RE.test(notifyEmail)) {
+      setNotifyMessage('Please enter a valid email address.');
+      setNotifyStatus('error');
+      return;
+    }
+    setNotifyStatus('loading');
+    try {
+      const res = await fetch('/api/notify-restock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: notifyEmail,
+          productId: product.id,
+          productName: product.name,
+          productSlug: product.slug,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.subscribed) {
+        setNotifyStatus('done');
+        setNotifyMessage("You're on the list! We'll email you when it's back in stock.");
+      } else {
+        setNotifyStatus('error');
+        setNotifyMessage(json.error ?? 'Something went wrong. Please try again.');
+      }
+    } catch {
+      setNotifyStatus('error');
+      setNotifyMessage('Network error. Please try again.');
+    }
+  }
+
   const outOfStock = !isComingSoon && (
     globalOOS === true ||
     (size !== null && !sizeInStock)
   );
   const atMax = size !== null && qty >= maxQty && maxQty > 0;
 
-  // Button disabled while stock hasn't loaded, or when OOS/Coming Soon
   const atcDisabled = !stockChecked || isComingSoon || outOfStock;
 
   const atcLabel = () => {
@@ -132,11 +173,15 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     if (!stockChecked)              return 'Checking stock…';
     if (added)                      return '✓ Added to Bag';
     if (globalOOS === true)         return '🚫 Out of Stock';
-    // If a size is selected and that specific combo is OOS, show OOS
     if (size !== null && !sizeInStock) return 'Out of Stock — Select another size';
     if (isPreOrder)                 return '🛒 Pre-Order Now';
     return 'Add to Bag';
   };
+
+  // Show notify panel when globally OOS OR when a specific size is selected and OOS
+  const showNotifyPanel = !isComingSoon && stockChecked && (
+    globalOOS === true || (size !== null && !sizeInStock)
+  );
 
   return (
     <>
@@ -225,7 +270,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
               <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>🚫</span>
               <div>
                 <div style={{ fontWeight: 700, color: '#b91c1c', fontSize: 'var(--text-sm)' }}>Currently Out of Stock</div>
-                <div style={{ color: '#6b7280', fontSize: 'var(--text-xs)', marginTop: '.2rem' }}>This item is unavailable right now. Check back soon or browse similar products below.</div>
+                <div style={{ color: '#6b7280', fontSize: 'var(--text-xs)', marginTop: '.2rem' }}>This item is unavailable right now. Enter your email below and we'll notify you the moment it's back.</div>
               </div>
             </div>
           )}
@@ -255,6 +300,11 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
               </>
             )}
 
+            {/* Size selector is still shown even if globalOOS so user can see what sizes exist */}
+            {!isComingSoon && globalOOS === true && stockChecked && (
+              <SizeSelector productId={product.id} onSizeChange={handleSizeChange} />
+            )}
+
             <button
               className={`btn btn-primary pdp-atc-btn${added ? ' pdp-atc-btn--added' : ''}`}
               onClick={() => doAdd(false)}
@@ -280,6 +330,81 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
               >
                 Buy Now
               </a>
+            )}
+
+            {/* ── Notify Me When In Stock ── */}
+            {showNotifyPanel && (
+              <div style={{
+                marginTop: 'var(--space-5)',
+                background: 'var(--color-surface)',
+                border: '1.5px solid var(--color-border)',
+                borderRadius: 'var(--radius-lg)',
+                padding: 'var(--space-5)',
+              }}>
+                {notifyStatus === 'done' ? (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                    <span style={{ fontSize: '1.4rem', flexShrink: 0 }}>✅</span>
+                    <div>
+                      <div style={{ fontWeight: 700, color: 'var(--color-success)', fontSize: 'var(--text-sm)' }}>You're on the list!</div>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '.25rem', lineHeight: 1.5 }}>{notifyMessage}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+                      <span style={{ fontSize: '1.1rem' }}>🔔</span>
+                      <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>Notify me when back in stock</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'stretch' }}>
+                      <input
+                        type="email"
+                        value={notifyEmail}
+                        onChange={e => { setNotifyEmail(e.target.value); setNotifyStatus('idle'); setNotifyMessage(''); }}
+                        placeholder="your@email.com"
+                        aria-label="Email address for restock notification"
+                        style={{
+                          flex: 1,
+                          padding: '.55rem var(--space-3)',
+                          fontSize: 'var(--text-sm)',
+                          border: `1.5px solid ${notifyStatus === 'error' ? '#fca5a5' : 'var(--color-border)'}`,
+                          borderRadius: 'var(--radius-md)',
+                          background: 'var(--color-bg)',
+                          color: 'var(--color-text)',
+                          outline: 'none',
+                          minWidth: 0,
+                        }}
+                        onKeyDown={e => { if (e.key === 'Enter') doNotify(); }}
+                      />
+                      <button
+                        onClick={doNotify}
+                        disabled={notifyStatus === 'loading'}
+                        style={{
+                          flexShrink: 0,
+                          padding: '.55rem var(--space-4)',
+                          fontSize: 'var(--text-sm)',
+                          fontWeight: 600,
+                          background: 'var(--color-primary)',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 'var(--radius-md)',
+                          cursor: notifyStatus === 'loading' ? 'wait' : 'pointer',
+                          opacity: notifyStatus === 'loading' ? 0.7 : 1,
+                          transition: 'opacity 180ms',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {notifyStatus === 'loading' ? 'Saving…' : 'Notify Me'}
+                      </button>
+                    </div>
+                    {notifyStatus === 'error' && notifyMessage && (
+                      <p style={{ color: '#dc2626', fontSize: 'var(--text-xs)', marginTop: 'var(--space-2)' }}>{notifyMessage}</p>
+                    )}
+                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
+                      We'll send one email when this item is restocked. No spam.
+                    </p>
+                  </>
+                )}
+              </div>
             )}
 
             <div style={{ marginTop: 'var(--space-4)', display: 'flex', alignItems: 'center' }}>
