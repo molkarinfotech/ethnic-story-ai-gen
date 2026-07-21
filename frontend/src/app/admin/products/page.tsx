@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 type ProductImage = { id: string; colour: string; url: string; sort_order: number };
 type Variant = { id: string; size: string; colour: string; stock_count: number; image_url?: string | null };
@@ -7,6 +7,7 @@ type Product = {
   id: string; name: string; slug: string; price: number;
   category: string; gender?: string; badge?: string;
   in_stock?: boolean; image?: string;
+  cost_inr?: number | null; landed_cost_aud?: number | null;
   variants: Variant[];
 };
 type Category = { id: string; slug: string; label: string; genders: string[] };
@@ -79,7 +80,6 @@ function Pill({ label, active, count, onClick }: { label: string; active: boolea
   );
 }
 
-// ── Section label above a pill row ──────────────────────────────
 function PillSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '.3rem', minWidth: 0 }}>
@@ -89,6 +89,128 @@ function PillSection({ label, children }: { label: string; children: React.React
       }}>{label}</span>
       <div style={{ display: 'flex', gap: '.3rem', flexWrap: 'wrap' }}>{children}</div>
     </div>
+  );
+}
+
+// ── Inline editable field ────────────────────────────────────────
+function InlineField({
+  label, value, prefix, suffix, type = 'text', placeholder,
+  onSave,
+}: {
+  label: string; value: string | number | null | undefined;
+  prefix?: string; suffix?: string; type?: string; placeholder?: string;
+  onSave: (v: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function startEdit(e: React.MouseEvent) {
+    e.stopPropagation();
+    setDraft(value != null ? String(value) : '');
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 30);
+  }
+
+  async function commit() {
+    setEditing(false);
+    const clean = draft.trim();
+    const orig  = value != null ? String(value) : '';
+    if (clean === orig) return;
+    setSaving(true);
+    await onSave(clean);
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  }
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { setEditing(false); }
+  }
+
+  const display = value != null && value !== '' ? String(value) : null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '.1rem', minWidth: 0 }}>
+      <span style={{ fontSize: '.6rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</span>
+      {editing ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '.2rem' }} onClick={e => e.stopPropagation()}>
+          {prefix && <span style={{ fontSize: '.72rem', color: '#6b7280' }}>{prefix}</span>}
+          <input
+            ref={inputRef}
+            type={type}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={onKeyDown}
+            placeholder={placeholder}
+            style={{
+              width: type === 'number' ? 70 : 100,
+              padding: '.2rem .35rem',
+              fontSize: '.78rem',
+              border: '1.5px solid #9d174d',
+              borderRadius: 5,
+              outline: 'none',
+              color: '#111827',
+            }}
+          />
+          {suffix && <span style={{ fontSize: '.72rem', color: '#6b7280' }}>{suffix}</span>}
+        </div>
+      ) : (
+        <button
+          onClick={startEdit}
+          title={`Edit ${label}`}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '.2rem',
+            background: 'none', border: 'none', padding: '.1rem .25rem',
+            borderRadius: 4, cursor: 'text',
+            fontSize: '.78rem', fontWeight: 600,
+            color: display ? '#111827' : '#d1d5db',
+            transition: 'background .1s',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = '#f3f4f6')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+        >
+          {saving ? (
+            <span style={{ fontSize: '.65rem', color: '#9ca3af' }}>saving…</span>
+          ) : saved ? (
+            <span style={{ fontSize: '.65rem', color: '#16a34a' }}>✓ saved</span>
+          ) : (
+            <>
+              {prefix && <span style={{ color: '#6b7280', fontWeight: 400 }}>{prefix}</span>}
+              <span>{display ?? placeholder ?? '—'}</span>
+              {suffix && <span style={{ color: '#6b7280', fontWeight: 400 }}>{suffix}</span>}
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.5" style={{ opacity: .6 }}>
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+            </>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Profit calculator chip ───────────────────────────────────────
+function ProfitChip({ price, landedCost }: { price: number; landedCost: number | null | undefined }) {
+  if (!landedCost || !price) return null;
+  const profit = price - landedCost;
+  const pct    = ((profit / price) * 100).toFixed(0);
+  const ok     = profit > 0;
+  return (
+    <span style={{
+      fontSize: '.65rem', fontWeight: 700,
+      background: ok ? '#dcfce7' : '#fee2e2',
+      color: ok ? '#15803d' : '#b91c1c',
+      borderRadius: '2rem', padding: '.15rem .45rem',
+      whiteSpace: 'nowrap',
+    }}>
+      {ok ? '▲' : '▼'} {ok ? '+' : ''}${profit.toFixed(2)} ({pct}%)
+    </span>
   );
 }
 
@@ -131,6 +253,27 @@ export default function AdminProductsPage() {
       .catch(() => {});
   }, []);
 
+  // ── Quick-save product field ─────────────────────────────────
+  async function saveProductField(productId: string, field: string, raw: string) {
+    let value: string | number | null = raw === '' ? null : raw;
+    if (field === 'price' || field === 'cost_inr' || field === 'landed_cost_aud') {
+      const n = parseFloat(raw);
+      value = isNaN(n) ? null : n;
+    }
+    const res = await fetch(`/api/admin/products/${productId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(`Save failed: ${d.error ?? res.status}`);
+      return;
+    }
+    setProducts(ps => ps.map(p => p.id === productId ? { ...p, [field]: value } : p));
+  }
+
   const loadImages = useCallback(async (productId: string) => {
     if (imagesLoaded[productId]) return;
     setImagesLoaded(m => ({ ...m, [productId]: true }));
@@ -152,11 +295,9 @@ export default function AdminProductsPage() {
     }
   }
 
-  // Derive filter dimensions from loaded products
   const allGenders    = Array.from(new Set(products.map(p => p.gender).filter(Boolean) as string[])).sort();
   const allCategories = Array.from(new Set(products.map(p => p.category).filter(Boolean))).sort();
 
-  // When gender filter is active, show only categories belonging to that gender
   const visibleCategories = filterGender
     ? Array.from(new Set(
         products
@@ -340,7 +481,7 @@ export default function AdminProductsPage() {
   const hasFilters   = !!(search || filterCat || filterGender || filterStock);
 
   function countByGender(g: string)  { return products.filter(p => p.gender === g).length; }
-  function countByCat(c: string)     {
+  function countByCat(c: string) {
     return products.filter(p =>
       p.category === c && (!filterGender || p.gender === filterGender)
     ).length;
@@ -356,9 +497,7 @@ export default function AdminProductsPage() {
   }
 
   const outCount = countByStock('out');
-  const lowCount = countByStock('low');
 
-  // ─── Gender label mapping for display ─────────────────────────
   const GENDER_DISPLAY: Record<string, string> = {
     women: 'Women', men: 'Men', kids: 'Kids', accessories: 'Accessories',
   };
@@ -369,7 +508,7 @@ export default function AdminProductsPage() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '.75rem' }}>
         <div>
           <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#111827', marginBottom: '.15rem' }}>Products</h1>
-          <p style={{ fontSize: '.78rem', color: '#9ca3af', margin: 0 }}>Manage listings, stock &amp; images</p>
+          <p style={{ fontSize: '.78rem', color: '#9ca3af', margin: 0 }}>Manage listings, stock &amp; images · click any field to edit inline</p>
         </div>
         <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {selectedIds.size > 0 && (
@@ -412,7 +551,6 @@ export default function AdminProductsPage() {
         flexDirection: 'column',
         gap: '.85rem',
       }}>
-        {/* Search */}
         <div style={{ position: 'relative' }}>
           <span style={{ position: 'absolute', left: '.7rem', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: '.85rem', pointerEvents: 'none' }}>🔍</span>
           <input
@@ -433,7 +571,6 @@ export default function AdminProductsPage() {
           />
         </div>
 
-        {/* Gender pills */}
         {allGenders.length > 0 && (
           <PillSection label="Gender">
             {allGenders.map(g => (
@@ -445,7 +582,6 @@ export default function AdminProductsPage() {
                 onClick={() => {
                   const next = filterGender === g ? '' : g;
                   setFilterGender(next);
-                  // Reset category filter if it no longer belongs to the new gender
                   if (next && filterCat) {
                     const stillValid = products.some(p => p.gender === next && p.category === filterCat);
                     if (!stillValid) setFilterCat('');
@@ -456,7 +592,6 @@ export default function AdminProductsPage() {
           </PillSection>
         )}
 
-        {/* Category pills — context-aware: shows only categories for the active gender */}
         {visibleCategories.length > 0 && (
           <PillSection label={filterGender ? `Categories · ${GENDER_DISPLAY[filterGender] ?? filterGender}` : 'Category'}>
             {visibleCategories.map(c => (
@@ -471,7 +606,6 @@ export default function AdminProductsPage() {
           </PillSection>
         )}
 
-        {/* Stock pills */}
         <PillSection label="Stock">
           <Pill label="In stock"  active={filterStock === 'in'}  count={countByStock('in')}  onClick={() => setFilterStock(filterStock === 'in'  ? '' : 'in')}  />
           <Pill label="Low ≤5"   active={filterStock === 'low'} count={countByStock('low')} onClick={() => setFilterStock(filterStock === 'low' ? '' : 'low')} />
@@ -480,7 +614,6 @@ export default function AdminProductsPage() {
           )}
         </PillSection>
 
-        {/* Active filter summary + reset */}
         {hasFilters && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '.75rem', color: '#6b7280' }}>
@@ -544,11 +677,10 @@ export default function AdminProductsPage() {
           </div>
 
           {filtered.map(p => {
-            const stock     = totalStock(p.variants);
-            const colours   = uniqueColours(p.variants, imageMap[p.id] ?? []);
+            const stock      = totalStock(p.variants);
+            const colours    = uniqueColours(p.variants, imageMap[p.id] ?? []);
             const isExpanded = expandedId === p.id;
             const isSelected = selectedIds.has(p.id);
-            const isSaving  = Object.keys(saving).some(k => p.variants.some(v => v.id === k));
 
             const stockBadge = stock === 0
               ? { label: 'Out of stock', bg: '#fee2e2', color: '#b91c1c' }
@@ -567,10 +699,8 @@ export default function AdminProductsPage() {
                   overflow: 'hidden',
                 }}
               >
-                {/* Row */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem', padding: '.65rem .85rem', cursor: 'pointer' }}
-                  onClick={() => toggleExpand(p.id)}
-                >
+                {/* ── Main row (always visible) ─────────────────── */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem', padding: '.65rem .85rem' }}>
                   {/* Checkbox */}
                   <span onClick={e => { e.stopPropagation(); toggleSelect(p.id); }} style={{ flexShrink: 0 }}>
                     <input
@@ -582,18 +712,20 @@ export default function AdminProductsPage() {
                     />
                   </span>
 
-                  {/* Thumbnail */}
-                  {p.image ? (
-                    <img src={p.image} alt={p.name}
-                      style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6, flexShrink: 0, border: '1px solid #f3f4f6' }}
-                    />
-                  ) : (
-                    <div style={{ width: 40, height: 40, borderRadius: 6, background: '#fdf2f8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '1.1rem' }}>🥻</div>
-                  )}
+                  {/* Thumbnail — clicking it toggles expand */}
+                  <div onClick={() => toggleExpand(p.id)} style={{ cursor: 'pointer', flexShrink: 0 }}>
+                    {p.image ? (
+                      <img src={p.image} alt={p.name}
+                        style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6, border: '1px solid #f3f4f6' }}
+                      />
+                    ) : (
+                      <div style={{ width: 40, height: 40, borderRadius: 6, background: '#fdf2f8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>🥻</div>
+                    )}
+                  </div>
 
-                  {/* Name + meta */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: '.85rem', color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                  {/* Name + tags */}
+                  <div style={{ flex: 1, minWidth: 0 }} onClick={() => toggleExpand(p.id)} >
+                    <div style={{ fontWeight: 600, fontSize: '.85rem', color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>{p.name}</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.3rem', marginTop: '.2rem', alignItems: 'center' }}>
                       {p.gender && (
                         <span style={{ fontSize: '.65rem', background: '#fdf2f8', color: '#9d174d', borderRadius: '2rem', padding: '0 .45rem', fontWeight: 600 }}>
@@ -605,6 +737,11 @@ export default function AdminProductsPage() {
                           {p.category}
                         </span>
                       )}
+                      {p.badge && (
+                        <span style={{ fontSize: '.65rem', background: '#fef3c7', color: '#92400e', borderRadius: '2rem', padding: '0 .45rem', fontWeight: 600 }}>
+                          {p.badge}
+                        </span>
+                      )}
                       {colours.length > 0 && (
                         <span style={{ fontSize: '.65rem', color: '#9ca3af' }}>
                           {colours.length} colour{colours.length !== 1 ? 's' : ''}
@@ -613,30 +750,65 @@ export default function AdminProductsPage() {
                     </div>
                   </div>
 
-                  {/* Price */}
-                  <div style={{ fontSize: '.82rem', fontWeight: 700, color: '#111827', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                    ${p.price?.toFixed(2)}
+                  {/* ── Quick-edit fields (always visible) ────────── */}
+                  <div
+                    style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexShrink: 0 }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <InlineField
+                      label="Price"
+                      value={p.price}
+                      prefix="$"
+                      type="number"
+                      placeholder="0.00"
+                      onSave={v => saveProductField(p.id, 'price', v)}
+                    />
+                    <InlineField
+                      label="Badge"
+                      value={p.badge}
+                      placeholder="New / Sale…"
+                      onSave={v => saveProductField(p.id, 'badge', v)}
+                    />
+                    <InlineField
+                      label="Cost ₹"
+                      value={p.cost_inr}
+                      prefix="₹"
+                      type="number"
+                      placeholder="—"
+                      onSave={v => saveProductField(p.id, 'cost_inr', v)}
+                    />
+                    <InlineField
+                      label="Landed A$"
+                      value={p.landed_cost_aud}
+                      prefix="$"
+                      type="number"
+                      placeholder="—"
+                      onSave={v => saveProductField(p.id, 'landed_cost_aud', v)}
+                    />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '.4rem', alignItems: 'flex-end' }}>
+                      <span style={{
+                        fontSize: '.65rem', fontWeight: 700,
+                        background: stockBadge.bg, color: stockBadge.color,
+                        borderRadius: '2rem', padding: '.18rem .55rem',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {stockBadge.label}
+                      </span>
+                      <ProfitChip price={p.price} landedCost={p.landed_cost_aud} />
+                    </div>
                   </div>
 
-                  {/* Stock badge */}
-                  <span style={{
-                    fontSize: '.65rem', fontWeight: 700,
-                    background: stockBadge.bg, color: stockBadge.color,
-                    borderRadius: '2rem', padding: '.18rem .55rem',
-                    whiteSpace: 'nowrap', flexShrink: 0,
-                  }}>
-                    {stockBadge.label}
-                  </span>
-
                   {/* Chevron */}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.5"
-                    style={{ flexShrink: 0, transition: 'transform .2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)' }}
-                  >
-                    <polyline points="6 9 12 15 18 9" />
-                  </svg>
+                  <div onClick={() => toggleExpand(p.id)} style={{ cursor: 'pointer', flexShrink: 0 }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.5"
+                      style={{ transition: 'transform .2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)' }}
+                    >
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </div>
                 </div>
 
-                {/* ── Expanded detail ──────────────────────────────── */}
+                {/* ── Expanded detail ──────────────────────────── */}
                 {isExpanded && (
                   <div style={{ borderTop: '1px solid #f9fafb', padding: '.85rem 1rem', background: '#fafafa' }}>
                     {/* Action row */}
@@ -650,7 +822,7 @@ export default function AdminProductsPage() {
                         }}
                         onClick={e => e.stopPropagation()}
                       >
-                        ✏️ Edit
+                        ✏️ Full edit
                       </a>
                       <button
                         onClick={e => { e.stopPropagation(); deleteProduct(p.id, p.name); }}
@@ -675,7 +847,6 @@ export default function AdminProductsPage() {
                             {colour}
                           </div>
 
-                          {/* Images */}
                           {colourImages.length > 0 && (
                             <div style={{ display: 'flex', gap: '.4rem', flexWrap: 'wrap', marginBottom: '.5rem' }}>
                               {colourImages.map(img => (
@@ -702,7 +873,6 @@ export default function AdminProductsPage() {
                             </div>
                           )}
 
-                          {/* Upload */}
                           <label
                             onClick={e => e.stopPropagation()}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem', cursor: 'pointer', fontSize: '.72rem', color: '#6b7280', marginBottom: '.5rem' }}
@@ -715,7 +885,6 @@ export default function AdminProductsPage() {
                             📎 Add images
                           </label>
 
-                          {/* Size/stock grid */}
                           {colourVariants.length > 0 && (
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem', marginBottom: '.5rem' }}>
                               {colourVariants.map(v => (
@@ -747,13 +916,11 @@ export default function AdminProductsPage() {
                             </div>
                           )}
 
-                          {/* Add size */}
                           <AddSizeForm productId={p.id} colour={colour} onAdd={addVariant} />
                         </div>
                       );
                     })}
 
-                    {/* Add colour group */}
                     <AddColourForm productId={p.id} onAdd={addColourGroup} />
                   </div>
                 )}
