@@ -12,15 +12,12 @@ export function Footer() {
               and ethnic wear crafted by master artisans.
             </p>
             <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
-              <a href="https://facebook.com" target="_blank" rel="noopener noreferrer"
+              <a href="https://www.facebook.com/ethnicstory.com.au" target="_blank" rel="noopener noreferrer"
                 style={{ fontSize: '1.2rem', opacity: 0.6, transition: 'opacity 0.15s' }}
                 aria-label="Facebook">📘</a>
-              <a href="https://instagram.com" target="_blank" rel="noopener noreferrer"
+              <a href="https://www.instagram.com/ethnicstory.com.au" target="_blank" rel="noopener noreferrer"
                 style={{ fontSize: '1.2rem', opacity: 0.6, transition: 'opacity 0.15s' }}
                 aria-label="Instagram">📸</a>
-              <a href="https://twitter.com" target="_blank" rel="noopener noreferrer"
-                style={{ fontSize: '1.2rem', opacity: 0.6, transition: 'opacity 0.15s' }}
-                aria-label="Twitter">🐦</a>
             </div>
           </div>
 
@@ -45,11 +42,12 @@ export function Footer() {
             <div className="site-footer__col-title">Help</div>
             <ul className="site-footer__links">
               {([
-                ['Sizing Guide',  '/sizing'],
-                ['Shipping Info', '/shipping'],
-                ['Returns',       '/returns'],
-                ['Track Order',   '/orders'],
-                ['Contact Us',    'mailto:hello@ethnicstory.com.au'],
+                ['Sizing Guide',      '/sizing'],
+                ['Shipping Info',     '/shipping'],
+                ['Returns',          '/returns'],
+                ['Track Order',      '/orders'],
+                ['Book Appointment', '/appointments'],
+                ['Contact Us',       'mailto:hello@ethnicstory.com.au'],
               ] as [string, string][]).map(([label, href]) => (
                 <li key={label}>
                   <a href={href}>{label}</a>

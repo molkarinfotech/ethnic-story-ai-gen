@@ -58,10 +58,10 @@ export default async function HomePage() {
         <div className="container">
           <div className="usp-strip__grid">
             {[
-              ['Free Shipping', 'On orders above \u20B92,500'],
+              ['Free Shipping', 'On orders above $150 AUD'],
               ['100% Authentic', 'Directly from artisans'],
               ['Easy Returns', '15-day hassle-free returns'],
-              ['Secure Payment', 'Razorpay & Stripe secured'],
+              ['Secure Payment', 'Stripe secured checkout'],
             ].map(([title, sub]) => (
               <div key={String(title)} className="usp-item">
                 <div className="usp-item__title">{title}</div>
@@ -174,7 +174,7 @@ export default async function HomePage() {
             <article className="service-tile service-tile--wide" data-reveal>
               <span className="service-tile__label">Virtual styling</span>
               <h3>Assisted shopping for bridal, festive, or gifting selections.</h3>
-              <a href="/contact" className="service-tile__link">Book a session &rarr;</a>
+              <a href="/appointments" className="service-tile__link">Book a session &rarr;</a>
             </article>
             <article className="service-tile" data-reveal>
               <span className="service-tile__label">Custom tailoring</span>
@@ -185,8 +185,8 @@ export default async function HomePage() {
               <h3>Grouped edits for weddings, sangeet, puja, and reception looks.</h3>
             </article>
             <article className="service-tile service-tile--accent" data-reveal>
-              <span className="service-tile__label">Worldwide shipping</span>
-              <h3>We ship to Australia, UK, USA, Canada, and the Middle East.</h3>
+              <span className="service-tile__label">Australia-wide delivery</span>
+              <h3>We ship domestically across Australia — free shipping on orders above $150 AUD.</h3>
             </article>
           </div>
         </div>
