@@ -54,7 +54,7 @@ export default function AdminNotificationsPage() {
         body: JSON.stringify({ action: 'send_one', id }),
       });
       const json = await res.json();
-      if (res.ok) { showToast('Email sent \u2714'); load(); }
+      if (res.ok) { showToast('Email sent ✔'); load(); }
       else showToast(json.error ?? 'Failed to send', false);
     } catch {
       showToast('Network error', false);
@@ -75,7 +75,7 @@ export default function AdminNotificationsPage() {
         body: JSON.stringify({ action: 'send_all_pending' }),
       });
       const json = await res.json();
-      if (res.ok) { showToast(`Sent ${json.sent} email(s) \u2714`); load(); }
+      if (res.ok) { showToast(`Sent ${json.sent} email(s) ✔`); load(); }
       else showToast(json.error ?? 'Failed', false);
     } catch {
       showToast('Network error', false);
@@ -149,7 +149,7 @@ export default function AdminNotificationsPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '.75rem', marginBottom: '1.5rem' }}>
         <div>
           <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1f2937', margin: 0 }}>
-            \uD83D\uDD14 Restock Notifications
+            Restock Notifications
           </h1>
           <p style={{ margin: '.25rem 0 0', fontSize: '.83rem', color: '#6b7280' }}>
             Customers waiting to be notified when products come back in stock
@@ -160,7 +160,7 @@ export default function AdminNotificationsPage() {
             onClick={load}
             style={{ padding: '.45rem .9rem', borderRadius: '.5rem', border: '1.5px solid #fce7f3', background: 'white', fontSize: '.82rem', cursor: 'pointer', color: '#6b7280', fontWeight: 600 }}
           >
-            \u21BB Refresh
+            ↻ Refresh
           </button>
           {pendingCount > 0 && (
             <button
@@ -168,7 +168,7 @@ export default function AdminNotificationsPage() {
               disabled={sendingAll}
               style={{ padding: '.45rem .9rem', borderRadius: '.5rem', border: 'none', background: sendingAll ? '#d1d5db' : '#9d174d', color: 'white', fontSize: '.82rem', cursor: sendingAll ? 'default' : 'pointer', fontWeight: 700 }}
             >
-              {sendingAll ? 'Sending\u2026' : `\uD83D\uDCE7 Notify All Pending (${pendingCount})`}
+              {sendingAll ? 'Sending...' : `Notify All Pending (${pendingCount})`}
             </button>
           )}
         </div>
@@ -210,7 +210,7 @@ export default function AdminNotificationsPage() {
         </div>
         <input
           type="text"
-          placeholder="Search email, product, size or colour\u2026"
+          placeholder="Search email, product, size or colour..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           style={{
@@ -225,10 +225,10 @@ export default function AdminNotificationsPage() {
       {/* Table */}
       <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
         {loading ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: '#9ca3af', fontSize: '.9rem' }}>Loading\u2026</div>
+          <div style={{ padding: '3rem', textAlign: 'center', color: '#9ca3af', fontSize: '.9rem' }}>Loading...</div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: '3rem', textAlign: 'center', color: '#9ca3af', fontSize: '.9rem' }}>
-            {filter === 'pending' ? '\u2714\uFE0F No pending notifications' : 'No results found'}
+            {filter === 'pending' ? '✔ No pending notifications' : 'No results found'}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -256,12 +256,12 @@ export default function AdminNotificationsPage() {
                     <td style={{ padding: '.7rem 1rem' }}>
                       {e.colour
                         ? pill(e.colour, '#fce7f3', '#9d174d')
-                        : <span style={{ color: '#d1d5db', fontSize: '.75rem' }}>\u2014</span>}
+                        : <span style={{ color: '#d1d5db', fontSize: '.75rem' }}>&mdash;</span>}
                     </td>
                     <td style={{ padding: '.7rem 1rem' }}>
                       {e.size
                         ? pill(e.size, '#ede9fe', '#5b21b6')
-                        : <span style={{ color: '#d1d5db', fontSize: '.75rem' }}>\u2014</span>}
+                        : <span style={{ color: '#d1d5db', fontSize: '.75rem' }}>&mdash;</span>}
                     </td>
                     <td style={{ padding: '.7rem 1rem', color: '#6b7280', whiteSpace: 'nowrap' }}>
                       {new Date(e.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: '2-digit' })}
@@ -269,7 +269,7 @@ export default function AdminNotificationsPage() {
                     <td style={{ padding: '.7rem 1rem' }}>
                       {e.notified ? (
                         <span style={{ background: '#d1fae5', color: '#065f46', borderRadius: '2rem', padding: '.2rem .65rem', fontSize: '.75rem', fontWeight: 700 }}>
-                          \u2714 Notified
+                          ✔ Notified
                         </span>
                       ) : (
                         <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: '2rem', padding: '.2rem .65rem', fontSize: '.75rem', fontWeight: 700 }}>
@@ -285,14 +285,14 @@ export default function AdminNotificationsPage() {
                             disabled={sending === e.id}
                             style={{ padding: '.3rem .65rem', borderRadius: '.4rem', border: 'none', background: sending === e.id ? '#d1d5db' : '#9d174d', color: 'white', fontSize: '.75rem', fontWeight: 700, cursor: sending === e.id ? 'default' : 'pointer' }}
                           >
-                            {sending === e.id ? '\u2026' : '\uD83D\uDCE7 Send'}
+                            {sending === e.id ? '...' : 'Send'}
                           </button>
                         )}
                         <button
                           onClick={() => deleteEntry(e.id)}
                           style={{ padding: '.3rem .65rem', borderRadius: '.4rem', border: '1.5px solid #fce7f3', background: 'white', color: '#ef4444', fontSize: '.75rem', fontWeight: 700, cursor: 'pointer' }}
                         >
-                          \uD83D\uDDD1\uFE0F
+                          Delete
                         </button>
                       </div>
                     </td>
