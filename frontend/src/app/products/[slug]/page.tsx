@@ -18,15 +18,6 @@ const CATEGORY_LABEL: Record<string, string> = {
   dupattas: 'Dupattas', salwar: 'Salwar Suits', suits: 'Suits',
 };
 
-/**
- * Categories whose /collections/[category]/[subcategory] route is implemented
- * and will resolve without a 404. Gender pages (women/men/kids) use subcategories
- * as a second segment; 'accessories' also has dynamic subcategory pills.
- * All other categories do NOT have a routed subcategory page — show subcat as
- * plain text only so we never generate a broken breadcrumb link.
- */
-const ROUTED_SUBCATEGORY_PARENTS = new Set(['women', 'men', 'kids', 'accessories']);
-
 export default async function ProductPage({ params }: { params: { slug: string } }) {
   const product = await getProductBySlug(params.slug);
   if (!product) notFound();
@@ -72,12 +63,12 @@ export default async function ProductPage({ params }: { params: { slug: string }
 
   // Dynamic label — works for any DB category, not just hardcoded four
   const catLabel = CATEGORY_LABEL[product.category] ?? titleCase(product.category);
-  // Optional subcategory support
-  const subcat = (product as Product & { subcategory?: string }).subcategory;
 
-  // Only generate a clickable subcategory breadcrumb link when the route exists.
-  // For all other categories the subcat is shown as non-linked text to avoid 404s.
-  const subcatIsLinked = subcat && ROUTED_SUBCATEGORY_PARENTS.has(product.category);
+  // Optional subcategory — always shown as plain text (never a link).
+  // The /collections/[category]/[subcategory] route is gender-based (women/men/kids)
+  // and product.category is always a garment type (sarees, kurtas…), never a gender,
+  // so a link would always 404.
+  const subcat = (product as Product & { subcategory?: string }).subcategory;
 
   return (
     <main style={{ background: 'var(--color-bg)' }}>
@@ -94,16 +85,9 @@ export default async function ProductPage({ params }: { params: { slug: string }
             {subcat && (
               <>
                 <span style={{ color: 'var(--color-gold)' }}>/</span>
-                {subcatIsLinked ? (
-                  <a
-                    href={`/collections/${product.category}/${subcat}`}
-                    style={{ color: 'var(--color-text-muted)', textDecoration: 'none', textTransform: 'capitalize' }}
-                  >
-                    {subcat}
-                  </a>
-                ) : (
-                  <span style={{ color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>{subcat}</span>
-                )}
+                {/* Always plain text — subcat link would 404 since the subcategory
+                    route is gender-based, not garment-based */}
+                <span style={{ color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>{subcat}</span>
               </>
             )}
             <span style={{ color: 'var(--color-gold)' }}>/</span>

@@ -5,7 +5,8 @@ import { sendEmail, buildRestockEmail } from '../../../../lib/resend';
 
 export const dynamic = 'force-dynamic';
 
-const COLS = 'id, email, product_id, product_name, product_slug, variant_id, size, colour, notified, created_at';
+// notify_type added so the admin panel can filter restock vs coming_soon
+const COLS = 'id, email, product_id, product_name, product_slug, variant_id, size, colour, notified, notify_type, created_at';
 
 // GET /api/admin/notifications
 export async function GET(req: NextRequest) {
