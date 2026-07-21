@@ -50,7 +50,7 @@ function brandWrap(content: string): string {
         <tr><td style="padding:40px;">${content}</td></tr>
         <tr>
           <td style="background:#fdf8f4;border-top:1px solid #f0e8e0;padding:24px 40px;text-align:center;">
-            <div style="font-size:12px;color:#9ca3af;">&#169; 2025 Ethnic Story Australia &#183; <a href="https://ethnicstory.com.au" style="color:#9d174d;text-decoration:none;">ethnicstory.com.au</a></div>
+            <div style="font-size:12px;color:#9ca3af;">&#169; 2026 Ethnic Story Australia &#183; <a href="https://ethnicstory.com.au" style="color:#9d174d;text-decoration:none;">ethnicstory.com.au</a></div>
             <div style="font-size:11px;color:#d1d5db;margin-top:6px;">You're receiving this because you made a purchase at Ethnic Story.</div>
           </td>
         </tr>

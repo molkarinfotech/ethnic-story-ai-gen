@@ -18,6 +18,15 @@ const CATEGORY_LABEL: Record<string, string> = {
   dupattas: 'Dupattas', salwar: 'Salwar Suits', suits: 'Suits',
 };
 
+/**
+ * Categories whose /collections/[category]/[subcategory] route is implemented
+ * and will resolve without a 404. Gender pages (women/men/kids) use subcategories
+ * as a second segment; 'accessories' also has dynamic subcategory pills.
+ * All other categories do NOT have a routed subcategory page — show subcat as
+ * plain text only so we never generate a broken breadcrumb link.
+ */
+const ROUTED_SUBCATEGORY_PARENTS = new Set(['women', 'men', 'kids', 'accessories']);
+
 export default async function ProductPage({ params }: { params: { slug: string } }) {
   const product = await getProductBySlug(params.slug);
   if (!product) notFound();
@@ -66,6 +75,10 @@ export default async function ProductPage({ params }: { params: { slug: string }
   // Optional subcategory support
   const subcat = (product as Product & { subcategory?: string }).subcategory;
 
+  // Only generate a clickable subcategory breadcrumb link when the route exists.
+  // For all other categories the subcat is shown as non-linked text to avoid 404s.
+  const subcatIsLinked = subcat && ROUTED_SUBCATEGORY_PARENTS.has(product.category);
+
   return (
     <main style={{ background: 'var(--color-bg)' }}>
 
@@ -81,7 +94,16 @@ export default async function ProductPage({ params }: { params: { slug: string }
             {subcat && (
               <>
                 <span style={{ color: 'var(--color-gold)' }}>/</span>
-                <a href={`/collections/${product.category}/${subcat}`} style={{ color: 'var(--color-text-muted)', textDecoration: 'none', textTransform: 'capitalize' }}>{subcat}</a>
+                {subcatIsLinked ? (
+                  <a
+                    href={`/collections/${product.category}/${subcat}`}
+                    style={{ color: 'var(--color-text-muted)', textDecoration: 'none', textTransform: 'capitalize' }}
+                  >
+                    {subcat}
+                  </a>
+                ) : (
+                  <span style={{ color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>{subcat}</span>
+                )}
               </>
             )}
             <span style={{ color: 'var(--color-gold)' }}>/</span>
