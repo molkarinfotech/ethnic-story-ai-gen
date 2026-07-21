@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '../../../lib/supabase';
-import { sendEmail, buildRestockSubscribedEmail } from '../../../lib/resend';
+import {
+  sendEmail,
+  buildRestockSubscribedEmail,
+  buildComingSoonSubscribedEmail,
+} from '../../../lib/resend';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +33,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });
   }
 
-  const { email, productId, productName, productSlug, variantId, size, colour } = await req.json();
+  const body = await req.json();
+  const {
+    email, productId, productName, productSlug,
+    variantId, size, colour,
+    notifyType = 'restock',   // 'restock' | 'coming_soon'
+  } = body;
 
   if (!email || !productId || !productName) {
     return NextResponse.json({ error: 'email, productId, productName required' }, { status: 400 });
@@ -43,20 +52,27 @@ export async function POST(req: NextRequest) {
 
   const sb = getServiceSupabase();
 
-  // Conflict key: if variant_id is known, deduplicate on email+variant_id;
-  // otherwise fall back to email+product_id (global OOS case)
+  // For coming_soon notifications there is no specific variant;
+  // deduplicate on email + product_id.
+  const isComingSoon = notifyType === 'coming_soon';
+
   const record: Record<string, unknown> = {
     email,
     product_id:   productId,
     product_name: productName,
     product_slug: productSlug ?? null,
     notified:     false,
-    variant_id:   variantId  ?? null,
-    size:         size       ?? null,
-    colour:       colour     ?? null,
+    variant_id:   isComingSoon ? null : (variantId  ?? null),
+    size:         isComingSoon ? null : (size       ?? null),
+    colour:       isComingSoon ? null : (colour     ?? null),
+    notify_type:  notifyType,   // stored in DB for admin filtering
   };
 
-  const conflictCol = variantId ? 'email,variant_id' : 'email,product_id';
+  // Always deduplicate on email + product_id so a Coming Soon
+  // product doesn't produce duplicate rows across multiple clicks.
+  const conflictCol = (!isComingSoon && variantId)
+    ? 'email,variant_id'
+    : 'email,product_id';
 
   const { error } = await sb.from('restock_notifications').upsert(
     record,
@@ -68,12 +84,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Build a label that mentions the specific variant if known
+  // Send appropriate confirmation email
   const variantLabel = [colour, size].filter(Boolean).join(' / ');
   const displayName  = variantLabel ? `${productName} (${variantLabel})` : productName;
 
-  const emailPayload = buildRestockSubscribedEmail(displayName, email);
-  sendEmail(emailPayload).catch(err => console.error('[notify-restock] Confirmation email failed:', err));
+  const emailPayload = isComingSoon
+    ? buildComingSoonSubscribedEmail(displayName, email)
+    : buildRestockSubscribedEmail(displayName, email);
+
+  sendEmail(emailPayload).catch(err =>
+    console.error('[notify-restock] Confirmation email failed:', err)
+  );
 
   return NextResponse.json({ subscribed: true });
 }

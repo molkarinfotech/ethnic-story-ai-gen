@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 type ProductImage = { id: string; colour: string; url: string; sort_order: number };
 type Variant = { id: string; size: string; colour: string; stock_count: number; image_url?: string | null };
@@ -214,7 +215,10 @@ function ProfitChip({ price, landedCost }: { price: number; landedCost: number |
   );
 }
 
-export default function AdminProductsPage() {
+// ── Inner component that uses useSearchParams ────────────────────
+function AdminProductsInner() {
+  const searchParams = useSearchParams();
+
   const [products,      setProducts]     = useState<Product[]>([]);
   const [categories,    setCategories]   = useState<Category[]>([]);
   const [loading,       setLoading]      = useState(true);
@@ -230,6 +234,10 @@ export default function AdminProductsPage() {
   const [imagesLoaded,  setImagesLoaded] = useState<Record<string,boolean>>({});
   const [selectedIds,   setSelectedIds]  = useState<Set<string>>(new Set());
   const [bulkDeleting,  setBulkDeleting] = useState(false);
+
+  // ?manage={id} — auto-expand a newly created product row
+  const managedId = searchParams.get('manage') ?? null;
+  const autoExpandDone = useRef(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -253,6 +261,42 @@ export default function AdminProductsPage() {
       .catch(() => {});
   }, []);
 
+  const loadImages = useCallback(async (productId: string) => {
+    if (imagesLoaded[productId]) return;
+    setImagesLoaded(m => ({ ...m, [productId]: true }));
+    try {
+      const res  = await fetch(`/api/product-images/${productId}`, { credentials: 'include' });
+      const data = await res.json();
+      setImageMap(m => ({ ...m, [productId]: Array.isArray(data) ? data : [] }));
+    } catch {
+      setImageMap(m => ({ ...m, [productId]: [] }));
+    }
+  }, [imagesLoaded]);
+
+  // Auto-expand the ?manage= product once products have loaded
+  useEffect(() => {
+    if (!managedId || loading || products.length === 0) return;
+    if (autoExpandDone.current) return;
+    autoExpandDone.current = true;
+
+    const exists = products.some(p => p.id === managedId);
+    if (!exists) return;
+
+    setExpandedId(managedId);
+    loadImages(managedId);
+
+    // Scroll to the card after a brief settle
+    setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[data-product-id="${managedId}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+
+    // Remove ?manage= from URL so refresh doesn't re-trigger
+    const url = new URL(window.location.href);
+    url.searchParams.delete('manage');
+    window.history.replaceState({}, '', url.pathname + (url.search || ''));
+  }, [managedId, loading, products, loadImages]);
+
   // ── Quick-save product field ─────────────────────────────────
   async function saveProductField(productId: string, field: string, raw: string) {
     let value: string | number | null = raw === '' ? null : raw;
@@ -273,18 +317,6 @@ export default function AdminProductsPage() {
     }
     setProducts(ps => ps.map(p => p.id === productId ? { ...p, [field]: value } : p));
   }
-
-  const loadImages = useCallback(async (productId: string) => {
-    if (imagesLoaded[productId]) return;
-    setImagesLoaded(m => ({ ...m, [productId]: true }));
-    try {
-      const res  = await fetch(`/api/product-images/${productId}`, { credentials: 'include' });
-      const data = await res.json();
-      setImageMap(m => ({ ...m, [productId]: Array.isArray(data) ? data : [] }));
-    } catch {
-      setImageMap(m => ({ ...m, [productId]: [] }));
-    }
-  }, [imagesLoaded]);
 
   function toggleExpand(productId: string) {
     if (expandedId === productId) {
@@ -691,6 +723,7 @@ export default function AdminProductsPage() {
             return (
               <div
                 key={p.id}
+                data-product-id={p.id}
                 style={{
                   border: isSelected ? '1.5px solid #9d174d' : '1.5px solid #f3f4f6',
                   borderRadius: '8px',
@@ -930,6 +963,15 @@ export default function AdminProductsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// ── Page export wrapped in Suspense (required for useSearchParams) ──
+export default function AdminProductsPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: '2rem', color: '#9ca3af', fontSize: '.85rem' }}>Loading products…</div>}>
+      <AdminProductsInner />
+    </Suspense>
   );
 }
 
