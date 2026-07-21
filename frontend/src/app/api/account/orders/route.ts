@@ -12,7 +12,6 @@ const ORDER_SELECT = [
   'coupon_code', 'discount_amount', 'shipping_cost',
 ].join(', ');
 
-// Explicit type so TypeScript doesn't infer GenericStringError union
 interface OrderRow {
   id: string;
   created_at: string;
@@ -23,7 +22,7 @@ interface OrderRow {
   customer_name?: string | null;
   customer_email?: string | null;
   customer_phone?: string | null;
-  shipping_address?: unknown | null;
+  shipping_address?: unknown;
   stripe_payment_intent_id?: string | null;
   tracking_number?: string | null;
   shipping_carrier?: string | null;
@@ -31,6 +30,12 @@ interface OrderRow {
   coupon_code?: string | null;
   discount_amount?: number | null;
   shipping_cost?: number | null;
+}
+
+/** Safe cast: routes through `unknown` to silence GenericStringError overlap TS error */
+function toRows(raw: unknown): OrderRow[] {
+  if (!Array.isArray(raw)) return [];
+  return raw as OrderRow[];
 }
 
 export async function GET(req: NextRequest) {
@@ -57,9 +62,8 @@ export async function GET(req: NextRequest) {
     .ilike('customer_email', user.email ?? '')
     .order('created_at', { ascending: false });
 
-  // Cast to typed arrays — Supabase returns GenericStringError union without explicit types
-  const byId    = (byIdRaw    ?? []) as OrderRow[];
-  const byEmail = (byEmailRaw ?? []) as OrderRow[];
+  const byId    = toRows(byIdRaw);
+  const byEmail = toRows(byEmailRaw);
 
   // 3. Merge + deduplicate
   const seen = new Set<string>();
