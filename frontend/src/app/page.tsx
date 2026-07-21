@@ -1,7 +1,7 @@
 import { ProductCard } from '../components/shop/ProductCard';
 import { getProducts } from '../lib/fetchProducts';
 
-export const revalidate = 60; // re-fetch from Supabase every 60 seconds
+export const revalidate = 60;
 
 export default async function HomePage() {
   const products = await getProducts();
@@ -53,13 +53,17 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* USP Strip */}
+      {/* USP Strip — text-only, no emoji */}
       <div className="usp-strip">
         <div className="container">
           <div className="usp-strip__grid">
-            {[['🚚','Free Shipping','On orders above ₹2,500'],['✅','100% Authentic','Directly from artisans'],['↩️','Easy Returns','15-day hassle-free returns'],['🔒','Secure Payment','Razorpay & Stripe secured']].map(([icon,title,sub]) => (
+            {[
+              ['Free Shipping', 'On orders above ₹2,500'],
+              ['100% Authentic', 'Directly from artisans'],
+              ['Easy Returns', '15-day hassle-free returns'],
+              ['Secure Payment', 'Razorpay & Stripe secured'],
+            ].map(([title, sub]) => (
               <div key={String(title)} className="usp-item">
-                <div className="usp-item__icon">{icon}</div>
                 <div className="usp-item__title">{title}</div>
                 <div className="usp-item__sub">{sub}</div>
               </div>
@@ -156,7 +160,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Services */}
+      {/* Services — asymmetric layout, not a uniform 4-col grid */}
       <section className="section" id="services" style={{ background: 'var(--color-surface)' }}>
         <div className="container">
           <div className="section-head" data-reveal>
@@ -166,35 +170,25 @@ export default async function HomePage() {
             </div>
             <p>We are here from the first browse to the final stitch.</p>
           </div>
-          <div className="services-grid">
-            {[
-              ['Virtual styling','Book assisted shopping for bridal, festive, or gifting selections.'],
-              ['Custom tailoring','Measurements, alterations, and custom orders handled with care.'],
-              ['Occasion curation','Grouped edits for weddings, sangeet, puja, and reception looks.'],
-              ['Worldwide shipping','We ship to Australia, UK, USA, Canada, and the Middle East.'],
-            ].map(([title, desc]) => (
-              <article key={String(title)} className="service-card" data-reveal>
-                <span className="line"></span>
-                <h3>{title}</h3>
-                <p>{desc}</p>
-              </article>
-            ))}
+          <div className="services-bento">
+            <article className="service-tile service-tile--wide" data-reveal>
+              <span className="service-tile__label">Virtual styling</span>
+              <h3>Assisted shopping for bridal, festive, or gifting selections.</h3>
+              <a href="/contact" className="service-tile__link">Book a session →</a>
+            </article>
+            <article className="service-tile" data-reveal>
+              <span className="service-tile__label">Custom tailoring</span>
+              <h3>Measurements, alterations, and custom orders handled with care.</h3>
+            </article>
+            <article className="service-tile" data-reveal>
+              <span className="service-tile__label">Occasion curation</span>
+              <h3>Grouped edits for weddings, sangeet, puja, and reception looks.</h3>
+            </article>
+            <article className="service-tile service-tile--accent" data-reveal>
+              <span className="service-tile__label">Worldwide shipping</span>
+              <h3>We ship to Australia, UK, USA, Canada, and the Middle East.</h3>
+            </article>
           </div>
-        </div>
-      </section>
-
-      {/* Newsletter */}
-      <section className="section" id="visit">
-        <div className="container newsletter-wrap">
-          <article className="newsletter" data-reveal>
-            <span className="pill">Stay connected</span>
-            <h2 style={{ marginTop: 'var(--space-4)' }}>Be the first to know when new collections arrive.</h2>
-            <p>Join our list for new drops, exclusive styling edits, festive season lookbooks, and early access to limited pieces.</p>
-          </article>
-          <form className="newsletter-form" data-reveal>
-            <input type="email" aria-label="Email address" placeholder="Your email address" />
-            <button className="btn btn-primary" type="submit">Join the list</button>
-          </form>
         </div>
       </section>
     </main>
