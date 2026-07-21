@@ -74,7 +74,9 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
     fetch(`/api/variants/${product.id}?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
       .then((data: { stock_count: number }[]) => {
-        setGlobalOOS(!Array.isArray(data) || data.length === 0);
+        // OOS only if NO variants exist OR none have stock_count > 0
+        const hasStock = Array.isArray(data) && data.some(v => Number(v.stock_count) > 0);
+        setGlobalOOS(!hasStock);
       })
       .catch(() => setGlobalOOS(false))
       .finally(() => setStockChecked(true));
@@ -164,12 +166,12 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
   const atcDisabled = !stockChecked || isComingSoon || outOfStock;
 
   const atcLabel = () => {
-    if (isComingSoon)                    return '⏳ Coming Soon';
-    if (!stockChecked)                   return 'Checking stock…';
-    if (added)                           return '✓ Added to Bag';
-    if (globalOOS === true)              return '🚫 Out of Stock';
-    if (size !== null && !sizeInStock)   return '🚫 Out of Stock';
-    if (isPreOrder)                      return '🛒 Pre-Order Now';
+    if (isComingSoon)                    return 'Coming Soon';
+    if (!stockChecked)                   return 'Checking stock...';
+    if (added)                           return 'Added to Bag';
+    if (globalOOS === true)              return 'Out of Stock';
+    if (size !== null && !sizeInStock)   return 'Out of Stock';
+    if (isPreOrder)                      return 'Pre-Order Now';
     return 'Add to Bag';
   };
 
@@ -180,7 +182,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
 
   // Label for notify panel — be specific when a variant is selected
   const notifyVariantLabel = size
-    ? `${product.name}${selectedColour ? ` — ${selectedColour}` : ''} (${size})`
+    ? `${product.name}${selectedColour ? ` \u2014 ${selectedColour}` : ''} (${size})`
     : product.name;
 
   return (
@@ -196,7 +198,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
           />
 
           <div className="pdp-artisan-badge">
-            <span style={{ fontSize: '1.5rem' }}>✍️</span>
+            <span style={{ fontSize: '1.5rem' }}>&#9997;&#65039;</span>
             <div>
               <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-gold)', letterSpacing: '.06em', textTransform: 'uppercase' }}>Handcrafted in India</div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '.2rem' }}>By skilled artisans using traditional techniques</div>
@@ -215,7 +217,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', margin: 'var(--space-4) 0' }}>
             <div style={{ flex: 1, height: '1px', background: 'var(--color-divider)' }} />
-            <span style={{ color: 'var(--color-gold)', fontSize: '.75rem' }}>✷</span>
+            <span style={{ color: 'var(--color-gold)', fontSize: '.75rem' }}>&#10007;</span>
             <div style={{ flex: 1, height: '1px', background: 'var(--color-divider)' }} />
           </div>
 
@@ -242,12 +244,12 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
               background: '#fff1f2', border: '1.5px solid #fca5a5',
               borderRadius: 'var(--radius-lg)', padding: 'var(--space-4) var(--space-5)', marginBottom: 'var(--space-5)',
             }}>
-              <span style={{ fontSize: '1.25rem', flexShrink: 0, marginTop: '.05rem' }}>⚠️</span>
+              <span style={{ fontSize: '1.25rem', flexShrink: 0, marginTop: '.05rem' }}>&#9888;&#65039;</span>
               <div>
-                <div style={{ fontWeight: 700, color: '#b91c1c', fontSize: 'var(--text-sm)', marginBottom: '.25rem' }}>Pre-Order — Not Available Locally</div>
+                <div style={{ fontWeight: 700, color: '#b91c1c', fontSize: 'var(--text-sm)', marginBottom: '.25rem' }}>Pre-Order &mdash; Not Available Locally</div>
                 <div style={{ color: '#dc2626', fontSize: 'var(--text-xs)', lineHeight: 1.55 }}>
                   This product is not currently held in local stock and is sourced directly from India.
-                  Please allow <strong>2–4 weeks</strong> for delivery after your order is placed.
+                  Please allow <strong>2&ndash;4 weeks</strong> for delivery after your order is placed.
                 </div>
               </div>
             </div>
@@ -256,7 +258,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
           {/* Coming Soon banner */}
           {isComingSoon && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4) var(--space-5)', marginBottom: 'var(--space-5)' }}>
-              <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>⏳</span>
+              <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>&#9203;</span>
               <div>
                 <div style={{ fontWeight: 700, color: '#1d4ed8', fontSize: 'var(--text-sm)' }}>Coming Soon</div>
                 <div style={{ color: '#6b7280', fontSize: 'var(--text-xs)', marginTop: '.2rem' }}>This piece is not yet available for purchase. Check back soon.</div>
@@ -267,10 +269,10 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
           {/* Global OOS banner */}
           {stockChecked && globalOOS === true && !isComingSoon && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4) var(--space-5)', marginBottom: 'var(--space-5)' }}>
-              <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>🚫</span>
+              <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>&#128683;</span>
               <div>
                 <div style={{ fontWeight: 700, color: '#b91c1c', fontSize: 'var(--text-sm)' }}>Currently Out of Stock</div>
-                <div style={{ color: '#6b7280', fontSize: 'var(--text-xs)', marginTop: '.2rem' }}>Enter your email below and we'll notify you the moment it's back.</div>
+                <div style={{ color: '#6b7280', fontSize: 'var(--text-xs)', marginTop: '.2rem' }}>Enter your email below and we&apos;ll notify you the moment it&apos;s back.</div>
               </div>
             </div>
           )}
@@ -292,7 +294,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
               <div className="pdp-qty-row" style={{ marginTop: 'var(--space-5)' }}>
                 <span className="pdp-qty-label">Quantity</span>
                 <div className="qty-control">
-                  <button className="qty-btn" onClick={() => setQty(q => Math.max(1, q - 1))} aria-label="Decrease">−</button>
+                  <button className="qty-btn" onClick={() => setQty(q => Math.max(1, q - 1))} aria-label="Decrease">&minus;</button>
                   <span className="qty-value">{qty}</span>
                   <button
                     className="qty-btn"
@@ -332,7 +334,7 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
               </a>
             )}
 
-            {/* ── Notify Me When In Stock ── */}
+            {/* Notify Me When In Stock */}
             {showNotifyPanel && (
               <div style={{
                 marginTop: 'var(--space-5)',
@@ -343,16 +345,16 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
               }}>
                 {notifyStatus === 'done' ? (
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
-                    <span style={{ fontSize: '1.4rem', flexShrink: 0 }}>✅</span>
+                    <span style={{ fontSize: '1.4rem', flexShrink: 0 }}>&#9989;</span>
                     <div>
-                      <div style={{ fontWeight: 700, color: 'var(--color-success)', fontSize: 'var(--text-sm)' }}>You're on the list!</div>
+                      <div style={{ fontWeight: 700, color: 'var(--color-success)', fontSize: 'var(--text-sm)' }}>You&apos;re on the list!</div>
                       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '.25rem', lineHeight: 1.5 }}>{notifyMessage}</div>
                     </div>
                   </div>
                 ) : (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-1)' }}>
-                      <span style={{ fontSize: '1.1rem' }}>🔔</span>
+                      <span style={{ fontSize: '1.1rem' }}>&#128276;</span>
                       <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>Notify me when back in stock</span>
                     </div>
                     <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)', lineHeight: 1.5 }}>
@@ -396,14 +398,14 @@ export function ProductPageClient({ product, colourImages, badge, discount, orig
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        {notifyStatus === 'loading' ? 'Saving…' : 'Notify Me'}
+                        {notifyStatus === 'loading' ? 'Saving...' : 'Notify Me'}
                       </button>
                     </div>
                     {notifyStatus === 'error' && notifyMessage && (
                       <p style={{ color: '#dc2626', fontSize: 'var(--text-xs)', marginTop: 'var(--space-2)' }}>{notifyMessage}</p>
                     )}
                     <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
-                      We'll send one email when this item is restocked. No spam.
+                      We&apos;ll send one email when this item is restocked. No spam.
                     </p>
                   </>
                 )}
