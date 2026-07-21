@@ -1,4 +1,4 @@
-// ─── Resend email utility + branded HTML templates ───────────────────────────────────────────
+// Resend email utility + branded HTML templates
 // Requires env var: RESEND_API_KEY
 // Sender domain:    RESEND_FROM_EMAIL  (e.g. "Ethnic Story <orders@ethnicstory.com.au>")
 
@@ -29,7 +29,6 @@ export async function sendEmail(payload: EmailPayload): Promise<{ ok: boolean; e
   return { ok: true };
 }
 
-// ─── Shared brand wrapper ────────────────────────────────────────────
 function brandWrap(content: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -62,7 +61,6 @@ function brandWrap(content: string): string {
 </html>`;
 }
 
-// ─── Shared types ─────────────────────────────────────────────────────────────────────────────────────
 export interface OrderEmailData {
   customerName:  string;
   customerEmail: string;
@@ -95,7 +93,6 @@ const PAYMENT_INSTRUCTIONS: Record<string, string> = {
   payid:  'Please transfer the total amount to:<br/><strong>PayID:</strong> orders@ethnicstory.com.au<br/><strong>Reference:</strong> your order ID shown above.<br/>Your order will be dispatched once payment is confirmed.',
 };
 
-// ─── Shared invoice table rows ───────────────────────────────────────────────────
 function buildItemRows(items: OrderEmailData['items']): string {
   return items.map(i => {
     const variant = [i.size, i.colour].filter(Boolean).join(' / ');
@@ -143,7 +140,6 @@ function buildTotalsFooter(subtotal: number, shippingCost: number, totalAud: num
     </tr>`;
 }
 
-// ─── Template: Online Order Confirmation (Stripe / online checkout) ──────────────────────
 export function buildOrderConfirmationEmail(data: OrderEmailData): EmailPayload {
   const subtotal     = data.subtotalAud ?? data.items.reduce((s, i) => s + i.price * i.quantity, 0);
   const shippingCost = data.shippingCost ?? 0;
@@ -161,7 +157,7 @@ export function buildOrderConfirmationEmail(data: OrderEmailData): EmailPayload 
 
   const content = `
     <h1 style="font-family:Georgia,serif;color:#9d174d;font-size:24px;margin:0 0 8px;">Order Confirmed 🎉</h1>
-    <p style="color:#6b7280;margin:0 0 28px;font-size:15px;">Thank you, <strong>${data.customerName}</strong>! We’ve received your order and it’s being prepared with care.</p>
+    <p style="color:#6b7280;margin:0 0 28px;font-size:15px;">Thank you, <strong>${data.customerName}</strong>! We've received your order and it's being prepared with care.</p>
 
     <div style="background:#fdf8f4;border-radius:10px;padding:16px 20px;margin-bottom:28px;">
       <span style="font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:.1em;">Order reference</span>
@@ -205,7 +201,6 @@ export function buildOrderConfirmationEmail(data: OrderEmailData): EmailPayload 
   };
 }
 
-// ─── Template: In-Store Invoice (post-payment, cash/EFTPOS/PayID) ────────────────────────
 export function buildInstoreInvoiceEmail(data: OrderEmailData): EmailPayload {
   const subtotal     = data.subtotalAud ?? data.items.reduce((s, i) => s + i.price * i.quantity, 0);
   const shippingCost = data.shippingCost ?? 0;
@@ -224,18 +219,16 @@ export function buildInstoreInvoiceEmail(data: OrderEmailData): EmailPayload {
     </p>
 
     <div style="background:#9d174d;border-radius:10px 10px 0 0;padding:16px 24px;">
-      <table width="100%" cellpadding="0" cellspacing="0">
-        <tr>
-          <td>
-            <div style="color:rgba(255,255,255,.7);font-size:11px;text-transform:uppercase;letter-spacing:.15em;">Invoice</div>
-            <div style="color:#fff;font-weight:800;font-size:18px;font-family:monospace;margin-top:2px;">#${invoiceNum}</div>
-          </td>
-          <td style="text-align:right;">
-            <div style="color:rgba(255,255,255,.7);font-size:11px;text-transform:uppercase;letter-spacing:.15em;">Date</div>
-            <div style="color:#fff;font-size:13px;font-weight:600;margin-top:2px;">${dateStr}</div>
-          </td>
-        </tr>
-      </table>
+      <table width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td>
+          <div style="color:rgba(255,255,255,.7);font-size:11px;text-transform:uppercase;letter-spacing:.15em;">Invoice</div>
+          <div style="color:#fff;font-weight:800;font-size:18px;font-family:monospace;margin-top:2px;">#${invoiceNum}</div>
+        </td>
+        <td style="text-align:right;">
+          <div style="color:rgba(255,255,255,.7);font-size:11px;text-transform:uppercase;letter-spacing:.15em;">Date</div>
+          <div style="color:#fff;font-size:13px;font-weight:600;margin-top:2px;">${dateStr}</div>
+        </td>
+      </tr></table>
     </div>
 
     <div style="border:1px solid #f3e8f0;border-top:none;border-radius:0 0 10px 10px;padding:0 0 4px;margin-bottom:28px;">
@@ -270,8 +263,8 @@ export function buildInstoreInvoiceEmail(data: OrderEmailData): EmailPayload {
     </div>` : ''}
 
     <div style="background:linear-gradient(135deg,#fdf2f8,#fff7ed);border-radius:10px;padding:20px 24px;text-align:center;margin-bottom:28px;">
-      <div style="font-family:Georgia,serif;font-size:15px;color:#9d174d;font-style:italic;">“Wearing culture, carrying tradition.”</div>
-      <div style="font-size:12px;color:#9ca3af;margin-top:8px;">We’d love to see you again. Visit us in store or online at <a href="https://ethnicstory.com.au" style="color:#9d174d;">ethnicstory.com.au</a></div>
+      <div style="font-family:Georgia,serif;font-size:15px;color:#9d174d;font-style:italic;">"Wearing culture, carrying tradition."</div>
+      <div style="font-size:12px;color:#9ca3af;margin-top:8px;">We'd love to see you again. Visit us in store or online at <a href="https://ethnicstory.com.au" style="color:#9d174d;">ethnicstory.com.au</a></div>
     </div>
 
     <div style="text-align:center;">
@@ -285,7 +278,6 @@ export function buildInstoreInvoiceEmail(data: OrderEmailData): EmailPayload {
   };
 }
 
-// ─── Template: Restock Notification ───────────────────────────────────────────────────
 export interface RestockEmailData {
   customerEmail: string;
   productName:   string;
@@ -296,7 +288,7 @@ export interface RestockEmailData {
 export function buildRestockEmail(data: RestockEmailData): EmailPayload {
   const url = `https://ethnicstory.com.au/products/${data.productSlug}`;
   const content = `
-    <h1 style="font-family:Georgia,serif;color:#9d174d;font-size:24px;margin:0 0 8px;">It’s back! 🎉</h1>
+    <h1 style="font-family:Georgia,serif;color:#9d174d;font-size:24px;margin:0 0 8px;">It's back! 🎉</h1>
     <p style="color:#6b7280;margin:0 0 28px;font-size:15px;"><strong>${data.productName}</strong> is back in stock — grab yours before it sells out again.</p>
     ${data.productImage ? `<div style="text-align:center;margin-bottom:24px;"><img src="${data.productImage}" alt="${data.productName}" style="max-width:240px;border-radius:12px;border:1px solid #f0e8e0;" /></div>` : ''}
     <div style="text-align:center;margin-bottom:32px;">
@@ -310,11 +302,10 @@ export function buildRestockEmail(data: RestockEmailData): EmailPayload {
   };
 }
 
-// ─── Template: Restock Subscription Confirmation ─────────────────────────────────────
 export function buildRestockSubscribedEmail(productName: string, email: string): EmailPayload {
   const content = `
-    <h1 style="font-family:Georgia,serif;color:#9d174d;font-size:24px;margin:0 0 8px;">You’re on the list ✓</h1>
-    <p style="color:#6b7280;margin:0 0 28px;font-size:15px;">We’ll send you an email at <strong>${email}</strong> as soon as <strong>${productName}</strong> is back in stock.</p>
+    <h1 style="font-family:Georgia,serif;color:#9d174d;font-size:24px;margin:0 0 8px;">You're on the list ✓</h1>
+    <p style="color:#6b7280;margin:0 0 28px;font-size:15px;">We'll send you an email at <strong>${email}</strong> as soon as <strong>${productName}</strong> is back in stock.</p>
     <div style="background:#fdf2f8;border:1px solid #fbcfe8;border-radius:10px;padding:20px;text-align:center;margin-bottom:28px;">
       <span style="font-size:2rem;">🔔</span>
       <div style="font-size:14px;color:#9d174d;font-weight:600;margin-top:8px;">Notification set for</div>
@@ -326,6 +317,69 @@ export function buildRestockSubscribedEmail(productName: string, email: string):
   return {
     to:      email,
     subject: `We'll notify you when ${productName} is back ❖ Ethnic Story`,
+    html:    brandWrap(content),
+  };
+}
+
+// Template: Sourcing Request Status Update
+export interface SourcingStatusEmailData {
+  customerEmail: string;
+  customerName?: string;
+  description:   string;
+  status:        string;
+}
+
+const SOURCING_STATUS_COPY: Record<string, { icon: string; heading: string; body: string; cta: string }> = {
+  reviewed: {
+    icon:    '🔍',
+    heading: 'We've reviewed your request',
+    body:    'Great news — our team has reviewed your sourcing request and we're looking into it. We'll be in touch soon with more details.',
+    cta:     'Visit Our Store',
+  },
+  fulfilled: {
+    icon:    '🎉',
+    heading: 'Your sourcing request has been fulfilled!',
+    body:    'Exciting news! We've sourced the item you requested. Head to our store to check it out or contact us to arrange your order.',
+    cta:     'Shop Now →',
+  },
+  declined: {
+    icon:    '😔',
+    heading: 'Update on your sourcing request',
+    body:    'Unfortunately we were unable to source the item you requested at this time. We apologise for any inconvenience and encourage you to browse our existing collection.',
+    cta:     'Browse Collection',
+  },
+  notified: {
+    icon:    '📬',
+    heading: 'You've been notified',
+    body:    'This is a confirmation that you've been notified regarding your sourcing request. Please check with us directly if you have any questions.',
+    cta:     'Contact Us',
+  },
+};
+
+export function buildSourcingStatusEmail(data: SourcingStatusEmailData): EmailPayload {
+  const copy = SOURCING_STATUS_COPY[data.status] ?? SOURCING_STATUS_COPY.notified;
+  const greeting = data.customerName ? `Hi <strong>${data.customerName}</strong>,` : 'Hi there,';
+  const snippet = data.description.length > 120
+    ? data.description.slice(0, 120) + '…'
+    : data.description;
+
+  const content = `
+    <h1 style="font-family:Georgia,serif;color:#9d174d;font-size:24px;margin:0 0 8px;">${copy.icon} ${copy.heading}</h1>
+    <p style="color:#6b7280;margin:0 0 24px;font-size:15px;">${greeting}</p>
+    <p style="color:#374151;margin:0 0 24px;font-size:15px;line-height:1.7;">${copy.body}</p>
+
+    <div style="background:#fdf8f4;border:1px solid #f0e8e0;border-radius:10px;padding:16px 20px;margin-bottom:28px;">
+      <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">Your request</div>
+      <div style="font-size:14px;color:#374151;line-height:1.6;">${snippet}</div>
+    </div>
+
+    <div style="text-align:center;">
+      <a href="https://ethnicstory.com.au/collections" style="display:inline-block;padding:14px 32px;background:#9d174d;color:white;text-decoration:none;border-radius:50px;font-weight:700;font-size:14px;letter-spacing:.04em;">${copy.cta}</a>
+    </div>`;
+
+  return {
+    to:      data.customerEmail,
+    subject: `${copy.icon} ${copy.heading} ❖ Ethnic Story`,
     html:    brandWrap(content),
   };
 }

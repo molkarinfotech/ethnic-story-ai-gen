@@ -8,7 +8,7 @@ type SourcingRequest = {
   email: string;
   description: string;
   image_url: string | null;
-  status: 'pending' | 'reviewed' | 'fulfilled' | 'declined';
+  status: 'pending' | 'reviewed' | 'fulfilled' | 'declined' | 'notified';
 };
 
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
@@ -16,15 +16,23 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   reviewed:  { bg: '#dbeafe', color: '#1e40af' },
   fulfilled: { bg: '#d1fae5', color: '#065f46' },
   declined:  { bg: '#fee2e2', color: '#991b1b' },
+  notified:  { bg: '#ede9fe', color: '#5b21b6' },
 };
 
 export default function AdminSourcingPage() {
-  const [requests, setRequests] = useState<SourcingRequest[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState<string | null>(null);
-  const [filter, setFilter]     = useState<string>('all');
-  const [updating, setUpdating] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [requests, setRequests]   = useState<SourcingRequest[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState<string | null>(null);
+  const [filter, setFilter]       = useState<string>('all');
+  const [updating, setUpdating]   = useState<string | null>(null);
+  const [notifying, setNotifying] = useState<string | null>(null);
+  const [expanded, setExpanded]   = useState<string | null>(null);
+  const [toast, setToast]         = useState<{ msg: string; ok: boolean } | null>(null);
+
+  function showToast(msg: string, ok = true) {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  }
 
   async function load() {
     setLoading(true);
@@ -47,23 +55,55 @@ export default function AdminSourcingPage() {
 
   async function updateStatus(id: string, status: string) {
     setUpdating(id);
-    const res = await fetch(`/api/admin/sourcing/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    if (res.ok) {
-      const updated = await res.json();
-      setRequests(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r));
+    try {
+      const res = await fetch(`/api/admin/sourcing/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setRequests(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r));
+      } else {
+        showToast('Failed to update status', false);
+      }
+    } catch {
+      showToast('Network error', false);
     }
     setUpdating(null);
+  }
+
+  async function notifyCustomer(id: string) {
+    if (!confirm('Send a notification email to this customer and mark as notified?')) return;
+    setNotifying(id);
+    try {
+      const res = await fetch(`/api/admin/sourcing/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'notify' }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        showToast('Customer notified ✔');
+        setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'notified' } : r));
+      } else {
+        showToast(json.error ?? 'Failed to notify', false);
+      }
+    } catch {
+      showToast('Network error', false);
+    }
+    setNotifying(null);
   }
 
   async function deleteRequest(id: string) {
     if (!confirm('Delete this sourcing request?')) return;
     setUpdating(id);
-    await fetch(`/api/admin/sourcing/${id}`, { method: 'DELETE' });
-    setRequests(prev => prev.filter(r => r.id !== id));
+    try {
+      await fetch(`/api/admin/sourcing/${id}`, { method: 'DELETE' });
+      setRequests(prev => prev.filter(r => r.id !== id));
+    } catch {
+      showToast('Network error', false);
+    }
     setUpdating(null);
   }
 
@@ -76,6 +116,18 @@ export default function AdminSourcingPage() {
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
+      {toast && (
+        <div style={{
+          position: 'fixed', top: '4.5rem', right: '1.25rem', zIndex: 999,
+          background: toast.ok ? '#166534' : '#991b1b',
+          color: 'white', borderRadius: '.6rem',
+          padding: '.65rem 1.1rem', fontSize: '.85rem', fontWeight: 600,
+          boxShadow: '0 4px 16px rgba(0,0,0,.18)',
+        }}>
+          {toast.msg}
+        </div>
+      )}
+
       <style>{`
         .src-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.75rem; margin-bottom:1.5rem; }
         .src-title  { font-size:1.35rem; font-weight:700; color:#111827; margin:0; }
@@ -102,6 +154,9 @@ export default function AdminSourcingPage() {
         .src-actions { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
         .src-select { border:1.5px solid #fce7f3; border-radius:.45rem; padding:.32rem .6rem; font-size:.8rem; font-weight:500; background:#fdf2f8; color:#9d174d; cursor:pointer; }
         .src-select:disabled { opacity:.5; cursor:not-allowed; }
+        .src-notify { background:#9d174d; color:#fff; border:none; border-radius:.45rem; padding:.32rem .8rem; font-size:.78rem; font-weight:600; cursor:pointer; }
+        .src-notify:hover:not(:disabled) { background:#831843; }
+        .src-notify:disabled { opacity:.5; cursor:not-allowed; }
         .src-del    { margin-left:auto; background:none; border:1.5px solid #fecaca; color:#dc2626; border-radius:.45rem; padding:.32rem .7rem; font-size:.78rem; font-weight:600; cursor:pointer; }
         .src-del:hover { background:#fee2e2; }
         .src-del:disabled { opacity:.5; cursor:not-allowed; }
@@ -115,14 +170,14 @@ export default function AdminSourcingPage() {
       <div className="src-header">
         <h1 className="src-title">Sourcing Requests</h1>
         <button className="src-reload" onClick={load} disabled={loading}>
-          {loading ? 'Loading\u2026' : 'Refresh'}
+          {loading ? 'Loading…' : 'Refresh'}
         </button>
       </div>
 
       <div className="src-stats">
-        {(['all', 'pending', 'reviewed', 'fulfilled', 'declined'] as const).map(s => {
+        {(['all', 'pending', 'reviewed', 'fulfilled', 'declined', 'notified'] as const).map(s => {
           const count = s === 'all' ? requests.length : (counts[s] ?? 0);
-          const col = s === 'all' ? { bg: '#f3f4f6', color: '#374151' } : STATUS_COLORS[s];
+          const col = s === 'all' ? { bg: '#f3f4f6', color: '#374151' } : (STATUS_COLORS[s] ?? STATUS_COLORS.pending);
           return (
             <button
               key={s}
@@ -148,7 +203,7 @@ export default function AdminSourcingPage() {
       )}
 
       {loading && (
-        <div style={{ textAlign:'center', padding:'3rem 1rem', color:'#9ca3af', fontSize:'.9rem' }}>Loading\u2026</div>
+        <div style={{ textAlign:'center', padding:'3rem 1rem', color:'#9ca3af', fontSize:'.9rem' }}>Loading…</div>
       )}
 
       {filtered.map(req => {
@@ -158,6 +213,7 @@ export default function AdminSourcingPage() {
         const date = new Date(req.created_at).toLocaleDateString('en-AU', {
           day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
         });
+        const isBusy = updating === req.id || notifying === req.id;
         return (
           <div key={req.id} className="src-card">
             <div className="src-card-header" onClick={() => setExpanded(isOpen ? null : req.id)}>
@@ -187,18 +243,32 @@ export default function AdminSourcingPage() {
                   <select
                     className="src-select"
                     value={req.status}
-                    disabled={updating === req.id}
+                    disabled={isBusy}
                     onChange={e => updateStatus(req.id, e.target.value)}
                   >
                     <option value="pending">Pending</option>
                     <option value="reviewed">Reviewed</option>
                     <option value="fulfilled">Fulfilled</option>
                     <option value="declined">Declined</option>
+                    <option value="notified">Notified</option>
                   </select>
-                  {updating === req.id && <span style={{ fontSize:'.78rem', color:'#9ca3af' }}>Saving\u2026</span>}
+
+                  <button
+                    className="src-notify"
+                    disabled={isBusy || req.status === 'notified'}
+                    onClick={() => notifyCustomer(req.id)}
+                    title={req.status === 'notified' ? 'Already notified' : 'Send email & mark as notified'}
+                  >
+                    {notifying === req.id ? 'Sending…' : '✉ Notify Customer'}
+                  </button>
+
+                  {isBusy && notifying !== req.id && (
+                    <span style={{ fontSize:'.78rem', color:'#9ca3af' }}>Saving…</span>
+                  )}
+
                   <button
                     className="src-del"
-                    disabled={updating === req.id}
+                    disabled={isBusy}
                     onClick={() => deleteRequest(req.id)}
                   >
                     Delete

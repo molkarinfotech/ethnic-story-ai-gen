@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '../../../../lib/supabase';
 import { isAdminAuthed } from '../../../../lib/admin-auth';
+import { sendEmail, buildRestockEmail } from '../../../../lib/resend';
 
 export const dynamic = 'force-dynamic';
 
 const COLS = 'id, email, product_id, product_name, product_slug, variant_id, size, colour, notified, created_at';
 
-// ── GET  /api/admin/notifications ──────────────────────────────────────────────
+// GET /api/admin/notifications
 export async function GET(req: NextRequest) {
   if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -17,11 +18,10 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
   return NextResponse.json({ notifications: data ?? [] });
 }
 
-// ── POST /api/admin/notifications ──────────────────────────────────────────────
+// POST /api/admin/notifications
 export async function POST(req: NextRequest) {
   if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -41,7 +41,10 @@ export async function POST(req: NextRequest) {
     if (fetchErr || !entry)
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    await sendRestockEmail(entry);
+    const emailResult = await sendRestockEmail(entry);
+    if (!emailResult.ok) {
+      return NextResponse.json({ error: `Email failed: ${emailResult.error}` }, { status: 500 });
+    }
 
     const { error: updateErr } = await sb
       .from('restock_notifications')
@@ -64,13 +67,19 @@ export async function POST(req: NextRequest) {
     let sent = 0;
     for (const entry of pending) {
       try {
-        await sendRestockEmail(entry);
-        await sb
-          .from('restock_notifications')
-          .update({ notified: true })
-          .eq('id', entry.id);
-        sent++;
-      } catch { /* continue on individual failure */ }
+        const result = await sendRestockEmail(entry);
+        if (result.ok) {
+          await sb
+            .from('restock_notifications')
+            .update({ notified: true })
+            .eq('id', entry.id);
+          sent++;
+        } else {
+          console.error(`[admin/notifications] Email failed for ${entry.email}:`, result.error);
+        }
+      } catch (err) {
+        console.error(`[admin/notifications] Unexpected error for ${entry.email}:`, err);
+      }
     }
     return NextResponse.json({ sent });
   }
@@ -78,7 +87,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 }
 
-// ── DELETE /api/admin/notifications ────────────────────────────────────────────
+// DELETE /api/admin/notifications
 export async function DELETE(req: NextRequest) {
   if (!isAdminAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -95,34 +104,20 @@ export async function DELETE(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-// ── Helper ─────────────────────────────────────────────────────────────────────
+// Helper: send the actual "back in stock" email directly via Resend
 async function sendRestockEmail(entry: {
   email: string;
-  product_id: string;
   product_name: string;
   product_slug?: string | null;
   size?: string | null;
   colour?: string | null;
-  variant_id?: string | null;
 }) {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://ethnicstory.com.au';
+  const variantLabel = [entry.colour, entry.size].filter(Boolean).join(' / ');
+  const displayName  = variantLabel ? `${entry.product_name} (${variantLabel})` : entry.product_name;
 
-  const res = await fetch(`${baseUrl}/api/notify-restock`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email:       entry.email,
-      productId:   entry.product_id,
-      productName: entry.product_name,
-      productSlug: entry.product_slug ?? null,
-      size:        entry.size ?? null,
-      colour:      entry.colour ?? null,
-      variantId:   entry.variant_id ?? null,
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`notify-restock failed: ${err}`);
-  }
+  return sendEmail(buildRestockEmail({
+    customerEmail: entry.email,
+    productName:   displayName,
+    productSlug:   entry.product_slug ?? '',
+  }));
 }
