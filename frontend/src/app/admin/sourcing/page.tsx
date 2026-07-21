@@ -1,11 +1,5 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const sb = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 type SourcingRequest = {
   id: string;
@@ -35,12 +29,17 @@ export default function AdminSourcingPage() {
   async function load() {
     setLoading(true);
     setError(null);
-    const { data, error: err } = await sb
-      .from('sourcing_requests')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (err) setError(err.message);
-    else setRequests((data as SourcingRequest[]) ?? []);
+    try {
+      const res = await fetch('/api/admin/sourcing');
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? `HTTP ${res.status}`);
+      } else {
+        setRequests(await res.json());
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Network error');
+    }
     setLoading(false);
   }
 
@@ -48,12 +47,14 @@ export default function AdminSourcingPage() {
 
   async function updateStatus(id: string, status: string) {
     setUpdating(id);
-    const { error: err } = await sb
-      .from('sourcing_requests')
-      .update({ status })
-      .eq('id', id);
-    if (!err) {
-      setRequests(prev => prev.map(r => r.id === id ? { ...r, status: status as SourcingRequest['status'] } : r));
+    const res = await fetch(`/api/admin/sourcing/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      setRequests(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r));
     }
     setUpdating(null);
   }
@@ -61,7 +62,7 @@ export default function AdminSourcingPage() {
   async function deleteRequest(id: string) {
     if (!confirm('Delete this sourcing request?')) return;
     setUpdating(id);
-    await sb.from('sourcing_requests').delete().eq('id', id);
+    await fetch(`/api/admin/sourcing/${id}`, { method: 'DELETE' });
     setRequests(prev => prev.filter(r => r.id !== id));
     setUpdating(null);
   }
@@ -114,11 +115,10 @@ export default function AdminSourcingPage() {
       <div className="src-header">
         <h1 className="src-title">Sourcing Requests</h1>
         <button className="src-reload" onClick={load} disabled={loading}>
-          {loading ? 'Loading…' : 'Refresh'}
+          {loading ? 'Loading\u2026' : 'Refresh'}
         </button>
       </div>
 
-      {/* Status filter pills */}
       <div className="src-stats">
         {(['all', 'pending', 'reviewed', 'fulfilled', 'declined'] as const).map(s => {
           const count = s === 'all' ? requests.length : (counts[s] ?? 0);
@@ -138,11 +138,17 @@ export default function AdminSourcingPage() {
 
       {error && <p style={{ color:'#dc2626', fontSize:'.85rem', marginBottom:'1rem' }}>Error: {error}</p>}
 
-      {!loading && filtered.length === 0 && (
+      {!loading && filtered.length === 0 && !error && (
         <div className="src-empty">
-          <div style={{ fontSize:'2.5rem', marginBottom:'.5rem' }}>📭</div>
+          <div style={{ fontSize:'2rem', marginBottom:'.5rem', color:'#d1d5db' }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          </div>
           <div>No sourcing requests{filter !== 'all' ? ` with status "${filter}"` : ''} yet.</div>
         </div>
+      )}
+
+      {loading && (
+        <div style={{ textAlign:'center', padding:'3rem 1rem', color:'#9ca3af', fontSize:'.9rem' }}>Loading\u2026</div>
       )}
 
       {filtered.map(req => {
@@ -189,7 +195,7 @@ export default function AdminSourcingPage() {
                     <option value="fulfilled">Fulfilled</option>
                     <option value="declined">Declined</option>
                   </select>
-                  {updating === req.id && <span style={{ fontSize:'.78rem', color:'#9ca3af' }}>Saving…</span>}
+                  {updating === req.id && <span style={{ fontSize:'.78rem', color:'#9ca3af' }}>Saving\u2026</span>}
                   <button
                     className="src-del"
                     disabled={updating === req.id}
