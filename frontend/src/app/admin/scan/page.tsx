@@ -52,9 +52,11 @@ type ExtraImageItem = {
   error?: string;
 };
 
-const SIZES        = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
-const GENDERS      = ['women', 'men', 'kids', 'unisex'];
-const MODEL_STYLES = [
+// Quick-pick size options for new product form
+const SIZE_QUICK_PICKS = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size', '6', '8', '10', '12', '14', '16'];
+const SIZES            = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
+const GENDERS          = ['women', 'men', 'kids', 'unisex'];
+const MODEL_STYLES     = [
   { id: 'studio',    label: '🎞️ Studio',    desc: 'White background, clean e-com look' },
   { id: 'outdoor',   label: '🌿 Outdoor',   desc: 'Natural light, heritage backdrop' },
   { id: 'editorial', label: '✨ Editorial', desc: 'Dramatic Vogue-style lighting' },
@@ -384,9 +386,8 @@ export default function ScanPage() {
 
   /**
    * Create a brand-new product then immediately set its inventory.
-   * After the product row is inserted, we call PATCH /api/admin/stock
-   * with the size + colour + stockCount from the new-product form so
-   * inventory is correct from the very first save.
+   * NOTE: This flow does the image upload itself — we clear imageFile
+   * afterwards so the outer "Save to product" button cannot re-upload it.
    */
   async function handleCreateProduct() {
     if (!newProduct.name.trim()) { setError('Product name is required'); return; }
@@ -416,7 +417,7 @@ export default function ScanPage() {
 
       const productId = created.id as string;
 
-      // 2. Upload the scanned image
+      // 2. Upload the scanned image (once — clear imageFile so outer Save can't re-upload)
       const fd = new FormData();
       fd.append('image',      imageFile);
       fd.append('product_id', productId);
@@ -426,9 +427,11 @@ export default function ScanPage() {
       const uploadData = await uploadRes.json();
       if (!uploadRes.ok) throw new Error(uploadData.error ?? 'Image upload failed');
 
-      // 3. Set the initial inventory variant — use size from newProduct form,
-      //    fall back to form.size (detected), fall back to 'Free Size'
-      const sizeToUse = newProduct.size || form.size || 'Free Size';
+      // ✅ Clear imageFile so "Save to product" cannot upload the same photo again
+      setImageFile(null);
+
+      // 3. Set the initial inventory variant
+      const sizeToUse = (newProduct.size || form.size || 'Free Size').trim();
       const stockRes  = await authFetch('/api/admin/stock', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -484,7 +487,6 @@ export default function ScanPage() {
     if (!img) return;
     setSavingModelIdx(idx);
     try {
-      // Try URL-based save first; fall back to base64 if URL expired
       let res: Response | null = null;
       if (img.url) {
         res = await authFetch('/api/admin/scan-model-save', {
@@ -496,7 +498,7 @@ export default function ScanPage() {
             colour:     normaliseColour(form.colour),
           }),
         });
-        if (!res.ok) res = null; // fall through to base64
+        if (!res.ok) res = null;
       }
       if (!res) {
         const src = img.url ?? img.b64;
@@ -658,7 +660,7 @@ export default function ScanPage() {
                 <button onClick={() => setShowNewProduct(true)} style={btnSecondary}>✚ Create new product</button>
               </>
             ) : (
-              // New product form
+              // ── New product form ──────────────────────────────────────────
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.85rem' }}>
                   <span style={{ fontWeight: 700, color: '#9d174d', fontSize: '.9rem' }}>✨ New product</span>
@@ -701,24 +703,34 @@ export default function ScanPage() {
                   </div>
                 </div>
 
-                {/* Size + Initial stock on the new-product form */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.75rem', marginBottom: '.75rem' }}>
-                  <div>
-                    <label style={fieldLabel}>Initial size *</label>
-                    <select style={selectStyle}
-                      value={newProduct.size || form.size || ''}
-                      onChange={e => setNewProduct(p => ({ ...p, size: e.target.value }))}>
-                      <option value="">— pick size —</option>
-                      {SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={fieldLabel}>Initial stock</label>
-                    <input style={inputStyle} type="number" min="0" placeholder="1"
-                      value={newProduct.stockCount ?? 1}
-                      onChange={e => setNewProduct(p => ({ ...p, stockCount: parseInt(e.target.value) || 0 }))} />
-                  </div>
+                {/* ── Size: free-text input + quick-pick pills ─────────── */}
+                <label style={fieldLabel}>Initial size *</label>
+                <input
+                  style={{ ...inputStyle, marginBottom: '.5rem' }}
+                  placeholder="e.g. M, XL, Free Size, 10, 42…"
+                  value={newProduct.size || form.size || ''}
+                  onChange={e => setNewProduct(p => ({ ...p, size: e.target.value }))}
+                />
+                <div style={{ display: 'flex', gap: '.4rem', flexWrap: 'wrap', marginBottom: '.75rem' }}>
+                  {SIZE_QUICK_PICKS.map(s => (
+                    <button
+                      key={s}
+                      type="button"
+                      style={{
+                        ...pill((newProduct.size || form.size || '') === s),
+                        padding: '.25rem .65rem',
+                        fontSize: '.75rem',
+                      }}
+                      onClick={() => setNewProduct(p => ({ ...p, size: s }))}
+                    >{s}</button>
+                  ))}
                 </div>
+
+                {/* Initial stock */}
+                <label style={fieldLabel}>Initial stock</label>
+                <input style={{ ...inputStyle, marginBottom: '.75rem' }} type="number" min="0" placeholder="1"
+                  value={newProduct.stockCount ?? 1}
+                  onChange={e => setNewProduct(p => ({ ...p, stockCount: parseInt(e.target.value) || 0 }))} />
 
                 <label style={fieldLabel}>Description</label>
                 <div style={{ position: 'relative', marginBottom: '.75rem' }}>
@@ -906,8 +918,8 @@ export default function ScanPage() {
           <div style={{ marginBottom: '2rem' }}>
             {error  && <p style={{ color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '.6rem', padding: '.6rem .85rem', fontSize: '.85rem', marginBottom: '.75rem' }}>⚠ {error}</p>}
             {saved  && <p style={{ color: '#166534', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '.6rem', padding: '.6rem .85rem', fontSize: '.85rem', marginBottom: '.75rem' }}>✅ Saved successfully!</p>}
-            <button onClick={handleSave} disabled={saving} style={{ ...btnPrimary, opacity: saving ? .7 : 1 }}>
-              {saving ? '⏳ Saving…' : '💾 Save to product'}
+            <button onClick={handleSave} disabled={saving || !imageFile} style={{ ...btnPrimary, opacity: (saving || !imageFile) ? .7 : 1 }}>
+              {saving ? '⏳ Saving…' : imageFile ? '💾 Save to product' : '✅ Product created'}
             </button>
             <button onClick={reset} style={{ ...btnSecondary, marginTop: '.65rem' }}>🔄 Scan another item</button>
           </div>
