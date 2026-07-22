@@ -8,6 +8,13 @@ import { ThemeProvider } from '../context/ThemeContext';
 export const metadata: Metadata = {
   title: 'Ethnic Story — Indian Ethnic Wear in Australia',
   description: 'A curated collection of sarees, lehengas, kurtas, and festive sets — rooted in Indian craft, designed for modern celebrations. Shipping Australia-wide.',
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
