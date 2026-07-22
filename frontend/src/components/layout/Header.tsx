@@ -290,7 +290,6 @@ export function Header() {
               alignItems: 'center',
               flexShrink: 0,
               transition: 'opacity 0.2s',
-              background: 'transparent',
               lineHeight: 0,
             }}
             onMouseEnter={e => (e.currentTarget.style.opacity = '0.8')}
@@ -298,7 +297,7 @@ export function Header() {
             aria-label="Ethnic Story — Home"
           >
             <Image
-              src="/logo.png"
+              src="/logo.svg"
               alt="Ethnic Story"
               width={160}
               height={52}
@@ -308,8 +307,6 @@ export function Header() {
                 height: '52px',
                 width: 'auto',
                 maxWidth: '160px',
-                background: 'transparent',
-                mixBlendMode: 'multiply',
                 display: 'block',
               }}
             />

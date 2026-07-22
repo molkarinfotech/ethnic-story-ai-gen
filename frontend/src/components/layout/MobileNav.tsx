@@ -34,7 +34,6 @@ type Section = {
 };
 
 function buildSections(groups: NavGroup[]): Section[] {
-  // Sort incoming groups by the canonical GROUP_ORDER.
   const sorted = [...groups].sort((a, b) => {
     const ai = GROUP_ORDER.indexOf(a.gender as typeof GROUP_ORDER[number]);
     const bi = GROUP_ORDER.indexOf(b.gender as typeof GROUP_ORDER[number]);
@@ -44,8 +43,6 @@ function buildSections(groups: NavGroup[]): Section[] {
     return ai - bi;
   });
 
-  // Map every group — all categories from the API are shown.
-  // No client-side filtering: the API is the source of truth.
   const sections: Section[] = sorted.map(g => ({
     label: GENDER_LABELS[g.gender] ?? g.gender.charAt(0).toUpperCase() + g.gender.slice(1),
     href: `/collections/${g.gender}`,
@@ -107,10 +104,10 @@ function Drawer({ open, onClose, sections }: { open: boolean; onClose: () => voi
             href="/"
             onClick={close}
             aria-label="Ethnic Story — Home"
-            style={{ background: 'transparent', lineHeight: 0, display: 'flex', alignItems: 'center' }}
+            style={{ lineHeight: 0, display: 'flex', alignItems: 'center' }}
           >
             <Image
-              src="/logo.png"
+              src="/logo.svg"
               alt="Ethnic Story"
               width={160}
               height={48}
@@ -120,8 +117,6 @@ function Drawer({ open, onClose, sections }: { open: boolean; onClose: () => voi
                 height: '48px',
                 width: 'auto',
                 maxWidth: '160px',
-                background: 'transparent',
-                mixBlendMode: 'multiply',
                 display: 'block',
               }}
             />
