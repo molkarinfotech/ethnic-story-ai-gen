@@ -1,30 +1,56 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 60" fill="none">
-  <!-- Decorative mandala-inspired mark -->
-  <g transform="translate(30,30)">
-    <!-- Outer petal ring -->
-    <circle cx="0" cy="0" r="22" stroke="#8B1A4A" stroke-width="1.5" fill="none" opacity="0.35"/>
-    <!-- 8 petals -->
-    <ellipse cx="0" cy="-16" rx="3.5" ry="7" fill="#8B1A4A" opacity="0.6" transform="rotate(0)"/>
-    <ellipse cx="0" cy="-16" rx="3.5" ry="7" fill="#8B1A4A" opacity="0.6" transform="rotate(45)"/>
-    <ellipse cx="0" cy="-16" rx="3.5" ry="7" fill="#8B1A4A" opacity="0.6" transform="rotate(90)"/>
-    <ellipse cx="0" cy="-16" rx="3.5" ry="7" fill="#8B1A4A" opacity="0.6" transform="rotate(135)"/>
-    <ellipse cx="0" cy="-16" rx="3.5" ry="7" fill="#8B1A4A" opacity="0.6" transform="rotate(180)"/>
-    <ellipse cx="0" cy="-16" rx="3.5" ry="7" fill="#8B1A4A" opacity="0.6" transform="rotate(225)"/>
-    <ellipse cx="0" cy="-16" rx="3.5" ry="7" fill="#8B1A4A" opacity="0.6" transform="rotate(270)"/>
-    <ellipse cx="0" cy="-16" rx="3.5" ry="7" fill="#8B1A4A" opacity="0.6" transform="rotate(315)"/>
-    <!-- Inner dot cluster -->
-    <circle cx="0" cy="0" r="5.5" fill="#8B1A4A"/>
-    <circle cx="0" cy="0" r="3" fill="#C9567A"/>
-    <circle cx="0" cy="0" r="1.2" fill="#FDEEF4"/>
-    <!-- Gold accent dots at cardinal points -->
-    <circle cx="0" cy="-10" r="1.4" fill="#C4922A"/>
-    <circle cx="10" cy="0" r="1.4" fill="#C4922A"/>
-    <circle cx="0" cy="10" r="1.4" fill="#C4922A"/>
-    <circle cx="-10" cy="0" r="1.4" fill="#C4922A"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 320" fill="none" aria-label="Ethnic Story - Clothing & Jewellery">
+  <defs>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#F5D98B"/>
+      <stop offset="40%"  stop-color="#D4AF37"/>
+      <stop offset="100%" stop-color="#8B6914"/>
+    </linearGradient>
+    <linearGradient id="goldS" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#F0C040"/>
+      <stop offset="50%"  stop-color="#C8992A"/>
+      <stop offset="100%" stop-color="#7A5A10"/>
+    </linearGradient>
+  </defs>
+
+  <!-- E letterform -->
+  <text x="78" y="178" font-family="Georgia, 'Times New Roman', serif" font-size="148" font-weight="700" fill="url(#gold)" letter-spacing="-2">E</text>
+
+  <!-- S letterform overlapping -->
+  <text x="148" y="195" font-family="Georgia, 'Times New Roman', serif" font-size="128" font-weight="700" fill="url(#goldS)" letter-spacing="-2">S</text>
+
+  <!-- Floral/lotus motif inside S curve -->
+  <g transform="translate(200,168)" fill="none" stroke="url(#gold)" stroke-width="1.2">
+    <!-- outer circle -->
+    <circle cx="0" cy="0" r="18" stroke-width="1"/>
+    <!-- lotus petals -->
+    <ellipse cx="0"    cy="-11" rx="4"   ry="8"   fill="url(#gold)" fill-opacity="0.7" stroke="none"/>
+    <ellipse cx="8"    cy="-7"  rx="3.5" ry="7"   fill="url(#gold)" fill-opacity="0.5" stroke="none" transform="rotate(36,8,-7)"/>
+    <ellipse cx="-8"   cy="-7"  rx="3.5" ry="7"   fill="url(#gold)" fill-opacity="0.5" stroke="none" transform="rotate(-36,-8,-7)"/>
+    <ellipse cx="12"   cy="2"   rx="3"   ry="6"   fill="url(#gold)" fill-opacity="0.4" stroke="none" transform="rotate(72,12,2)"/>
+    <ellipse cx="-12"  cy="2"   rx="3"   ry="6"   fill="url(#gold)" fill-opacity="0.4" stroke="none" transform="rotate(-72,-12,2)"/>
+    <!-- teardrop top -->
+    <path d="M0,-20 Q3,-14 0,-10 Q-3,-14 0,-20Z" fill="url(#gold)"/>
+    <!-- center dot -->
+    <circle cx="0" cy="0" r="3" fill="url(#gold)"/>
+    <!-- small decorative lines -->
+    <line x1="0" y1="4" x2="0"  y2="10"  stroke="url(#gold)" stroke-width="1"/>
+    <line x1="-8" y1="8" x2="8" y2="8"   stroke="url(#gold)" stroke-width="0.8"/>
   </g>
-  <!-- Wordmark: "Ethnic Story" -->
-  <text x="62" y="24" font-family="Georgia, 'Times New Roman', serif" font-size="17" font-weight="700" letter-spacing="2" fill="#8B1A4A">ETHNIC</text>
-  <text x="62" y="44" font-family="Georgia, 'Times New Roman', serif" font-size="17" font-weight="400" letter-spacing="4" fill="#5C1A2E">STORY</text>
-  <!-- Thin decorative rule between the two words -->
-  <line x1="62" y1="29" x2="178" y2="29" stroke="#C4922A" stroke-width="0.8" opacity="0.7"/>
+
+  <!-- Divider line with center rosette -->
+  <line x1="60" y1="218" x2="172" y2="218" stroke="url(#gold)" stroke-width="1"/>
+  <line x1="228" y1="218" x2="340" y2="218" stroke="url(#gold)" stroke-width="1"/>
+  <!-- rosette -->
+  <circle cx="200" cy="218" r="5" fill="url(#gold)"/>
+  <circle cx="200" cy="218" r="3" fill="#8B6914"/>
+  <line x1="200" y1="211" x2="200" y2="215" stroke="url(#gold)" stroke-width="1"/>
+  <line x1="200" y1="221" x2="200" y2="225" stroke="url(#gold)" stroke-width="1"/>
+  <line x1="193" y1="218" x2="197" y2="218" stroke="url(#gold)" stroke-width="1"/>
+  <line x1="203" y1="218" x2="207" y2="218" stroke="url(#gold)" stroke-width="1"/>
+
+  <!-- ETHNIC STORY wordmark -->
+  <text x="200" y="252" font-family="Georgia, 'Times New Roman', serif" font-size="28" font-weight="600" fill="url(#gold)" text-anchor="middle" letter-spacing="8">ETHNIC STORY</text>
+
+  <!-- Clothing & Jewellery subtitle -->
+  <text x="200" y="278" font-family="Georgia, 'Times New Roman', serif" font-size="12" fill="url(#gold)" text-anchor="middle" letter-spacing="4">— CLOTHING &amp; JEWELLERY —</text>
 </svg>
