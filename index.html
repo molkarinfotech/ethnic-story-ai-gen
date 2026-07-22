@@ -4,17 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="A modern homepage prototype for an Indian ethnic clothing store with editorial fashion styling, dynamic sections, and future ecommerce readiness." />
-  <title>Vastra House — Indian Ethnic Wear</title>
+  <title>Ethnic Story — Clothing &amp; Jewellery</title>
   <link rel="preconnect" href="https://api.fontshare.com" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&f[]=boska@400,500,700&display=swap" rel="stylesheet" />
   <style>
-    /* Art direction: Indian ethnic boutique → refined, festive, modern-luxury
-       Palette: warm ivory, deep plum, antique gold accent
-       Typography: Boska + Satoshi for editorial elegance with clean commerce readability
-       Density: spacious with premium retail rhythm */
-
     :root,[data-theme="light"]{
       --text-xs:clamp(.75rem,.7rem + .25vw,.875rem);
       --text-sm:clamp(.875rem,.8rem + .35vw,1rem);
@@ -83,9 +78,9 @@
     .section{padding:clamp(var(--space-12),7vw,var(--space-24)) 0}
 
     .header{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--color-bg) 86%, transparent);backdrop-filter:blur(14px);border-bottom:1px solid color-mix(in srgb,var(--color-text) 10%, transparent)}
-    .header-inner{display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);padding:var(--space-4) 0}
-    .brand{display:flex;align-items:center;gap:var(--space-3);font-size:var(--text-sm);font-weight:700;letter-spacing:.03em}
-    .brand-mark{width:2.5rem;height:2.5rem;padding:.35rem;border-radius:var(--radius-md);background:var(--color-surface);border:1px solid color-mix(in srgb,var(--color-text) 12%, transparent);box-shadow:var(--shadow-sm)}
+    .header-inner{display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0}
+    .brand{display:flex;align-items:center;gap:var(--space-3)}
+    .brand-logo{height:3rem;width:auto;object-fit:contain;display:block}
     .nav{display:flex;align-items:center;gap:var(--space-5);font-size:var(--text-sm);color:var(--color-text-muted)}
     .nav a{position:relative;padding:.25rem 0}
     .nav a::after{content:"";position:absolute;left:0;bottom:-.2rem;width:100%;height:1px;background:var(--color-primary);transform:scaleX(0);transform-origin:left;transition:transform var(--transition)}
@@ -190,6 +185,7 @@
       .services{gap:var(--space-3)}
       .metrics{grid-template-columns:1fr}
       .collection-card{min-height:18rem}
+      .brand-logo{height:2.25rem}
     }
     @media (prefers-reduced-motion: reduce){
       html{scroll-behavior:auto}
@@ -202,14 +198,15 @@
   <a class="skip-link" href="#content">Skip to content</a>
   <header class="header">
     <div class="container header-inner">
-      <a class="brand" href="#top" aria-label="Go to homepage">
-        <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M8 24C12 22 13.5 17 16 11C18.5 17 20 22 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M12 20C13.5 18.5 14.7 16.8 16 14C17.3 16.8 18.5 18.5 20 20" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
-          </svg>
-        </span>
-        Vastra House
+      <a class="brand" href="#top" aria-label="Ethnic Story — go to homepage">
+        <img
+          src="/public/logo.png"
+          alt="Ethnic Story — Clothing &amp; Jewellery"
+          class="brand-logo"
+          width="160"
+          height="48"
+          loading="eager"
+        />
       </a>
       <nav class="nav" aria-label="Primary navigation">
         <a href="#collections">Collections</a>
@@ -360,7 +357,7 @@
 
   <footer>
     <div class="container footer-inner">
-      <p>© 2026 Vastra House. All rights reserved.</p>
+      <p>© 2026 Ethnic Story. All rights reserved.</p>
       <p>Indian ethnic wear — handcrafted with intention.</p>
     </div>
   </footer>
@@ -381,13 +378,10 @@
       toggle.addEventListener('click', ()=>{theme = theme === 'dark' ? 'light' : 'dark'; renderTheme();});
 
       const items = document.querySelectorAll('[data-reveal]');
-      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (!window.matchMedia('(prefers-reduce-motion: reduce)').matches) {
         const observer = new IntersectionObserver((entries)=>{
           entries.forEach((entry)=>{
-            if(entry.isIntersecting){
-              entry.target.classList.add('is-visible');
-              observer.unobserve(entry.target);
-            }
+            if(entry.isIntersecting){entry.target.classList.add('is-visible');observer.unobserve(entry.target);}
           });
         },{threshold:.16, rootMargin:'0px 0px -40px 0px'});
         items.forEach((item)=>observer.observe(item));
